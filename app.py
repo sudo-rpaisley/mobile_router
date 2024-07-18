@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
 
+from scripts.interfaceTools import *
+
 app = Flask(__name__)
 
 # # Define your technologyMap here:
@@ -43,9 +45,11 @@ def red_team():
 
 @app.route('/<interface_type>/<interface_name>')
 def interface_detail(interface_type, interface_name):
-    interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type == interface_type), None)
+    # Convert interface_type to lowercase to ensure case-insensitive matching
+    interface_type = interface_type.lower()
+    interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
-        return render_template('interface_detail.html', title=f'{interface_type} - {interface_name}', interface=interface)
+        return render_template('interface_detail.html', title=f'{interface_type.capitalize()} - {interface_name}', interface=interface)
     else:
         return "Interface not found", 404
 
@@ -127,7 +131,7 @@ if __name__ == '__main__':
     host='127.0.0.1'
     port=8080
     
-    get_network_interfaces()
+    network_interfaces = get_network_interfaces()
     app.run(host=host, port=port)
 
 
