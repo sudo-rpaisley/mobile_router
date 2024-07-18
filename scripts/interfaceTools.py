@@ -45,7 +45,6 @@ class NetworkInterface:
                 f"{addresses_str}\n")
 
 
-
 class BluetoothDevice:
     def __init__(self, address, name):
         self.address = address
