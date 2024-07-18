@@ -1,0 +1,12 @@
+
+<!-- /root/flaskapp/templates/_adapters-card.html -->
+<div class="card">
+  <div class="card-body">
+      <h5 class="card-title">{{ interface.name }}</h5>
+      <p class="card-text">Type: {{ interface.interface_type }}</p>
+      <p class="card-text">Address: {{ interface.addresses[0].address }}</p>
+      <a class="no-link-design" href="/{{ interface.interface_type | lower }}/{{ interface.name }}">
+          View Details
+      </a>
+  </div>
+</div>

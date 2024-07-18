@@ -3,7 +3,7 @@
   <option selected>Select Interface</option>
   {% for interface in interfaces %}
     {% if interface.networkTechnology != "Loopback" and interface.networkTechnology != "Bluetooth" %}
-      <option value="{{ interface.ifname }}">{{ interface.ifname }}</option>
+      <option value="{{ interface.name }}">{{ interface.name }}</option>
     {% endif %}
   {% endfor %}
 </select>

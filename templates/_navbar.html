@@ -14,11 +14,11 @@
       {% for technology in networkTechnologies %}
         {% if technology != 'Loopback' %}
           <div class="nav-item dropdown">
-            <a href="/{{ technologyMap[technology] }}" class="nav-link {% if title == technologyMap[technology] or (interface is defined and interface.networkTechnology == technology) %}active{% endif %}" data-toggle="dropdown">{{ technologyMap[technology] }}</a>
+            <a href="/{{ technology | lower }}" class="nav-link {% if title == technology or (interface is defined and interface.interface_type == technology) %}active{% endif %}" data-toggle="dropdown">{{ technology }}</a>
             <div class="dropdown-menu">
               {% for interface in interfaces %}
-                {% if interface.networkTechnology == technology %}
-                  <a href="/{{ technologyMap[technology] }}/{{ interface.ifname }}" class="dropdown-item">{{ interface.ifname }}</a>
+                {% if interface.interface_type == technology %}
+                  <a href="/{{ technology | lower }}/{{ interface.name }}" class="dropdown-item">{{ interface.name }}</a>
                 {% endif %}
               {% endfor %}
             </div>
