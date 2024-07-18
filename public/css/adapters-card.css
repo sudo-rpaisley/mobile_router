@@ -1,0 +1,55 @@
+.no-link-design, .no-link-design, .no-link-design, .no-link-design:active {
+  text-decoration: none !important; 
+  color: inherit !important;
+}
+
+.adapters-card {
+  width: 250px;
+  height: 140px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+  display: flex;
+  align-items: center;
+}
+
+.adapters-card:hover {
+  transform: scale(1.05);
+}
+
+.interfaceImage {
+  width: 30%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.interfaceBody {
+  width: 70%;
+  align-items: center;
+  justify-content: center;
+  padding-left: 5%;
+}
+
+.interfaceDetails {
+  width: 100%;
+  padding-top: 5%;
+  margin: 0;
+
+}
+
+.interfaceTitle {
+  font-weight: bold;
+  font-size: 20px;
+  margin: 0;
+}
+
+.interfaceHeading {
+  margin: 0;
+  font-size: 16px;}
+
+.interfaceText {
+  margin: 0;
+  font-size: 14px;
+}

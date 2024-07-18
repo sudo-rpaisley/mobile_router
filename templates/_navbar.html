@@ -1,0 +1,38 @@
+<!-- /root/flaskapp/templates/_navbar.html -->
+<link rel="stylesheet" href="/static/css/navbar.css">
+<script src="/static/js/navbar.js"></script>
+
+<nav class="navbar navbar-expand-sm navbar-dark bg-dark">
+  <a href="/" class="navbar-brand">Honours</a>
+  <button type="button" class="navbar-toggler" data-toggle="collapse" data-target="#navbarCollapse">
+      <span class="navbar-toggler-icon"></span>
+  </button>
+
+  <div class="collapse navbar-collapse" id="navbarCollapse">
+    <div class="navbar-nav">
+      <a href="/" class="nav-link {% if title == 'Home' %}active{% endif %}">Home</a>
+      {% for technology in networkTechnologies %}
+        {% if technology != 'Loopback' %}
+          <div class="nav-item dropdown">
+            <a href="/{{ technologyMap[technology] }}" class="nav-link {% if title == technologyMap[technology] or (interface is defined and interface.networkTechnology == technology) %}active{% endif %}" data-toggle="dropdown">{{ technologyMap[technology] }}</a>
+            <div class="dropdown-menu">
+              {% for interface in interfaces %}
+                {% if interface.networkTechnology == technology %}
+                  <a href="/{{ technologyMap[technology] }}/{{ interface.ifname }}" class="dropdown-item">{{ interface.ifname }}</a>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+      <a href="/red-team" class="nav-link {% if title == 'Red Team' %}active{% endif %}">Red Team</a>
+    </div>
+    <div class="d-flex d-md-none text-left">
+      <button id="listAdapters1" type="button" class="fa-solid fa-rotate btn" data-toggle="tooltip" data-placement="bottom" title="Refresh Network Adapters" style="background-color:transparent; color: white;"></button>
+    </div>
+    <div class="ml-auto d-none d-md-flex">
+      <button id="listAdapters2" type="button" class="fa-solid fa-rotate btn" data-toggle="tooltip" data-placement="bottom" title="Refresh Network Adapters" style="background-color:transparent; color: white;"></button>
+    </div>
+  </div>
+  <script src="/static/js/wireless-scripts.js"></script>
+</nav>

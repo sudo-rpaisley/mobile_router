@@ -1,0 +1,13 @@
+.page-contents {
+  display: flex;
+}
+.details {
+  flex-grow: 1;
+}
+#wlans {
+  flex-grow: 1;
+  margin: 2%;
+}
+.connect-button {
+  margin: 2%;
+}
