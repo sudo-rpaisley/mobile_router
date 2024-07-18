@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
 
+from scripts.interfaceTools import *
+
 app = Flask(__name__)
 
 # # Define your technologyMap here:
