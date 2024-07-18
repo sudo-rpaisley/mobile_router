@@ -58,6 +58,10 @@ def get_network_interfaces():
     return network_objects
 
 def get_bluetooth_devices():
-    bluetooth_devices = bluetooth.discover_devices(duration=8, lookup_names=True, flush_cache=True, lookup_class=False)
-    bluetooth_objects = [BluetoothDevice(address=addr, name=name) for addr, name in bluetooth_devices]
-    return bluetooth_objects
+    try:
+        bluetooth_devices = bluetooth.discover_devices(duration=8, lookup_names=True, flush_cache=True, lookup_class=False)
+        bluetooth_objects = [BluetoothDevice(address=addr, name=name) for addr, name in bluetooth_devices]
+        return bluetooth_objects
+    except Exception as e:
+        print(f"Error discovering Bluetooth devices: {e}")
+        return []
