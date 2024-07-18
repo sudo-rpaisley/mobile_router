@@ -54,7 +54,7 @@ def get_network_interfaces():
                 interface_type=interface_type
             )
             network_objects.append(network_interface)
-
+    print(network_objects)
     return network_objects
 
 def get_bluetooth_devices():

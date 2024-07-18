@@ -30,7 +30,6 @@ import json
 
 from scripts import interfaceTools
 
-
 app = Flask(__name__)
 
 # # Define your technologyMap here:
@@ -50,6 +49,8 @@ app = Flask(__name__)
 #     ]
 #     network_technologies = list({iface['networkTechnology'] for iface in interfaces})
 #     return interfaces, network_technologies
+
+get_network_interfaces()
 
 @app.route('/')
 def index():
