@@ -54,13 +54,6 @@ def broadcastFlood(frames, selectedInterface):
 
 
 
-
-
-
-
-
-
-
 # async def connect_to_ip(ip, port, delay, stop_event, attempt_counter):
 #     while not stop_event.is_set():
 #         attempt_number = next(attempt_counter)
