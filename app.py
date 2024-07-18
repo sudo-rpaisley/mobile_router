@@ -28,7 +28,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
 
-from scripts import interfaceTools
+from scripts.interfaceTools import *
 
 app = Flask(__name__)
 
