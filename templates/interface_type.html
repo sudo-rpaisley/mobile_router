@@ -1,0 +1,22 @@
+{% include '_header.html' %}
+<body class="d-flex flex-column min-vh-100">
+    <h1>{{ title }}</h1>
+    <div class="container-fluid">
+        <div class="row flex-nowrap overflow-auto">
+            {% for interface in interfaces %}
+                {% if interface.interface_type == technology %}
+                    <div class="m-2 p-2">
+                        {% if interface.interface_type == 'Wireless' %}
+                            {% include '_adapters-card-large.html' %}
+                        {% else %}
+                            {% include '_adapters-card.html' %}
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</body>
+<script src="/static/js/wireless-scripts.js"></script>
+{% include '_footer.html' %}
+</html>
