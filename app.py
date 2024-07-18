@@ -50,7 +50,7 @@ app = Flask(__name__)
 #     network_technologies = list({iface['networkTechnology'] for iface in interfaces})
 #     return interfaces, network_technologies
 
-get_network_interfaces()
+
 
 @app.route('/')
 def index():
@@ -157,7 +157,8 @@ if __name__ == '__main__':
 
     host='127.0.0.1'
     port=8080
-
+    
+    get_network_interfaces()
     app.run(host=host, port=port)
 
 
