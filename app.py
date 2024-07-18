@@ -31,7 +31,7 @@ def interfaces_by_type(interface_type):
     interface_type = interface_type.capitalize()
     filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
     if filtered_interfaces:
-        return render_template('interface_type.html', title=f'{interface_type} Interfaces', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies)
+        return render_template('interfaces_by_type.html', title=f'{interface_type} Interfaces', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies)
     else:
         return "No interfaces found for this type", 404
 
@@ -40,9 +40,10 @@ def interface_detail(interface_type, interface_name):
     interface_type = interface_type.lower()
     interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
-        return render_template('interface_detail.html', title=f'{interface_type.capitalize()} - {interface_name}', interface=interface, networkTechnologies=networkTechnologies)
+        return render_template('interface_detail.html', title=interface.name, interface=interface, networkTechnologies=networkTechnologies, interfaces=network_interfaces)
     else:
         return "Interface not found", 404
+
 
 # @app.route('/syn-flood', methods=['POST'])
 # def syn_flood():

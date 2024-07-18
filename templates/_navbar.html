@@ -1,4 +1,3 @@
-<!-- /root/flaskapp/templates/_navbar.html -->
 <link rel="stylesheet" href="/static/css/navbar.css">
 <script src="/static/js/navbar.js"></script>
 
@@ -18,7 +17,7 @@
             <div class="dropdown-menu">
               {% for interface in interfaces %}
                 {% if interface.interface_type == technology %}
-                  <a href="/{{ technology | lower }}/{{ interface.name }}" class="dropdown-item">{{ interface.name }}</a>
+                  <a href="/{{ technology | lower }}/{{ interface.name }}" class="dropdown-item {% if title == interface.name %}active{% endif %}">{{ interface.name }}</a>
                 {% endif %}
               {% endfor %}
             </div>
