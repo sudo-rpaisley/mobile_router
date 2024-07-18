@@ -52,7 +52,11 @@ def get_adapters():
 @app.route('/')
 def index():
     interfaces, network_technologies = get_adapters()
-    return render_template('index.html', title='Home', interfaces=interfaces, network_technologies=network_technologies, technology_map=technology_map)
+    return render_template('index.html', title='Home') #, interfaces=interfaces, network_technologies=network_technologies, technology_map=technology_map)
+
+@app.route('/about')
+def about():
+    return render_template('about.html', title='About')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -135,6 +139,10 @@ def wlan_connect():
         return jsonify({'status': 'error', 'message': f'WLAN connect error: {str(e)}'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+
+    host='127.0.0.1'
+    port=8080
+
+    app.run(host=host, port=port)
 
 

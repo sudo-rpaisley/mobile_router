@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}My Web Page{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    {% include 'header.html' %}
+    {% include '_header.html' %}
     <div class="content">
         {% block content %}{% endblock %}
     </div>
-    {% include 'footer.html' %}
+    {% include '_footer.html' %}
 </body>
 </html>
