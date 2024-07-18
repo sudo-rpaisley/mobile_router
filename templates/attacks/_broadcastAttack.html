@@ -1,0 +1,11 @@
+<!-- /root/flaskapp/templates/Attacks/_broadcastAttack.html -->
+<div class="card m-3" style="width: 18rem;">
+  <h5 class="card-title">Broadcast Attack</h5>
+  <p class="card-text">Frames are sent to the broadcast MAC address. As a result, every device in the network receives the packets leading to a significant increase in network traffic and resource consumption.</p>
+  <form class="form-inline" method="post" action="/syn-flood-broadcast">
+      <input type="text" class="form-control" id="Broadcast-DoS-Frames" placeholder="10" name="frames"> 
+      {% set selectId = 'Broadcast' %}
+      {% include '_adapters-list.html' %}
+      <button id="DoS-Broadcast-Submit" class="btn btn-primary mb-2">Submit</button>
+  </form>
+</div>

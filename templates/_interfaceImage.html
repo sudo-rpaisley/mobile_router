@@ -1,0 +1,24 @@
+<!-- /root/flaskapp/templates/_interfaceImage.html -->
+<div class="col-md-3 d-flex align-items-center justify-content-center p-3">
+  {% if interface.networkTechnology == 'Wi-Fi' %}
+    {% if interface.operstate == 'UP' %}
+      <i class="fa-solid fa-wifi fa-3x text-primary"></i>
+    {% else %}
+      <i class="fa-solid fa-wifi fa-3x text-black"></i>
+    {% endif %}
+  {% elif interface.networkTechnology == 'Ethernet' %}
+    {% if interface.operstate == 'UP' %}
+      <i class="fa-solid fa-ethernet fa-3x text-primary"></i>
+    {% else %}
+      <i class="fa-solid fa-ethernet fa-3x text-black"></i>
+    {% endif %}
+  {% elif interface.networkTechnology == 'Loopback' %}
+    <i class="fa-solid fa-house fa-3x text-primary"></i>
+  {% elif interface.networkTechnology == 'Bluetooth' %}
+    {% if interface.state == 'DOWN' %}
+      <i class="fa-brands fa-bluetooth-b fa-3x text-black"></i>       
+    {% else %}
+      <i class="fa-brands fa-bluetooth-b fa-3x text-primary"></i>
+    {% endif %}
+  {% endif %}
+</div>

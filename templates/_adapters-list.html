@@ -1,0 +1,9 @@
+<!-- /root/flaskapp/templates/_adapters-list.html -->
+<select class="form-select" id="interface-select-{{ selectId }}">
+  <option selected>Select Interface</option>
+  {% for interface in interfaces %}
+    {% if interface.networkTechnology != "Loopback" and interface.networkTechnology != "Bluetooth" %}
+      <option value="{{ interface.ifname }}">{{ interface.ifname }}</option>
+    {% endif %}
+  {% endfor %}
+</select>

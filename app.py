@@ -64,8 +64,8 @@ def favicon():
 
 @app.route('/red-team')
 def red_team():
-    interfaces, _ = get_adapters()
-    return render_template('red-team.html', title='Red Team', interfaces=interfaces)
+    # interfaces, _ = get_adapters()
+    return render_template('red-team.html', title='Red Team') #, interfaces=interfaces)
 
 @app.route('/<network_technology>')
 def technology(network_technology):

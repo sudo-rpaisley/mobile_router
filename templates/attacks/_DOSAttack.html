@@ -1,0 +1,21 @@
+<!-- /root/flaskapp/templates/Attacks/_DOSAttack.html -->
+<div class="card m-3" style="width: 18rem;">
+  <h5 class="card-title">DOS Attack</h5>
+  <p class="card-text">A Denial of Service (DoS) attack is a type of cyber attack that aims to make a network resource or service unavailable to its intended users by overwhelming it with a high volume of traffic.</p>
+  <form class="form-inline" method="post" action="/syn-flood">
+      <label class="sr-only" for="inlineFormInputDestination">Destination</label>
+      <input type="text" class="form-control mb-2 mr-sm-2" id="inlineFormInputDestination" placeholder="127.0.0.1" name="destinationAddress" >
+
+      <label class="sr-only" for="inlineFormInputPort">Port</label>
+      <div class="input-group mb-2 mr-sm-2">
+      <div class="input-group-prepend">
+          <div class="input-group-text">:</div>
+      </div>
+          <input type="text" class="form-control" id="inlineFormInputPort" placeholder="443" name="destinationPort">
+          <input type="text" class="form-control" id="inlineFormInputFrames" placeholder="10" name="frames">
+      </div>   
+      {% set selectId = 'DoS' %}
+      {% include '_adapters-list.html' %}
+      <button id="DoS-Submit" class="btn btn-primary mb-2">Submit</button>
+  </form>
+</div>
