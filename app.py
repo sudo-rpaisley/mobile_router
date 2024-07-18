@@ -1,34 +1,6 @@
-# from flask import Flask, render_template
-# from scripts.wifi import beaconspoof
-
-# app = Flask(__name__)
-
-# port = 8080
-# host = '0.0.0.0'
-
-# @app.route('/')
-# def home():
-#     return render_template('index.html')
-
-# @app.route('/about')
-# def about():
-#     return render_template('about.html')
-
-# @app.route('/contact')
-# def contact():
-#     return render_template('contact.html')
-
-# if __name__ == '__main__':
-#     app.run(host=host, port=port)
-
-
-
-
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
-
-from scripts.interfaceTools import *
 
 app = Flask(__name__)
 
@@ -50,8 +22,6 @@ app = Flask(__name__)
 #     network_technologies = list({iface['networkTechnology'] for iface in interfaces})
 #     return interfaces, network_technologies
 
-
-
 @app.route('/')
 def index():
     # interfaces, network_technologies = get_adapters()
@@ -70,6 +40,14 @@ def favicon():
 def red_team():
     # interfaces, _ = get_adapters()
     return render_template('red-team.html', title='Red Team') #, interfaces=interfaces)
+
+@app.route('/<interface_type>/<interface_name>')
+def interface_detail(interface_type, interface_name):
+    interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type == interface_type), None)
+    if interface:
+        return render_template('interface_detail.html', title=f'{interface_type} - {interface_name}', interface=interface)
+    else:
+        return "Interface not found", 404
 
 # @app.route('/<network_technology>')
 # def technology(network_technology):
@@ -141,15 +119,6 @@ def red_team():
 #         return jsonify({'status': 'success', 'message': f'Connected to {ssid} on {selected_interface}'})
 #     except Exception as e:
 #         return jsonify({'status': 'error', 'message': f'WLAN connect error: {str(e)}'})
-
-
-
-
-
-
-
-
-
 
 
 
