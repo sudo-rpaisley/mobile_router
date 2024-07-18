@@ -1,60 +1,49 @@
-<!-- /root/flaskapp/templates/interface_detail.html -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <%- include('_head') %>
+    {% include '_header.html' %}
     <link rel="stylesheet" href="/static/css/interface.css">
-</head>
 <body class="d-flex flex-column min-vh-100">
-    <%- include('_navbar') %>
     <div class="page-contents">
       <div class="details">
-        <h1><%= interface.name %></h1>
-        <%- include('_interfaceImage') %>
+        <h1>{{ interface.name }}</h1>
+        {% include '_interfaceImage.html' %}
         <ul>
-        <% switch (interface.interface_type) { 
-          case 'Wireless':
-          case 'Wired': %>
-            <li>Interface Name: <%= interface.name %></li>
-            <% for (addr in interface.addresses) { %>
-              <li>Family: <%= interface.addresses[addr].family %></li>
-              <li>Address: <%= interface.addresses[addr].address %></li>
-              <li>Netmask: <%= interface.addresses[addr].netmask %></li>
-              <li>Broadcast: <%= interface.addresses[addr].broadcast %></li>
-              <li>PTP: <%= interface.addresses[addr].ptp %></li>
-            <% } %>
-            <% if (interface.interface_type === 'Wireless') { %>
+        {% if interface.interface_type in ['Wireless', 'Wired'] %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+              <li>Netmask: {{ addr.netmask }}</li>
+              <li>Broadcast: {{ addr.broadcast }}</li>
+              <li>PTP: {{ addr.ptp }}</li>
+            {% endfor %}
+            {% if interface.interface_type == 'Wireless' %}
               <div class="col-md-8 flex-grow-1">
-                <button id="wlan-scan" class="btn btn-primary mb-2" value=<%= interface.name %>>Scan for Networks</button>
+                <button id="wlan-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Networks</button>
               </div> 
               <script src="/static/js/wireless-adapters.js"></script>     
-            <% } %>
-          <% break; 
-          case 'Loopback': %>
-            <li>Interface Name: <%= interface.name %></li>
-            <% for (addr in interface.addresses) { %>
-              <li>Family: <%= interface.addresses[addr].family %></li>
-              <li>Address: <%= interface.addresses[addr].address %></li>
-              <li>Netmask: <%= interface.addresses[addr].netmask %></li>
-              <li>Broadcast: <%= interface.addresses[addr].broadcast %></li>
-              <li>PTP: <%= interface.addresses[addr].ptp %></li>
-            <% } %>
-          <% break; 
-          case 'Bluetooth': %>
-            <li>Interface Name: <%= interface.name %></li>
-            <% for (addr in interface.addresses) { %>
-              <li>Family: <%= interface.addresses[addr].family %></li>
-              <li>Address: <%= interface.addresses[addr].address %></li>
-              <li>Netmask: <%= interface.addresses[addr].netmask %></li>
-              <li>Broadcast: <%= interface.addresses[addr].broadcast %></li>
-              <li>PTP: <%= interface.addresses[addr].ptp %></li>
-            <% } %>
-          <% break;  
-          } %>
+            {% endif %}
+        {% elif interface.interface_type == 'Loopback' %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+              <li>Netmask: {{ addr.netmask }}</li>
+              <li>Broadcast: {{ addr.broadcast }}</li>
+              <li>PTP: {{ addr.ptp }}</li>
+            {% endfor %}
+        {% elif interface.interface_type == 'Bluetooth' %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+              <li>Netmask: {{ addr.netmask }}</li>
+              <li>Broadcast: {{ addr.broadcast }}</li>
+              <li>PTP: {{ addr.ptp }}</li>
+            {% endfor %}
+        {% endif %}
         </ul>
       </div>
       <div id="wlans"></div>
     </div>
-    <%- include('_footer') %>
+    {% include '_footer.html' %}
 </body>
 </html>

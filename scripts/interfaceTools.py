@@ -95,3 +95,4 @@ def get_bluetooth_devices():
     except Exception as e:
         print(f"Error discovering Bluetooth devices: {e}")
         return []
+    

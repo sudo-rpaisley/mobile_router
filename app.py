@@ -27,7 +27,7 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     # interfaces, network_technologies = get_adapters()
-    return render_template('index.html', title='Home') #, interfaces=interfaces, network_technologies=network_technologies, technology_map=technology_map)
+    return render_template('index.html', title='Home') #, interfaces=interfaces, network_technologies=network_technologies, technology_map=technology_map
 
 @app.route('/about')
 def about():
@@ -38,14 +38,15 @@ def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico')
 
 
+
 @app.route('/red-team')
 def red_team():
-    # interfaces, _ = get_adapters()
-    return render_template('red-team.html', title='Red Team') #, interfaces=interfaces)
+    return render_template('red-team.html', title='Red Team') 
+
+
 
 @app.route('/<interface_type>/<interface_name>')
 def interface_detail(interface_type, interface_name):
-    # Convert interface_type to lowercase to ensure case-insensitive matching
     interface_type = interface_type.lower()
     interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
@@ -53,29 +54,15 @@ def interface_detail(interface_type, interface_name):
     else:
         return "Interface not found", 404
 
-# @app.route('/<network_technology>')
-# def technology(network_technology):
-#     interfaces, _ = get_adapters()
-#     technology_key = next((key for key, value in technology_map.items() if value == network_technology), None)
-#     if not technology_key:
-#         return render_template('404-Error.html', title='404: Technology not found', interfaces=interfaces, message=f'Technology ({network_technology}) not found')
+@app.route('/<interface_type>')
+def interfaces_by_type(interface_type):
+    interface_type = interface_type.lower()
+    filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type]
+    if filtered_interfaces:
+        return render_template('interfaces_by_type.html', title=f'{interface_type.capitalize()} Interfaces', interfaces=filtered_interfaces)
+    else:
+        return "No interfaces found for this type", 404
 
-#     specific_interfaces = [intf for intf in interfaces if intf['networkTechnology'] == technology_key]
-#     if specific_interfaces:
-#         return render_template('technology.html', title=network_technology, filtered_interfaces=specific_interfaces, technology=technology_key)
-#     else:
-#         return render_template('404-Error.html', title='404: Technology not found', interfaces=interfaces, message=f'Technology ({network_technology}) not found')
-
-# @app.route('/<network_technology>/<name>')
-# def interface(network_technology, name):
-#     interfaces, _ = get_adapters()
-#     technology_key = next((key for key, value in technology_map.items() if value == network_technology), None)
-#     specific_interface = next((intf for intf in interfaces if intf['ifname'] == name and intf['networkTechnology'] == technology_key), None)
-
-#     if specific_interface:
-#         return render_template('interface.html', title=specific_interface['ifname'], interface=specific_interface)
-#     else:
-#         return render_template('404-Error.html', title='404: Interface not found', interfaces=interfaces, message=f'Interface {name} not found')
 
 # @app.route('/syn-flood', methods=['POST'])
 # def syn_flood():
@@ -132,6 +119,6 @@ if __name__ == '__main__':
     port=8080
     
     network_interfaces = get_network_interfaces()
-    app.run(host=host, port=port)
+    app.run(host=host, port=port, debug=True)
 
 
