@@ -2,7 +2,7 @@
 <select class="form-select" id="interface-select-{{ selectId }}">
   <option selected>Select Interface</option>
   {% for interface in interfaces %}
-    {% if interface.networkTechnology != "Loopback" and interface.networkTechnology != "Bluetooth" %}
+    {% if interface.interface_type != "Loopback" and interface.interface_type != "Bluetooth" %}
       <option value="{{ interface.name }}">{{ interface.name }}</option>
     {% endif %}
   {% endfor %}

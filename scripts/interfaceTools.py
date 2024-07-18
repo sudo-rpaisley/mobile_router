@@ -1,11 +1,16 @@
 import psutil
 import bluetooth
+import threading
+import time
 
 class NetworkInterface:
     def __init__(self, name, interface_type):
         self.name = name
         self.interface_type = interface_type
+        self.state = self.get_state()  # Initialize the state when the object is created
         self.addresses = []
+        self.update_thread = threading.Thread(target=self.update_state_periodically, daemon=True)
+        self.update_thread.start()
 
     def add_address(self, family, address, netmask, broadcast, ptp):
         self.addresses.append({
@@ -31,6 +36,46 @@ class NetworkInterface:
         }
         return family_names.get(family, f'Unknown ({family})')
 
+    def get_mac_address(self):
+        for addr in self.addresses:
+            if addr['family'] == 'AF_PACKET (MAC)':
+                return addr['address']
+        return None
+
+    def get_ipv4(self):
+        for addr in self.addresses:
+            if addr['family'] == 'AF_INET (IPv4)':
+                return addr['address']
+        return None
+
+    def get_ipv6(self):
+        for addr in self.addresses:
+            if addr['family'] == 'AF_INET6 (IPv6)':
+                return addr['address']
+        return None
+
+    def get_state(self):
+        """Get the state of the interface using psutil."""
+        net_if_stats = psutil.net_if_stats()
+        if self.name in net_if_stats:
+            stats = net_if_stats[self.name]
+            if stats.isup:
+                return 'UP'
+            else:
+                return 'DOWN'
+        return 'UNKNOWN'
+
+    def update_state(self):
+        """Update the state of the interface."""
+        self.state = self.get_state()
+
+    def update_state_periodically(self, interval=5):
+        """Periodically update the state of the interface."""
+        while True:
+            self.update_state()
+            print("Update")
+            time.sleep(interval)
+
     def __str__(self):
         addresses_str = "\n".join(
             [f"  Family: {addr['family']}\n"
@@ -42,6 +87,7 @@ class NetworkInterface:
         )
         return (f"Interface: {self.name}\n"
                 f"  Type: {self.interface_type}\n"
+                f"  State: {self.state}\n"
                 f"{addresses_str}\n")
 
 

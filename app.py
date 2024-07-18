@@ -1,14 +1,28 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
 import os
 import json
 
 from scripts.interfaceTools import *
 
 app = Flask(__name__)
-
+socketio = SocketIO(app)
 # Fetch network interfaces at the start
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
+
+
+
+
+def poll_interfaces():
+    global network_interfaces, networkTechnologies
+    while True:
+        updated_interfaces = get_network_interfaces()
+        if updated_interfaces != network_interfaces:
+            network_interfaces = updated_interfaces
+            networkTechnologies = {iface.interface_type for iface in network_interfaces}
+            socketio.emit('update_interfaces', {'interfaces': [iface.__dict__ for iface in network_interfaces]})
+        time.sleep(5)  # Poll every 5 seconds
 
 @app.route('/')
 def index():
@@ -31,7 +45,7 @@ def interfaces_by_type(interface_type):
     interface_type = interface_type.capitalize()
     filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
     if filtered_interfaces:
-        return render_template('interfaces_by_type.html', title=f'{interface_type} Interfaces', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies)
+        return render_template('interface_type.html', title=f'{interface_type}', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies, technology=interface_type)
     else:
         return "No interfaces found for this type", 404
 

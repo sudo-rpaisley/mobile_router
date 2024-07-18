@@ -1,0 +1,30 @@
+<div class="card m-1 d-flex align-items-center" style="width: 250px;">
+  <a href="/{{ interface.interface_type | replace('Wi-Fi', 'Wireless') | replace('Ethernet', 'Wired') }}/{{ interface.name }}" style="text-decoration: none !important; color: inherit !important;">
+    <div class="row no-gutters align-items-center">
+      <!-- ------------------------ image ---------------------- -->
+      {% include '_interfaceImage.html' %}
+      <!-- ---------------- text ---------------- -->
+      <div class="col-md-9">
+        <div class="card-body">
+          <h4 class="card-title mb-0"><b>{{ interface.name }}</b></h4>
+          <br>
+          {% if interface.interface_type == 'Bluetooth' %}
+            <h6>BD address</h6>
+            <p class="card-text small">{{ interface.get_mac_address() }}</p>
+          {% elif interface.interface_type == 'Loopback' %}
+            <h6>IP Address</h6>
+            <p class="card-text small">127.0.0.1</p>
+          {% else %}
+            <h6>MAC address</h6>
+            <p class="card-text small">{{ interface.get_mac_address() }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </a>
+  {% if interface.interface_type == 'Wireless' %}
+    <button id="wlan-scan" class="btn btn-primary mb-2" style="width: 80%; display: block; margin: 0 auto;" value="{{ interface.name }}">Scan for Networks</button>
+    <div id="wlans"></div>
+    <script src="/static/js/wireless-adapters.js"></script>
+  {% endif %}
+</div>
