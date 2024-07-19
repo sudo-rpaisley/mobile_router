@@ -67,13 +67,15 @@ class NetworkInterface:
 
     def update_state(self):
         """Update the state of the interface."""
-        self.state = self.get_state()
+        new_state = self.get_state()
+        if new_state != self.state:
+            self.state = new_state
+            print(f"{self.name} Different State Yo!")
 
     def update_state_periodically(self, interval=5):
         """Periodically update the state of the interface."""
         while True:
             self.update_state()
-            print("Update")
             time.sleep(interval)
 
     def __str__(self):
