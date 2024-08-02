@@ -1,15 +1,25 @@
-
-<!-- /root/flaskapp/templates/_adapters-card.html -->
-<div class="card">
+<div class="card no-link-design" onclick="redirectToDetailPage('{{ interface.interface_type | lower }}', '{{ interface.name }}');" style="cursor: pointer;">
   <div class="row no-gutters align-items-center">
     <!-- ------------------------ image ---------------------- -->
     {% include '_interfaceImage.html' %}
     <!-- ---------------- text ---------------- -->
     <div class="card-body">
         <h5 class="card-title">{{ interface.name }}</h5>
-        <p class="card-text">Type: {{ interface.interface_type }}</p>
-        <p class="card-text">Address: {{ interface.addresses[0].address }}</p>
-        <a class="no-link-design" href="/{{ interface.interface_type | lower }}/{{ interface.name }}"> View Details </a>
+        <p class="card-text">
+          Type: <a href="/{{ interface.interface_type | lower }}" class="no-link-design" onclick="event.stopPropagation();">{{ interface.interface_type }}</a>
+        </p>
+        {% if interface.addresses and interface.addresses|length > 0 %}
+          <p class="card-text">Address: {{ interface.addresses[0]['address'] }}</p>
+        {% else %}
+          <p class="card-text">Address: Not available</p>
+        {% endif %}
     </div>
   </div>
 </div>
+
+<script>
+  function redirectToDetailPage(interfaceType, interfaceName) {
+    window.location.href = '/' + interfaceType + '/' + interfaceName;
+  }
+</script>
+

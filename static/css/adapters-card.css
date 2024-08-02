@@ -53,3 +53,8 @@
   margin: 0;
   font-size: 14px;
 }
+
+.no-link-design {
+  text-decoration: none;
+  color: inherit;
+}

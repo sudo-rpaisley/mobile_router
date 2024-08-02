@@ -1,79 +1,64 @@
-import psutil
-import bluetooth
+import os
+import re
 import threading
 import time
+import asyncio
+from bleak import BleakScanner
 
 class NetworkInterface:
     def __init__(self, name, interface_type):
         self.name = name
         self.interface_type = interface_type
-        self.state = self.get_state()  # Initialize the state when the object is created
-        self.addresses = []
+        self.state = self.get_state()
+        self.addresses = self.get_addresses()
         self.update_thread = threading.Thread(target=self.update_state_periodically, daemon=True)
         self.update_thread.start()
 
-    def add_address(self, family, address, netmask, broadcast, ptp):
-        self.addresses.append({
-            'family': self.family_name(family),
-            'address': address,
-            'netmask': netmask,
-            'broadcast': broadcast,
-            'ptp': ptp
-        })
+    def get_state(self):
+        """Get the state of the interface using system commands."""
+        try:
+            with open(f'/sys/class/net/{self.name}/operstate') as f:
+                state = f.read().strip()
+                return 'UP' if state == 'up' else 'DOWN'
+        except FileNotFoundError:
+            return 'UNKNOWN'
+        except NotADirectoryError:
+            return 'UNKNOWN'
 
-    def family_name(self, family):
-        family_names = {
-            1: 'AF_UNIX (Unix domain sockets)',
-            2: 'AF_INET (IPv4)',
-            10: 'AF_INET6 (IPv6)',
-            16: 'AF_APPLETALK (AppleTalk)',
-            17: 'AF_PACKET (MAC)',
-            24: 'AF_PPPOX (PPPoX)',
-            29: 'AF_CAN (Controller Area Network)',
-            31: 'AF_BLUETOOTH (Bluetooth)',
-            36: 'AF_IEEE802154 (IEEE 802.15.4)',
-            38: 'AF_ALG (Linux crypto API)'
-        }
-        return family_names.get(family, f'Unknown ({family})')
+    def get_addresses(self):
+        """Get the IP addresses of the interface using system commands."""
+        addresses = []
+        try:
+            result = os.popen(f'ip addr show {self.name}').read()
+            inet_lines = re.findall(r'inet [^\s]+', result)
+            inet6_lines = re.findall(r'inet6 [^\s]+', result)
+
+            for line in inet_lines:
+                address = line.split()[1]
+                addresses.append({'family': 'AF_INET (IPv4)', 'address': address})
+            
+            for line in inet6_lines:
+                address = line.split()[1]
+                addresses.append({'family': 'AF_INET6 (IPv6)', 'address': address})
+        except Exception as e:
+            print(f"Error getting addresses for {self.name}: {e}")
+
+        return addresses
 
     def get_mac_address(self):
+        """Get the MAC address of the interface."""
         for addr in self.addresses:
             if addr['family'] == 'AF_PACKET (MAC)':
                 return addr['address']
         return None
 
-    def get_ipv4(self):
-        for addr in self.addresses:
-            if addr['family'] == 'AF_INET (IPv4)':
-                return addr['address']
-        return None
-
-    def get_ipv6(self):
-        for addr in self.addresses:
-            if addr['family'] == 'AF_INET6 (IPv6)':
-                return addr['address']
-        return None
-
-    def get_state(self):
-        """Get the state of the interface using psutil."""
-        net_if_stats = psutil.net_if_stats()
-        if self.name in net_if_stats:
-            stats = net_if_stats[self.name]
-            if stats.isup:
-                return 'UP'
-            else:
-                return 'DOWN'
-        return 'UNKNOWN'
-
     def update_state(self):
-        """Update the state of the interface."""
         new_state = self.get_state()
         if new_state != self.state:
             self.state = new_state
-            print(f"{self.name} Different State Yo!")
+            print(f"{self.name} state changed to {self.state}")
 
     def update_state_periodically(self, interval=5):
-        """Periodically update the state of the interface."""
         while True:
             self.update_state()
             time.sleep(interval)
@@ -82,9 +67,6 @@ class NetworkInterface:
         addresses_str = "\n".join(
             [f"  Family: {addr['family']}\n"
              f"  Address: {addr['address']}\n"
-             f"  Netmask: {addr['netmask']}\n"
-             f"  Broadcast: {addr['broadcast']}\n"
-             f"  PTP: {addr['ptp']}\n"
              for addr in self.addresses]
         )
         return (f"Interface: {self.name}\n"
@@ -102,6 +84,7 @@ class BluetoothDevice:
         return (f"Bluetooth Device: {self.name}\n"
                 f"  Address: {self.address}\n")
 
+
 def get_interface_type(name):
     if name.startswith('wlan') or name.startswith('wifi') or name.startswith('wlo'):
         return 'Wireless'
@@ -109,38 +92,54 @@ def get_interface_type(name):
         return 'Wired'
     elif name.startswith('lo'):
         return 'Loopback'
+    elif name.startswith('br'):
+        return 'Bridge'
+    elif name.startswith('bond'):
+        return 'Bond'
+    elif name.startswith('sta'):
+        return 'Station'
     else:
         return 'Unknown'
 
+
+
 def get_network_interfaces():
-    interfaces = psutil.net_if_addrs()
+    interfaces = os.listdir('/sys/class/net/')
     network_objects = []
 
-    for name, addresses in interfaces.items():
-        interface_type = get_interface_type(name)
-        network_interface = NetworkInterface(name, interface_type)
-        for address in addresses:
-            network_interface.add_address(
-                family=address.family,
-                address=address.address,
-                netmask=address.netmask,
-                broadcast=address.broadcast,
-                ptp=address.ptp
-            )
-        network_objects.append(network_interface)
+    for name in interfaces:
+        if os.path.isdir(f'/sys/class/net/{name}'):
+            interface_type = get_interface_type(name)
+            network_interface = NetworkInterface(name, interface_type)
+            network_objects.append(network_interface)
     
-    # Print the __str__ representation of each NetworkInterface object
     for network_object in network_objects:
         print(network_object)
     
     return network_objects
 
-def get_bluetooth_devices():
+
+async def get_bluetooth_devices():
     try:
-        bluetooth_devices = bluetooth.discover_devices(duration=8, lookup_names=True, flush_cache=True, lookup_class=False)
-        bluetooth_objects = [BluetoothDevice(address=addr, name=name) for addr, name in bluetooth_devices]
+        devices = await BleakScanner.discover()
+        bluetooth_objects = [BluetoothDevice(address=device.address, name=device.name) for device in devices]
         return bluetooth_objects
     except Exception as e:
         print(f"Error discovering Bluetooth devices: {e}")
         return []
-    
+
+
+def main():
+    # Get and print network interfaces
+    network_interfaces = get_network_interfaces()
+
+    # Discover and print Bluetooth devices
+    loop = asyncio.get_event_loop()
+    bluetooth_devices = loop.run_until_complete(get_bluetooth_devices())
+    for device in bluetooth_devices:
+        print(device)
+
+
+if __name__ == "__main__":
+    main()
+
