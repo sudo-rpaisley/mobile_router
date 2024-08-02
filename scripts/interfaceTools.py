@@ -40,6 +40,11 @@ class NetworkInterface:
             for line in inet6_lines:
                 address = line.split()[1]
                 addresses.append({'family': 'AF_INET6 (IPv6)', 'address': address})
+            
+            # Get MAC address
+            mac_address = re.search(r'link/ether ([^\s]+)', result)
+            if mac_address:
+                addresses.append({'family': 'AF_PACKET (MAC)', 'address': mac_address.group(1)})
         except Exception as e:
             print(f"Error getting addresses for {self.name}: {e}")
 
@@ -63,6 +68,19 @@ class NetworkInterface:
             self.update_state()
             time.sleep(interval)
 
+    def get_interface_mode(self):
+        output = os.popen(f'iw dev {self.name} info').read()
+        if "type" in output:
+            mode = output.split("type")[1].strip().split()[0]
+            return mode
+        return "Unknown"
+
+    def set_interface_mode(self, mode):
+        os.system(f'ip link set {self.name} down')
+        os.system(f'iw dev {self.name} set type {mode}')
+        os.system(f'ip link set {self.name} up')
+        return f"{self.name} set to {mode} mode"
+
     def __str__(self):
         addresses_str = "\n".join(
             [f"  Family: {addr['family']}\n"
@@ -73,7 +91,6 @@ class NetworkInterface:
                 f"  Type: {self.interface_type}\n"
                 f"  State: {self.state}\n"
                 f"{addresses_str}\n")
-
 
 class BluetoothDevice:
     def __init__(self, address, name):

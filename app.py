@@ -64,7 +64,22 @@ def interface_detail(interface_type, interface_name):
         return render_template('interface_detail.html', title=interface.name, interface=interface, networkTechnologies=networkTechnologies, interfaces=network_interfaces)
     else:
         print(f"Interface not found: {interface_type}/{interface_name}")
-        return "Interface not found", 404
+        return render_template('error.html', error_code=404, error_name="Interface Not Found", error_description=f"The interface '{interface_name}' of type '{interface_type}' was not found."), 404
+
+# Custom error handler for 404
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('error.html', error_code=404, error_name="Page Not Found", error_description="Sorry, but the page you were trying to view does not exist."), 404
+
+# Custom error handler for 500
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('error.html', error_code=500, error_name="Internal Server Error", error_description="Sorry, but something went wrong on our end. Please try again later."), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Generic error handler for all other exceptions
+    return render_template('error.html', error_code=500, error_name="Internal Server Error", error_description=str(e)), 500
 
 if __name__ == '__main__':
     host='0.0.0.0'
