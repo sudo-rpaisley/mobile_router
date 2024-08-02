@@ -1,5 +1,5 @@
 import psutil
-import bluetooth
+from bleak import BleakScanner
 import threading
 import time
 
@@ -109,8 +109,15 @@ def get_interface_type(name):
         return 'Wired'
     elif name.startswith('lo'):
         return 'Loopback'
+    elif name.startswith('br'):
+        return 'Bridge'
+    elif name.startswith('bond'):
+        return 'Bond'
+    elif name.startswith('sta'):
+        return 'Station'
     else:
         return 'Unknown'
+
 
 def get_network_interfaces():
     interfaces = psutil.net_if_addrs()
@@ -135,12 +142,12 @@ def get_network_interfaces():
     
     return network_objects
 
-def get_bluetooth_devices():
+
+async def get_bluetooth_devices():
     try:
-        bluetooth_devices = bluetooth.discover_devices(duration=8, lookup_names=True, flush_cache=True, lookup_class=False)
-        bluetooth_objects = [BluetoothDevice(address=addr, name=name) for addr, name in bluetooth_devices]
+        devices = await BleakScanner.discover()
+        bluetooth_objects = [BluetoothDevice(address=device.address, name=device.name) for device in devices]
         return bluetooth_objects
     except Exception as e:
         print(f"Error discovering Bluetooth devices: {e}")
         return []
-    
