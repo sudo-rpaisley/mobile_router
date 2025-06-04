@@ -4,6 +4,8 @@ import os
 import json
 import time
 import threading
+import requests
+from requests.auth import HTTPBasicAuth
 
 from scripts.interfaceTools import *
 
@@ -13,6 +15,26 @@ socketio = SocketIO(app)
 # Fetch network interfaces at the start
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
+
+
+def wigle_lookup(bssid):
+    """Lookup BSSID location using the WiGLE API."""
+    api_name = os.environ.get("WIGLE_API_NAME")
+    api_token = os.environ.get("WIGLE_API_TOKEN")
+    if not api_name or not api_token:
+        raise RuntimeError("WiGLE API credentials not configured")
+
+    auth = HTTPBasicAuth(api_name, api_token)
+    params = {"netid": bssid}
+    resp = requests.get(
+        "https://api.wigle.net/api/v2/network/search", params=params, auth=auth
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("success") and data.get("results"):
+        result = data["results"][0]
+        return result.get("trilat"), result.get("trilong")
+    return None, None
 
 def poll_interfaces():
     global network_interfaces, networkTechnologies
@@ -43,6 +65,27 @@ def favicon():
 @app.route('/red-team')
 def red_team():
     return render_template('red-team.html', title='Red Team', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
+
+
+@app.route('/wigle-map')
+def wigle_map():
+    """Show WiGLE map for a given BSSID."""
+    bssid = request.args.get('bssid')
+    lat = lon = None
+    if bssid:
+        try:
+            lat, lon = wigle_lookup(bssid)
+        except Exception as e:
+            return str(e), 500
+    return render_template(
+        'wigle_map.html',
+        title='WiGLE Map',
+        bssid=bssid,
+        lat=lat,
+        lon=lon,
+        networkTechnologies=networkTechnologies,
+        interfaces=network_interfaces,
+    )
 
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
