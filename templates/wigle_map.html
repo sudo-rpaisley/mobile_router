@@ -1,0 +1,24 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2LZ3ccN4oyQ0PFwZ5q96ncG20EhnEih0qKxs20Y=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o7ptIptjaH/9woDgCuGZO4i0CXQ+SP2B9ZF6NUI20jk=" crossorigin=""></script>
+<body class="d-flex flex-column min-vh-100">
+  <div class="container">
+    <h1>WiGLE Map Lookup</h1>
+    <form method="get" action="/wigle-map" class="form-inline mb-3">
+      <input type="text" class="form-control mr-2" name="bssid" placeholder="BSSID" value="{{ bssid or '' }}" required>
+      <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+    {% if lat and lon %}
+    <div id="map" style="height: 500px;"></div>
+    <script>
+      var map = L.map('map').setView([{{ lat }}, {{ lon }}], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      L.marker([{{ lat }}, {{ lon }}]).addTo(map).bindPopup('{{ bssid }}').openPopup();
+    </script>
+    {% elif bssid %}
+    <p>No location found for {{ bssid }}.</p>
+    {% endif %}
+  </div>
+  {% include '_footer.html' %}
+</body>
+</html>

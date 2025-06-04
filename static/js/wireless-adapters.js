@@ -56,6 +56,7 @@ $(document).ready(function () {
                       <p>Frequency - ${network.freq}</p>
                       <p>Signal - ${network.signal}</p>
                       <p>Security - ${akmMap[network.akm]}</p>
+                      <button type="button" class="map-button btn btn-secondary" data-bssid="${network.bssid}">Map</button>
                     </div>
                   </div>
                 </div>
@@ -86,6 +87,10 @@ $(document).ready(function () {
         });
         
         $("#wlans").html(wlanDiv);
+        $("#wlans").on("click", ".map-button", function () {
+          const bssid = $(this).data("bssid");
+          window.open(`/wigle-map?bssid=${bssid}`, "_blank");
+        });
       },
       error: function (error) {
         console.log("Error occurred during network scan");
