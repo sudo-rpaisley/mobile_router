@@ -1,8 +1,10 @@
-import psutil
+import subprocess
+import socket
 from bleak import BleakScanner
 import threading
 import time
 import os
+import ipaddress
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 OUI_DB_PATH = os.path.join(os.path.dirname(__file__), 'oui_db.csv')
@@ -80,15 +82,14 @@ class NetworkInterface:
         return None
 
     def get_state(self):
-        """Get the state of the interface using psutil."""
-        net_if_stats = psutil.net_if_stats()
-        if self.name in net_if_stats:
-            stats = net_if_stats[self.name]
-            if stats.isup:
-                return 'UP'
-            else:
-                return 'DOWN'
-        return 'UNKNOWN'
+        """Get the operational state of the interface."""
+        state_file = f"/sys/class/net/{self.name}/operstate"
+        try:
+            with open(state_file) as f:
+                state = f.read().strip()
+            return 'UP' if state == 'up' else 'DOWN'
+        except FileNotFoundError:
+            return 'UNKNOWN'
 
     def update_state(self):
         """Update the state of the interface."""
@@ -145,21 +146,84 @@ def get_interface_type(name):
         return 'Unknown'
 
 
+def _parse_ip_addrs(name, family):
+    """Return a list of address dictionaries for the given interface."""
+    try:
+        output = subprocess.check_output([
+            "ip", "-o", "-f", family, "addr", "show", name
+        ], encoding="utf-8")
+    except Exception:
+        return []
+
+    results = []
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        addr = parts[3]
+        broadcast = None
+        if "brd" in parts:
+            idx = parts.index("brd")
+            if idx + 1 < len(parts):
+                broadcast = parts[idx + 1]
+
+        if "/" in addr:
+            ip, prefix = addr.split("/", 1)
+            try:
+                if family == "inet":
+                    netmask = str(ipaddress.IPv4Network("0.0.0.0/" + prefix).netmask)
+                else:
+                    netmask = str(ipaddress.IPv6Network("::/" + prefix).netmask)
+            except Exception:
+                netmask = None
+        else:
+            ip = addr
+            netmask = None
+
+        results.append({
+            "address": ip,
+            "netmask": netmask,
+            "broadcast": broadcast,
+        })
+    return results
+
+
 def get_network_interfaces():
-    interfaces = psutil.net_if_addrs()
+    interface_names = os.listdir("/sys/class/net")
     network_objects = []
 
-    for name, addresses in interfaces.items():
+    for name in interface_names:
         interface_type = get_interface_type(name)
         network_interface = NetworkInterface(name, interface_type)
-        for address in addresses:
+
+        # MAC address
+        try:
+            with open(f"/sys/class/net/{name}/address") as f:
+                mac = f.read().strip()
+            network_interface.add_address(socket.AF_PACKET, mac, None, None, None)
+        except FileNotFoundError:
+            pass
+
+        # IPv4 addresses
+        for info in _parse_ip_addrs(name, "inet"):
             network_interface.add_address(
-                family=address.family,
-                address=address.address,
-                netmask=address.netmask,
-                broadcast=address.broadcast,
-                ptp=address.ptp
+                socket.AF_INET,
+                info["address"],
+                info["netmask"],
+                info["broadcast"],
+                None,
             )
+
+        # IPv6 addresses
+        for info in _parse_ip_addrs(name, "inet6"):
+            network_interface.add_address(
+                socket.AF_INET6,
+                info["address"],
+                info["netmask"],
+                info["broadcast"],
+                None,
+            )
+
         # Determine manufacturer based on MAC address
         network_interface.manufacturer = lookup_manufacturer(network_interface.get_mac_address())
         network_objects.append(network_interface)

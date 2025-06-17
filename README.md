@@ -20,14 +20,21 @@ wireless and wired adapters.
 
 ## Setup
 
-Running the following script will ensure Python is available, create a
-virtual environment and install any required packages. If everything is
-already installed these steps will be skipped and the server will start
-immediately.
+Running the following script will ensure Python 3 is available, install any
+required packages to a local `pylibs` directory and then start the server.
+If `requirements.txt` is missing the dependency step will be skipped.
 
 ```bash
 ./setup.sh
 ```
+
+On OpenWRT the default firmware does not include build tools such as `gcc` or
+header files. If `pip` fails with compilation errors, build the `pylibs`
+directory on another machine and copy it to the router.
+
+This project avoids packages that require native extensions. The network
+interface code now uses built-in utilities instead of `psutil` so the
+application can run on systems without a compiler.
 
 ## Usage
 
