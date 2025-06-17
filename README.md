@@ -17,18 +17,14 @@ wireless and wired adapters.
 
 ## Setup
 
-1. Install Python 3.10 or newer.
-2. Create a virtual environment and activate it:
+Running the following script will ensure Python is available, create a
+virtual environment and install any required packages. If everything is
+already installed these steps will be skipped and the server will start
+immediately.
 
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. Install the required dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+./setup.sh
+```
 
 ## Usage
 
