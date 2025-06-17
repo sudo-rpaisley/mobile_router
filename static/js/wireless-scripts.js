@@ -7,6 +7,8 @@ $(document).ready(function () {
       },
       success: function (response) {
         console.log(response);
+        // Refresh the page to show updated interface information
+        location.reload();
       },
       error: function (error) {
         console.log(error);
@@ -25,6 +27,8 @@ $(document).ready(function () {
       success: function (response) {
         console.log("list adpters Was Successfull. YAY!!!");
         console.log(response);
+        // Refresh the page so the navbar shows the latest adapters
+        location.reload();
       },
       error: function (error) {
         console.log(error);
