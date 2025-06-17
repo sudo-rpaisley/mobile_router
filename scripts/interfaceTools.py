@@ -96,7 +96,6 @@ class NetworkInterface:
         new_state = self.get_state()
         if new_state != self.state:
             self.state = new_state
-            print(f"{self.name} Different State Yo!")
 
     def update_state_periodically(self, interval=5):
         """Periodically update the state of the interface."""
@@ -189,7 +188,12 @@ def _parse_ip_addrs(name, family):
 
 
 def get_network_interfaces():
-    interface_names = os.listdir("/sys/class/net")
+    base_path = "/sys/class/net"
+    interface_names = [
+        name
+        for name in os.listdir(base_path)
+        if os.path.isdir(os.path.join(base_path, name))
+    ]
     network_objects = []
 
     for name in interface_names:
@@ -227,10 +231,6 @@ def get_network_interfaces():
         # Determine manufacturer based on MAC address
         network_interface.manufacturer = lookup_manufacturer(network_interface.get_mac_address())
         network_objects.append(network_interface)
-    
-    # Print the __str__ representation of each NetworkInterface object
-    for network_object in network_objects:
-        print(network_object)
     
     return network_objects
 
