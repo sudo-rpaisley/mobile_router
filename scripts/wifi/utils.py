@@ -124,3 +124,62 @@ def get_frequent_clients(threshold=3600):
     for network in networks.values():
         frequent_clients.update(network.frequent_clients(threshold))
     return frequent_clients
+def get_networks_summary():
+    """Return a list summary of scanned networks."""
+    results = []
+    for network in networks.values():
+        for ap in network.access_points:
+            results.append({
+                'ssid': network.ssid,
+                'bssid': ap.bssid,
+                'freq': ap.channel,
+                'signal': ap.signal
+            })
+    return results
+
+
+def connect_to_network(ssid, password=None, interface_name=None):
+    """Attempt to connect to a wireless network using pywifi."""
+    import pywifi
+    from pywifi import const
+
+    wifi = pywifi.PyWiFi()
+    ifaces = wifi.interfaces()
+    if not ifaces:
+        raise RuntimeError("No wireless interfaces found")
+
+    iface = None
+    if interface_name:
+        for i in ifaces:
+            try:
+                if i.name() == interface_name:
+                    iface = i
+                    break
+            except Exception:
+                continue
+    if iface is None:
+        iface = ifaces[0]
+
+    iface.disconnect()
+    time.sleep(1)
+
+    profile = pywifi.Profile()
+    profile.ssid = ssid
+    profile.auth = const.AUTH_ALG_OPEN
+    if password:
+        profile.akm.append(const.AKM_TYPE_WPA2PSK)
+        profile.cipher = const.CIPHER_TYPE_CCMP
+        profile.key = password
+    else:
+        profile.akm.append(const.AKM_TYPE_NONE)
+        profile.cipher = const.CIPHER_TYPE_NONE
+
+    iface.remove_all_network_profiles()
+    tmp_profile = iface.add_network_profile(profile)
+    iface.connect(tmp_profile)
+    time.sleep(5)
+    if iface.status() == const.IFACE_CONNECTED:
+        return True
+    iface.disconnect()
+    return False
+
