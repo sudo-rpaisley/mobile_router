@@ -8,3 +8,5 @@ psutil==6.0.0
 pywifi==1.1.12
 scapy==2.5.0
 Werkzeug==3.0.3
+Flask-SocketIO==5.3.6
+bleak==0.22.2
