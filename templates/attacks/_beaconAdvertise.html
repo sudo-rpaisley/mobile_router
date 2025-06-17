@@ -1,0 +1,14 @@
+<!-- Beacon Advertiser -->
+<div class="card m-3" style="width: 18rem;">
+  <h5 class="card-title">Beacon Advertiser</h5>
+  <p class="card-text">Broadcast spoofed 802.11 beacons advertising a custom SSID and MAC addresses.</p>
+  <form class="form-inline" method="post" action="/beacon-advertise">
+      <input type="text" class="form-control mb-2" id="Beacon-SSID" placeholder="SSID" name="ssid">
+      <input type="text" class="form-control mb-2" id="Beacon-Frames" placeholder="10" name="frames">
+      <input type="text" class="form-control mb-2" id="Beacon-Src-Mac" placeholder="Source MAC" name="srcMac">
+      <input type="text" class="form-control mb-2" id="Beacon-BSSID" placeholder="BSSID" name="bssid">
+      {% set selectId = 'BeaconAdvertise' %}
+      {% include '_adapters-list.html' %}
+      <button id="Beacon-Advertise-Submit" class="btn btn-primary mb-2">Submit</button>
+  </form>
+</div>

@@ -11,7 +11,10 @@ wireless and wired adapters.
 - **Dynamic updates** – interface information is polled in the background and the
   page automatically refreshes via WebSockets.
 - **Per‑technology pages** – view adapters by type and inspect each interface in
-  detail. Wireless interfaces can scan for nearby networks.
+  detail. Wireless interfaces can scan for nearby networks and Bluetooth
+  adapters can discover nearby devices.
+- **Beacon advertiser** – send spoofed 802.11 beacon frames with configurable
+  MAC addresses and SSID to mimic other devices.
 - **Red‑Team section** – a set of experimental tools including DoS and broadcast
   flood examples that operate on a selected interface.
 

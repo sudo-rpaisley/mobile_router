@@ -18,8 +18,8 @@
             {% if interface.interface_type == 'Wireless' %}
               <div class="col-md-8 flex-grow-1">
                 <button id="wlan-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Networks</button>
-              </div> 
-              <script src="/static/js/wireless-adapters.js"></script>     
+              </div>
+              <script src="/static/js/wireless-adapters.js"></script>
             {% endif %}
         {% elif interface.interface_type == 'Loopback' %}
             <li>Interface Name: {{ interface.name }}</li>
@@ -39,10 +39,15 @@
               <li>Broadcast: {{ addr.broadcast }}</li>
               <li>PTP: {{ addr.ptp }}</li>
             {% endfor %}
+            <div class="col-md-8 flex-grow-1">
+              <button id="bluetooth-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Devices</button>
+            </div>
+            <script src="/static/js/bluetooth-scan.js"></script>
         {% endif %}
         </ul>
       </div>
       <div id="wlans"></div>
+      <div id="bluetooth-devices"></div>
     </div>
     {% include '_footer.html' %}
 </body>
