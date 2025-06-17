@@ -44,6 +44,12 @@ def favicon():
 def red_team():
     return render_template('red-team.html', title='Red Team', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
 
+# Endpoint to fetch the current list of network adapters
+@app.route('/adapters', methods=['POST'])
+def adapters():
+    """Return the available network interfaces as JSON."""
+    return jsonify({'interfaces': [iface.__dict__ for iface in network_interfaces]})
+
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
     interface_type = interface_type.capitalize()
