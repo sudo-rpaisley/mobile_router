@@ -4,6 +4,7 @@ import os
 import json
 import time
 import threading
+import asyncio
 
 from scripts.interfaceTools import *
 
@@ -144,6 +145,47 @@ def wlan_connect():
             return jsonify({'status': 'error', 'message': 'Failed to connect'}), 500
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'WLAN connect error: {str(e)}'}), 500
+
+
+@app.route('/bluetooth-scan', methods=['POST'])
+def bluetooth_scan():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+
+    if not selected_interface:
+        return jsonify({'status': 'error', 'message': 'Missing selected interface'}), 400
+
+    try:
+        devices = asyncio.run(get_bluetooth_devices())
+        devices_summary = [{'address': dev.address, 'name': dev.name} for dev in devices]
+        return jsonify({'status': 'success', 'devices': devices_summary})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Bluetooth scan error: {str(e)}'}), 500
+
+
+@app.route('/beacon-advertise', methods=['POST'])
+def beacon_advertise():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    ssid = data.get('ssid')
+    frames = data.get('frames')
+    src_mac = data.get('srcMac') or '22:22:22:22:22:22'
+    bssid = data.get('bssid') or '33:33:33:33:33:33'
+
+    if not selected_interface or not ssid or not frames:
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+
+    try:
+        frames = int(frames)
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Frames must be an integer'}), 400
+
+    try:
+        from scripts.wifi.beaconspoof import beaconSpoof
+        beaconSpoof(ssid, selected_interface, frames, src=src_mac, bssid=bssid)
+        return jsonify({'status': 'success', 'message': f'Advertising {ssid} via {selected_interface}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Beacon advertise error: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

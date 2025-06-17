@@ -126,5 +126,62 @@ $(document).ready(function () {
                 $submitButton.prop("disabled", false);
             }
         });
-    });    
+    });
+
+
+    $("#Beacon-Advertise-Submit").on("click", function(event) {
+        event.preventDefault();
+
+        var $ssidInput = $("#Beacon-SSID");
+        var $framesInput = $("#Beacon-Frames");
+        var $srcInput = $("#Beacon-Src-Mac");
+        var $bssidInput = $("#Beacon-BSSID");
+        var ssid = $ssidInput.val();
+        var frames = $framesInput.val();
+        var srcMac = $srcInput.val();
+        var bssid = $bssidInput.val();
+        var selectedInterface = $("#interface-select-BeaconAdvertise").val();
+
+        if (!ssid || !frames) {
+            if (!ssid) { $ssidInput.addClass("input-error"); }
+            if (!frames) { $framesInput.addClass("input-error"); }
+            return;
+        }
+
+        var $submitButton = $("#Beacon-Advertise-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+
+        $.ajax({
+            url: "/beacon-advertise",
+            type: "POST",
+            data: {
+                ssid: ssid,
+                frames: frames,
+                srcMac: srcMac,
+                bssid: bssid,
+                selectedInterface: selectedInterface
+            },
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                $ssidInput.removeClass("input-error");
+                $framesInput.removeClass("input-error");
+            },
+            success: function(response) {
+                console.log(response);
+            },
+            error: function(error) {
+                console.log(error);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
 });
