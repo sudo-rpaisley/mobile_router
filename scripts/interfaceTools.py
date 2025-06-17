@@ -2,6 +2,30 @@ import psutil
 from bleak import BleakScanner
 import threading
 import time
+import os
+
+# Load a small local OUI database mapping prefixes to manufacturer names
+OUI_DB_PATH = os.path.join(os.path.dirname(__file__), 'oui_db.csv')
+
+def _load_oui_db():
+    db = {}
+    if os.path.exists(OUI_DB_PATH):
+        with open(OUI_DB_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                prefix, name = line.split(',', 1)
+                db[prefix.lower()] = name.strip()
+    return db
+
+OUI_DB = _load_oui_db()
+
+def lookup_manufacturer(mac):
+    if not mac:
+        return 'Unknown'
+    normalized = ':'.join(mac.lower().split(':')[:3])
+    return OUI_DB.get(normalized, 'Unknown')
 
 class NetworkInterface:
     def __init__(self, name, interface_type):
@@ -9,6 +33,7 @@ class NetworkInterface:
         self.interface_type = interface_type
         self.state = self.get_state()  # Initialize the state when the object is created
         self.addresses = []
+        self.manufacturer = 'Unknown'
         self.update_thread = threading.Thread(target=self.update_state_periodically, daemon=True)
         self.update_thread.start()
 
@@ -89,6 +114,7 @@ class NetworkInterface:
         )
         return (f"Interface: {self.name}\n"
                 f"  Type: {self.interface_type}\n"
+                f"  Manufacturer: {self.manufacturer}\n"
                 f"  State: {self.state}\n"
                 f"{addresses_str}\n")
 
@@ -134,6 +160,8 @@ def get_network_interfaces():
                 broadcast=address.broadcast,
                 ptp=address.ptp
             )
+        # Determine manufacturer based on MAC address
+        network_interface.manufacturer = lookup_manufacturer(network_interface.get_mac_address())
         network_objects.append(network_interface)
     
     # Print the __str__ representation of each NetworkInterface object
