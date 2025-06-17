@@ -73,52 +73,77 @@ def interface_detail(interface_type, interface_name):
         return "Interface not found", 404
 
 
-# @app.route('/syn-flood', methods=['POST'])
-# def syn_flood():
-#     data = request.form
-#     destination_address = data.get('destinationAddress')
-#     destination_port = data.get('destinationPort')
-#     frames = data.get('frames')
-#     selected_interface = data.get('selectedInterface')
-#     try:
-#         # Implement your DoS attack logic here
-#         return jsonify({'status': 'success', 'message': f'DoS successfully on {selected_interface}'})
-#     except Exception as e:
-#         return jsonify({'status': 'error', 'message': f'DoS error: {str(e)}'})
+@app.route('/syn-flood', methods=['POST'])
+def syn_flood():
+    data = request.form
+    destination_address = data.get('destinationAddress')
+    destination_port = data.get('destinationPort')
+    frames = data.get('frames')
+    selected_interface = data.get('selectedInterface')
 
-# @app.route('/syn-flood-broadcast', methods=['POST'])
-# def syn_flood_broadcast():
-#     data = request.form
-#     frames = data.get('frames')
-#     selected_interface = data.get('selectedInterface')
-#     try:
-#         # Implement your DoS broadcast logic here
-#         return jsonify({'status': 'success', 'message': f'DoS successfully on {selected_interface}'})
-#     except Exception as e:
-#         return jsonify({'status': 'error', 'message': f'Broadcast DoS error: {str(e)}'})
+    if not all([destination_address, destination_port, frames, selected_interface]):
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
 
-# @app.route('/wlan-scan', methods=['POST'])
-# def wlan_scan():
-#     data = request.form
-#     selected_interface = data.get('selectedInterface')
-#     try:
-#         # Implement your WLAN scan logic here
-#         wlans = [{'ssid': 'example_ssid', 'bssid': '00:1A:2B:3C:4D:5E'}]
-#         return jsonify({'status': 'success', 'message': f'Got wlans for {selected_interface}', 'wlans': wlans})
-#     except Exception as e:
-#         return jsonify({'status': 'error', 'message': f'WLAN scan error: {str(e)}'})
+    try:
+        from scripts.network import networkAttacks
+        networkAttacks.synFlood('0.0.0.0', destination_address,
+                                1234, int(destination_port),
+                                int(frames), selected_interface)
+        return jsonify({'status': 'success', 'message': f'DoS successfully on {selected_interface}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'DoS error: {str(e)}'}), 500
 
-# @app.route('/wlan-connect', methods=['POST'])
-# def wlan_connect():
-#     data = request.form
-#     selected_interface = data.get('selectedInterface')
-#     ssid = data.get('ssid')
-#     password = data.get('password')
-#     try:
-#         # Implement your WLAN connect logic here
-#         return jsonify({'status': 'success', 'message': f'Connected to {ssid} on {selected_interface}'})
-#     except Exception as e:
-#         return jsonify({'status': 'error', 'message': f'WLAN connect error: {str(e)}'})
+@app.route('/syn-flood-broadcast', methods=['POST'])
+def syn_flood_broadcast():
+    data = request.form
+    frames = data.get('frames')
+    selected_interface = data.get('selectedInterface')
+
+    if not frames or not selected_interface:
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+
+    try:
+        from scripts.network import networkAttacks
+        networkAttacks.broadcastFlood(int(frames), selected_interface)
+        return jsonify({'status': 'success', 'message': f'DoS successfully on {selected_interface}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Broadcast DoS error: {str(e)}'}), 500
+
+@app.route('/wlan-scan', methods=['POST'])
+def wlan_scan():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+
+    if not selected_interface:
+        return jsonify({'status': 'error', 'message': 'Missing selected interface'}), 400
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        wifi_utils.scan_networks()
+        wlans = wifi_utils.get_networks_summary()
+        return jsonify({'status': 'success', 'message': f'Got wlans for {selected_interface}', 'wlans': wlans})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'WLAN scan error: {str(e)}'}), 500
+
+@app.route('/wlan-connect', methods=['POST'])
+def wlan_connect():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    ssid = data.get('ssid')
+    password = data.get('password')
+
+    if not selected_interface or not ssid:
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        success = wifi_utils.connect_to_network(ssid, password, selected_interface)
+        if success:
+            return jsonify({'status': 'success', 'message': f'Connected to {ssid} on {selected_interface}'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to connect'}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'WLAN connect error: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
