@@ -6,7 +6,7 @@
       <!-- ---------------- text ---------------- -->
       <div class="col-md-9">
         <div class="card-body">
-          <h4 class="card-title mb-0"><b>{{ interface.name }}</b></h4>
+          <h4 class="card-title mb-0"><b>{{ interface.name }}</b> {% include '_manufacturerIcon.html' %}</h4>
           <br>
           {% if interface.interface_type == 'Bluetooth' %}
             <h6>BD address</h6>

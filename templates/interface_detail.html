@@ -3,7 +3,7 @@
 <body class="d-flex flex-column min-vh-100">
     <div class="page-contents">
       <div class="details">
-        <h1>{{ interface.name }}</h1>
+        <h1>{{ interface.name }} {% include '_manufacturerIcon.html' %}</h1>
         {% include '_interfaceImage.html' %}
         <ul>
         {% if interface.interface_type in ['Wireless', 'Wired'] %}
