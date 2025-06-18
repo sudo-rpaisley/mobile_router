@@ -51,7 +51,11 @@ def passive_scan(interface):
             next(f)  # skip header
             for line in f:
                 parts = line.split()
-                if len(parts) >= 6 and parts[5] == interface:
+                if (
+                    len(parts) >= 6
+                    and parts[5] == interface
+                    and parts[3] != "00:00:00:00:00:00"
+                ):
                     devices.append({"ip": parts[0], "mac": parts[3]})
     except Exception:
         pass
