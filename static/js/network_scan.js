@@ -12,7 +12,10 @@ $(document).ready(function () {
           html += '<p>No hosts found</p>';
         } else {
           html += '<ul>';
-          resp.hosts.forEach(function (ip) { html += `<li>${ip}</li>`; });
+          resp.hosts.forEach(function (ip) {
+            const link = `/clients/${encodeURIComponent(ip)}`;
+            html += `<li><a href="${link}">${ip}</a></li>`;
+          });
           html += '</ul>';
         }
         $('#scan-results').html(html);
@@ -37,7 +40,8 @@ $(document).ready(function () {
         } else {
           html += '<ul>';
           resp.devices.forEach(function (dev) {
-            html += `<li>${dev.ip} (${dev.mac})</li>`;
+            const link = `/clients/${encodeURIComponent(dev.ip)}`;
+            html += `<li><a href="${link}">${dev.ip}</a> (${dev.mac})</li>`;
           });
           html += '</ul>';
         }
