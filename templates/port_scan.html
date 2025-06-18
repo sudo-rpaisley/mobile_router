@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Port Scan{% endblock %}
+
+{% block content %}
+<h2>Port Scan</h2>
+<form id="port-scan-form">
+  <div class="form-group">
+    <label for="scan-host">Host</label>
+    <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1">
+  </div>
+  <div class="form-row">
+    <div class="col">
+      <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1">
+    </div>
+    <div class="col">
+      <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024">
+    </div>
+  </div>
+  <button id="port-scan-btn" class="btn btn-primary mt-2">Scan</button>
+</form>
+<div id="port-scan-results" class="mt-3"></div>
+<script src="/static/js/port_scan.js"></script>
+{% endblock %}

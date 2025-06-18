@@ -78,6 +78,18 @@ def network_scan():
                            networkTechnologies=networkTechnologies,
                            interfaces=network_interfaces)
 
+@app.route('/port-scan')
+def port_scan_page():
+    return render_template('port_scan.html', title='Port Scan',
+                           networkTechnologies=networkTechnologies,
+                           interfaces=network_interfaces)
+
+@app.route('/traceroute')
+def traceroute_page():
+    return render_template('traceroute.html', title='Traceroute',
+                           networkTechnologies=networkTechnologies,
+                           interfaces=network_interfaces)
+
 @app.route('/active-scan', methods=['POST'])
 def active_scan_route():
     iface = request.form.get('selectedInterface')
@@ -93,6 +105,31 @@ def passive_scan_route():
         return jsonify({'status': 'error', 'message': 'Missing interface'}), 400
     devices = passive_scan(iface)
     return jsonify({'devices': devices})
+
+@app.route('/port-scan', methods=['POST'])
+def port_scan_route():
+    host = request.form.get('host')
+    start = request.form.get('start')
+    end = request.form.get('end')
+    if not host or not start or not end:
+        return jsonify({'status': 'error', 'message': 'Missing parameters'}), 400
+    try:
+        start_port = int(start)
+        end_port = int(end)
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Invalid port range'}), 400
+    from scripts.portScanner import scan_ports
+    ports = scan_ports(host, start_port, end_port)
+    return jsonify({'ports': ports})
+
+@app.route('/traceroute', methods=['POST'])
+def traceroute_route():
+    host = request.form.get('host')
+    if not host:
+        return jsonify({'status': 'error', 'message': 'Missing host'}), 400
+    from scripts.traceroute import traceroute
+    hops = traceroute(host)
+    return jsonify({'hops': hops})
 
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
@@ -238,6 +275,30 @@ def beacon_advertise():
         return jsonify({'status': 'success', 'message': f'Advertising {ssid} via {selected_interface}'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'Beacon advertise error: {str(e)}'}), 500
+
+
+@app.route('/deauth', methods=['POST'])
+def deauth_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    ap_mac = data.get('ap')
+    target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'
+    frames = data.get('frames')
+
+    if not selected_interface or not ap_mac or not frames:
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+
+    try:
+        frames = int(frames)
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Frames must be an integer'}), 400
+
+    try:
+        from scripts.wifi.deauth import deauth
+        deauth(ap_mac, target_mac, selected_interface, frames)
+        return jsonify({'status': 'success', 'message': f'Sent {frames} deauth frames on {selected_interface}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Deauth error: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
