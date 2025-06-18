@@ -10,7 +10,7 @@
             <li>Interface Name: {{ interface.name }}</li>
             {% for addr in interface.addresses %}
               <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
+              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
               <li>Netmask: {{ addr.netmask }}</li>
               <li>Broadcast: {{ addr.broadcast }}</li>
               <li>PTP: {{ addr.ptp }}</li>
@@ -25,7 +25,7 @@
             <li>Interface Name: {{ interface.name }}</li>
             {% for addr in interface.addresses %}
               <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
+              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
               <li>Netmask: {{ addr.netmask }}</li>
               <li>Broadcast: {{ addr.broadcast }}</li>
               <li>PTP: {{ addr.ptp }}</li>
@@ -34,7 +34,7 @@
             <li>Interface Name: {{ interface.name }}</li>
             {% for addr in interface.addresses %}
               <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
+              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
               <li>Netmask: {{ addr.netmask }}</li>
               <li>Broadcast: {{ addr.broadcast }}</li>
               <li>PTP: {{ addr.ptp }}</li>

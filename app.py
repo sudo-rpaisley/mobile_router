@@ -158,6 +158,19 @@ def bluetooth_scan():
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'Bluetooth scan error: {str(e)}'}), 500
 
+@app.route('/spoof-mac', methods=['POST'])
+def spoof_mac_route():
+    data = request.form
+    interface = data.get("interface")
+    new_mac = data.get("mac")
+    if not interface or not new_mac:
+        return jsonify({"status": "error", "message": "Missing parameters"}), 400
+    success = spoof_mac(interface, new_mac)
+    if success:
+        return jsonify({"status": "success", "message": "MAC updated"})
+    else:
+        return jsonify({"status": "error", "message": "Failed to update MAC"}), 500
+
 
 @app.route('/beacon-advertise', methods=['POST'])
 def beacon_advertise():
