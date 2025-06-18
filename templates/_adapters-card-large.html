@@ -24,7 +24,7 @@
   </a>
   {% if interface.interface_type == 'Wireless' %}
     <button id="wlan-scan" class="btn btn-primary mb-2" style="width: 80%; display: block; margin: 0 auto;" value="{{ interface.name }}">Scan for Networks</button>
-    <div id="wlans"></div>
+    <div id="wlans-{{ interface.name }}" class="wlans"></div>
     <script src="/static/js/wireless-adapters.js"></script>
   {% endif %}
 </div>

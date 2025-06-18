@@ -54,9 +54,7 @@ def adapters():
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
     interface_type = interface_type.capitalize()
-    print(f"Looking for interfaces of type: {interface_type}")
     filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
-    print(f"Filtered interfaces: {filtered_interfaces}")
     if filtered_interfaces:
         return render_template('interface_type.html', title=f'{interface_type}', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies, technology=interface_type)
     else:
@@ -65,12 +63,10 @@ def interfaces_by_type(interface_type):
 @app.route('/<interface_type>/<interface_name>')
 def interface_detail(interface_type, interface_name):
     interface_type = interface_type.lower()
-    print(f"Looking for interface of type: {interface_type} with name: {interface_name}")
     interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
         return render_template('interface_detail.html', title=interface.name, interface=interface, networkTechnologies=networkTechnologies, interfaces=network_interfaces)
     else:
-        print(f"Interface not found: {interface_type}/{interface_name}")
         return "Interface not found", 404
 
 
@@ -189,6 +185,7 @@ def beacon_advertise():
 
 
 if __name__ == '__main__':
-    host='0.0.0.0'
-    port=8080
+    host = '0.0.0.0'
+    port = 8080
+    print(f"Server running at http://{host}:{port}")
     socketio.run(app, host=host, port=port, debug=True)
