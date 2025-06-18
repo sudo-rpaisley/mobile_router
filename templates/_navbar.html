@@ -9,7 +9,6 @@
 
   <div class="collapse navbar-collapse" id="navbarCollapse">
     <div class="navbar-nav">
-      <a href="/" class="nav-link {% if title == 'Home' %}active{% endif %}">Home</a>
       {% for technology in networkTechnologies %}
         {% if technology != 'Loopback' %}
           <div class="nav-item dropdown">
@@ -24,8 +23,6 @@
           </div>
         {% endif %}
       {% endfor %}
-      <a href="/about" class="nav-link {% if title == 'About' %}active{% endif %}">About</a>
-      <a href="/contact" class="nav-link {% if title == 'Contact' %}active{% endif %}">Contact</a>
       <a href="/network-scan" class="nav-link {% if title == 'Network Scan' %}active{% endif %}">Scan</a>
       <a href="/port-scan" class="nav-link {% if title == 'Port Scan' %}active{% endif %}">Port Scan</a>
       <a href="/traceroute" class="nav-link {% if title == 'Traceroute' %}active{% endif %}">Traceroute</a>
