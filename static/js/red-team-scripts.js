@@ -184,4 +184,58 @@ $(document).ready(function () {
             }
         });
     });
+
+
+    $("#Deauth-Submit").on("click", function(event) {
+        event.preventDefault();
+
+        var $apInput = $("#Deauth-AP");
+        var $targetInput = $("#Deauth-Target");
+        var $framesInput = $("#Deauth-Frames");
+        var ap = $apInput.val();
+        var target = $targetInput.val() || "ff:ff:ff:ff:ff:ff";
+        var frames = $framesInput.val();
+        var selectedInterface = $("#interface-select-Deauth").val();
+
+        if (!ap || !frames) {
+            if (!ap) { $apInput.addClass("input-error"); }
+            if (!frames) { $framesInput.addClass("input-error"); }
+            return;
+        }
+
+        var $submitButton = $("#Deauth-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+
+        $.ajax({
+            url: "/deauth",
+            type: "POST",
+            data: {
+                ap: ap,
+                target: target,
+                frames: frames,
+                selectedInterface: selectedInterface
+            },
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                $apInput.removeClass("input-error");
+                $framesInput.removeClass("input-error");
+            },
+            success: function(response) {
+                console.log(response);
+            },
+            error: function(error) {
+                console.log(error);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
 });

@@ -1,0 +1,12 @@
+<div class="card m-3" style="width: 18rem;">
+  <h5 class="card-title">Deauthentication</h5>
+  <p class="card-text">Send 802.11 deauth frames to disconnect clients.</p>
+  <form class="form-inline" method="post" action="/deauth">
+      <input type="text" class="form-control mb-2" id="Deauth-AP" placeholder="AP MAC" name="ap">
+      <input type="text" class="form-control mb-2" id="Deauth-Target" placeholder="Target MAC" name="target">
+      <input type="text" class="form-control mb-2" id="Deauth-Frames" placeholder="10" name="frames">
+      {% set selectId = 'Deauth' %}
+      {% include '_adapters-list.html' %}
+      <button id="Deauth-Submit" class="btn btn-primary mb-2">Submit</button>
+  </form>
+</div>
