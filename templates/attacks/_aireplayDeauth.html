@@ -1,0 +1,12 @@
+<div class="card m-3" style="width: 18rem;">
+  <h5 class="card-title">Aireplay Deauth</h5>
+  <p class="card-text">Use aireplay-ng to send deauth frames.</p>
+  <form class="form-inline" method="post" action="/aireplay-deauth">
+      <input type="text" id="Aireplay-Deauth-AP" class="form-control mb-2" placeholder="AP MAC" name="ap">
+      <input type="text" id="Aireplay-Deauth-Target" class="form-control mb-2" placeholder="Target MAC" name="target">
+      <input type="text" id="Aireplay-Deauth-Frames" class="form-control mb-2" placeholder="1" name="frames">
+      {% set selectId = 'AireplayDeauth' %}
+      {% include '_adapters-list.html' %}
+      <button id="Aireplay-Deauth-Submit" class="btn btn-primary mb-2">Submit</button>
+  </form>
+</div>

@@ -17,6 +17,8 @@ wireless and wired adapters.
   MAC addresses and SSID to mimic other devices.
 - **Red‑Team section** – a set of experimental tools including DoS and broadcast
   flood examples that operate on a selected interface.
+- **Aireplay-ng integration** – optionally send deauth frames via the external
+  `aireplay-ng` utility if it is installed.
 
 ## Setup
 

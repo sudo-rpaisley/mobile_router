@@ -301,6 +301,29 @@ def deauth_route():
         return jsonify({'status': 'error', 'message': f'Deauth error: {str(e)}'}), 500
 
 
+@app.route('/aireplay-deauth', methods=['POST'])
+def aireplay_deauth_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    ap_mac = data.get('ap')
+    target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'
+    frames = data.get('frames')
+
+    if not selected_interface or not ap_mac or not frames:
+        return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+
+    try:
+        frames = int(frames)
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Frames must be an integer'}), 400
+
+    try:
+        from scripts.wifi.aireplay import deauth as aireplay_deauth
+        output = aireplay_deauth(ap_mac, target_mac, selected_interface, frames)
+        return jsonify({'status': 'success', 'message': output})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Aireplay error: {str(e)}'}), 500
+
 if __name__ == '__main__':
     host = '0.0.0.0'
     port = 8080

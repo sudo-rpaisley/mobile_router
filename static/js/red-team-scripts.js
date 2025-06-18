@@ -238,4 +238,58 @@ $(document).ready(function () {
             }
         });
     });
+
+    $("#Aireplay-Deauth-Submit").on("click", function(event) {
+        event.preventDefault();
+
+        var $apInput = $("#Aireplay-Deauth-AP");
+        var $targetInput = $("#Aireplay-Deauth-Target");
+        var $framesInput = $("#Aireplay-Deauth-Frames");
+        var ap = $apInput.val();
+        var target = $targetInput.val() || "ff:ff:ff:ff:ff:ff";
+        var frames = $framesInput.val();
+        var selectedInterface = $("#interface-select-AireplayDeauth").val();
+
+        if (!ap || !frames) {
+            if (!ap) { $apInput.addClass("input-error"); }
+            if (!frames) { $framesInput.addClass("input-error"); }
+            return;
+        }
+
+        var $submitButton = $("#Aireplay-Deauth-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+
+        $.ajax({
+            url: "/aireplay-deauth",
+            type: "POST",
+            data: {
+                ap: ap,
+                target: target,
+                frames: frames,
+                selectedInterface: selectedInterface
+            },
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                $apInput.removeClass("input-error");
+                $framesInput.removeClass("input-error");
+            },
+            success: function(response) {
+                console.log(response);
+            },
+            error: function(error) {
+                console.log(error);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
+
 });
