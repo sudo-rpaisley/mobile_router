@@ -243,3 +243,15 @@ async def get_bluetooth_devices():
     except Exception as e:
         print(f"Error discovering Bluetooth devices: {e}")
         return []
+
+def spoof_mac(interface, new_mac):
+    """Change the MAC address of a network interface."""
+    try:
+        subprocess.check_call(["ip", "link", "set", interface, "down"])
+        subprocess.check_call(["ip", "link", "set", interface, "address", new_mac])
+        subprocess.check_call(["ip", "link", "set", interface, "up"])
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to spoof MAC on {interface}: {e}")
+        return False
+
