@@ -1,14 +1,17 @@
-<div class="card no-link-design" onclick="redirectToDetailPage('{{ interface.interface_type | lower }}', '{{ interface.name }}');" style="cursor: pointer;">
-  <div class="row no-gutters align-items-center">
+<div class="card m-1 d-flex align-items-center" style="width: 250px;">
+  <div class="row no-gutters align-items-center w-100" onclick="redirectToDetailPage('{{ interface.interface_type | lower }}', '{{ interface.name }}');" style="cursor: pointer;">
     <!-- ------------------------ image ---------------------- -->
     {% include '_interfaceImage.html' %}
     <!-- ---------------- text ---------------- -->
-    <div class="card-body">
-        <h5 class="card-title">{{ interface.name }} {% include '_manufacturerIcon.html' %}</h5>
-        <p class="card-text">
+    <div class="col-md-9">
+      <div class="card-body py-2">
+        <h5 class="card-title mb-1">{{ interface.name }} {% include '_manufacturerIcon.html' %}</h5>
+        <p class="card-text mb-0">
           Type: <a href="/{{ interface.interface_type | lower }}" class="no-link-design" onclick="event.stopPropagation();">{{ interface.interface_type }}</a>
         </p>
-        <p class="card-text">Address: <span id="mac-{{ interface.name }}-card">{{ interface.addresses[0].address }}</span> <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ interface.addresses[0].address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
+        <p class="card-text mb-1">Address: <span id="mac-{{ interface.name }}-card">{{ interface.addresses[0].address }}</span> <a href="#" class="edit-mac ml-1" data-interface="{{ interface.name }}" data-current="{{ interface.addresses[0].address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
+      </div>
+
     </div>
   </div>
 </div>
