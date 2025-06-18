@@ -9,9 +9,10 @@
         <p class="card-text mb-0">
           Type: <a href="/{{ interface.interface_type | lower }}" class="no-link-design" onclick="event.stopPropagation();">{{ interface.interface_type }}</a>
         </p>
+prndds-codex/add-mac-address-spoofing-functionality
         <p class="card-text mb-1">Address: <span id="mac-{{ interface.name }}-card">{{ interface.addresses[0].address }}</span> <a href="#" class="edit-mac ml-1" data-interface="{{ interface.name }}" data-current="{{ interface.addresses[0].address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
       </div>
-    </div>
+
   </div>
 </div>
 
