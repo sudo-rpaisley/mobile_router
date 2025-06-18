@@ -16,9 +16,15 @@
     <i class="fa-solid fa-house fa-3x text-primary"></i>
   {% elif interface.interface_type == 'Bluetooth' %}
     {% if interface.state == 'DOWN' %}
-      <i class="fa-brands fa-bluetooth-b fa-3x text-black"></i>       
+      <i class="fa-brands fa-bluetooth-b fa-3x text-black"></i>
     {% else %}
       <i class="fa-brands fa-bluetooth-b fa-3x text-primary"></i>
     {% endif %}
+  {% elif interface.interface_type == 'Bridge' %}
+    <i class="fa-solid fa-project-diagram fa-3x text-primary"></i>
+  {% elif interface.interface_type == 'Bond' %}
+    <i class="fa-solid fa-link fa-3x text-primary"></i>
+  {% elif interface.interface_type == 'Station' %}
+    <i class="fa-solid fa-broadcast-tower fa-3x text-primary"></i>
   {% endif %}
 </div>

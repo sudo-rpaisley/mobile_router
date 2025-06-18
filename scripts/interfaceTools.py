@@ -40,6 +40,7 @@ class NetworkInterface:
         self.manufacturer = 'Unknown'
         self.update_thread = threading.Thread(target=self.update_state_periodically, daemon=True)
         self.update_thread.start()
+        self.extra_info = {}
 
     def add_address(self, family, address, netmask, broadcast, ptp):
         self.addresses.append({
@@ -189,6 +190,34 @@ def _parse_ip_addrs(name, family):
     return results
 
 
+def get_bridge_ports(name):
+    """Return a list of interfaces attached to a bridge."""
+    path = f"/sys/class/net/{name}/brif"
+    try:
+        return os.listdir(path)
+    except Exception:
+        return []
+
+
+def get_bond_slaves(name):
+    """Return the slave interfaces for a bonding device."""
+    path = f"/sys/class/net/{name}/bonding/slaves"
+    try:
+        with open(path) as f:
+            return f.read().strip().split()
+    except Exception:
+        return []
+
+
+def get_station_info(name):
+    """Return connection info for a station interface."""
+    try:
+        output = subprocess.check_output(["iw", name, "link"], encoding="utf-8")
+        return output.strip()
+    except Exception:
+        return ""
+
+
 def get_network_interfaces():
     base_path = "/sys/class/net"
     interface_names = [
@@ -201,6 +230,13 @@ def get_network_interfaces():
     for name in interface_names:
         interface_type = get_interface_type(name)
         network_interface = NetworkInterface(name, interface_type)
+
+        if interface_type == 'Bridge':
+            network_interface.extra_info['ports'] = get_bridge_ports(name)
+        elif interface_type == 'Bond':
+            network_interface.extra_info['slaves'] = get_bond_slaves(name)
+        elif interface_type == 'Station':
+            network_interface.extra_info['link'] = get_station_info(name)
 
         # MAC address
         try:

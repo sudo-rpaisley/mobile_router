@@ -43,6 +43,40 @@
               <button id="bluetooth-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Devices</button>
             </div>
             <script src="/static/js/bluetooth-scan.js"></script>
+        {% elif interface.interface_type == 'Bridge' %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+            {% endfor %}
+            <li>Ports:
+              {% if interface.extra_info.ports %}
+                {{ interface.extra_info.ports | join(', ') }}
+              {% else %}None{% endif %}
+            </li>
+        {% elif interface.interface_type == 'Bond' %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+            {% endfor %}
+            <li>Slaves:
+              {% if interface.extra_info.slaves %}
+                {{ interface.extra_info.slaves | join(', ') }}
+              {% else %}None{% endif %}
+            </li>
+        {% elif interface.interface_type == 'Station' %}
+            <li>Interface Name: {{ interface.name }}</li>
+            {% for addr in interface.addresses %}
+              <li>Family: {{ addr.family }}</li>
+              <li>Address: {{ addr.address }}</li>
+            {% endfor %}
+            {% if interface.extra_info.link %}
+              <li>Connection Info:</li>
+              <pre>{{ interface.extra_info.link }}</pre>
+            {% else %}
+              <li>No connection information</li>
+            {% endif %}
         {% endif %}
         </ul>
       </div>
