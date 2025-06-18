@@ -8,7 +8,7 @@
         <p class="card-text">
           Type: <a href="/{{ interface.interface_type | lower }}" class="no-link-design" onclick="event.stopPropagation();">{{ interface.interface_type }}</a>
         </p>
-        <p class="card-text">Address: {{ interface.addresses[0].address }}</p>
+        <p class="card-text">Address: <span id="mac-{{ interface.name }}-card">{{ interface.addresses[0].address }}</span> <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ interface.addresses[0].address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
     </div>
   </div>
 </div>

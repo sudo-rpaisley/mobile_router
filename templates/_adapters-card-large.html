@@ -10,13 +10,13 @@
           <br>
           {% if interface.interface_type == 'Bluetooth' %}
             <h6>BD address</h6>
-            <p class="card-text small">{{ interface.get_mac_address() }}</p>
+            <p class="card-text small"><span id="mac-{{ interface.name }}-list">{{ interface.get_mac_address() }}</span> <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ interface.get_mac_address() }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
           {% elif interface.interface_type == 'Loopback' %}
             <h6>IP Address</h6>
             <p class="card-text small">127.0.0.1</p>
           {% else %}
             <h6>MAC address</h6>
-            <p class="card-text small">{{ interface.get_mac_address() }}</p>
+            <p class="card-text small"><span id="mac-{{ interface.name }}-list">{{ interface.get_mac_address() }}</span> <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ interface.get_mac_address() }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
           {% endif %}
         </div>
       </div>
