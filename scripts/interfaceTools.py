@@ -5,6 +5,8 @@ import threading
 import time
 import os
 import ipaddress
+import re
+import shutil
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 OUI_DB_PATH = os.path.join(os.path.dirname(__file__), 'oui_db.csv')
@@ -245,13 +247,45 @@ async def get_bluetooth_devices():
         return []
 
 def spoof_mac(interface, new_mac):
-    """Change the MAC address of a network interface."""
-    try:
-        subprocess.check_call(["ip", "link", "set", interface, "down"])
-        subprocess.check_call(["ip", "link", "set", interface, "address", new_mac])
-        subprocess.check_call(["ip", "link", "set", interface, "up"])
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to spoof MAC on {interface}: {e}")
+    """Change the MAC address of a network interface.
+
+    This attempts to use the ``ip`` command if available and falls back to
+    ``ifconfig``. A simple MAC address validation is performed before
+    executing the commands.
+    """
+
+    mac_re = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+    if not mac_re.match(new_mac):
+        print(f"Invalid MAC address: {new_mac}")
         return False
+
+    ip_tool = shutil.which("ip")
+    if ip_tool:
+        cmds = [
+            [ip_tool, "link", "set", interface, "down"],
+            [ip_tool, "link", "set", interface, "address", new_mac],
+            [ip_tool, "link", "set", interface, "up"],
+        ]
+    else:
+        ifconfig_tool = shutil.which("ifconfig")
+        if not ifconfig_tool:
+            print("Neither 'ip' nor 'ifconfig' command found")
+            return False
+        cmds = [
+            [ifconfig_tool, interface, "down"],
+            [ifconfig_tool, interface, "hw", "ether", new_mac],
+            [ifconfig_tool, interface, "up"],
+        ]
+
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to run {' '.join(cmd)}: {e}")
+            return False
+        except FileNotFoundError as e:
+            print(str(e))
+            return False
+
+    return True
 
