@@ -7,6 +7,7 @@ import threading
 import asyncio
 
 from scripts.interfaceTools import *
+from scripts.networkScan import active_scan, passive_scan
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -35,7 +36,27 @@ def index():
 
 @app.route('/about')
 def about():
-    return render_template('about.html', title='About')
+    return render_template('about.html', title='About', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
+
+@app.route('/contact')
+def contact_page():
+    return render_template('contact.html', title='Contact', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
+
+@app.route('/submit-contact', methods=['POST'])
+def submit_contact():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    message = data.get('message')
+    if not name or not email or not message:
+        return jsonify({'status': 'error', 'message': 'Missing information'}), 400
+    try:
+        with open('contact_messages.txt', 'a') as f:
+            json.dump({'name': name, 'email': email, 'message': message, 'timestamp': time.time()}, f)
+            f.write('\n')
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/favicon.ico')
 def favicon():
@@ -50,6 +71,28 @@ def red_team():
 def adapters():
     """Return the available network interfaces as JSON."""
     return jsonify({'interfaces': [iface.__dict__ for iface in network_interfaces]})
+
+@app.route('/network-scan')
+def network_scan():
+    return render_template('network_scan.html', title='Network Scan',
+                           networkTechnologies=networkTechnologies,
+                           interfaces=network_interfaces)
+
+@app.route('/active-scan', methods=['POST'])
+def active_scan_route():
+    iface = request.form.get('selectedInterface')
+    if not iface:
+        return jsonify({'status': 'error', 'message': 'Missing interface'}), 400
+    hosts = active_scan(iface)
+    return jsonify({'hosts': hosts})
+
+@app.route('/passive-scan', methods=['POST'])
+def passive_scan_route():
+    iface = request.form.get('selectedInterface')
+    if not iface:
+        return jsonify({'status': 'error', 'message': 'Missing interface'}), 400
+    devices = passive_scan(iface)
+    return jsonify({'devices': devices})
 
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):

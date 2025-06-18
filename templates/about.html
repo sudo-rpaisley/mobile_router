@@ -1,6 +1,13 @@
-{% include '_header.html' %}
-<body class="d-flex flex-column min-vh-100">
-  <h1>About</h1>
-</body>
-{% include '_footer.html' %}
-</html>
+{% extends 'base.html' %}
+
+{% block title %}About{% endblock %}
+
+{% block content %}
+<h2>About</h2>
+<p>The Mobile Router interface provides a local dashboard for managing network adapters and trying small red team utilities.</p>
+<ul>
+  <li>Lists wired, wireless and Bluetooth interfaces with live updates.</li>
+  <li>View adapter details and scan for nearby networks or devices.</li>
+  <li>Experiment with DoS and beacon spoofing tools from the Red Team section.</li>
+</ul>
+{% endblock %}
