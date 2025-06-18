@@ -56,7 +56,7 @@ def interfaces_by_type(interface_type):
     interface_type = interface_type.capitalize()
     filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
     if filtered_interfaces:
-        return render_template('interface_type.html', title=f'{interface_type}', interfaces=filtered_interfaces, networkTechnologies=networkTechnologies, technology=interface_type)
+        return render_template('interface_type.html', title=f'{interface_type}', interfaces=network_interfaces, filtered_interfaces=filtered_interfaces, networkTechnologies=networkTechnologies, technology=interface_type)
     else:
         return "No interfaces found for this type", 404
 

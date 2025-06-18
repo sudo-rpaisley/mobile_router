@@ -3,7 +3,7 @@
     <h1>{{ title }} Interfaces</h1>
     <div class="container-fluid">
         <div class="row flex-nowrap overflow-auto">
-            {% for interface in interfaces %}
+            {% for interface in filtered_interfaces %}
                 {% if interface.interface_type == technology %}
                     <div class="m-2 p-2">
                         {% if interface.interface_type == 'Wireless' %}
