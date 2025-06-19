@@ -5,6 +5,7 @@
       <h1>Client {{ mac }}</h1>
       <ul>
         <li>IP Address: {{ ip if ip else 'Unknown' }}</li>
+
         {% if mac %}
           <li>MAC Address: {{ mac }}</li>
           <li>Manufacturer: {{ manufacturer }}</li>
