@@ -12,9 +12,16 @@ $(document).ready(function () {
           html += '<p>No hosts found</p>';
         } else {
           html += '<ul>';
-          resp.hosts.forEach(function (ip) {
-            const link = `/clients/${encodeURIComponent(ip)}`;
-            html += `<li><a href="${link}">${ip}</a></li>`;
+          resp.hosts.forEach(function (host) {
+            const display = host.ip;
+            const macParam = host.mac ? host.mac : host.ip;
+            const link = `/clients/${encodeURIComponent(macParam)}`;
+            html += `<li><a href="${link}">${display}</a>`;
+            if (host.mac) {
+              html += ` (${host.mac})`;
+            }
+            html += `</li>`;
+
           });
           html += '</ul>';
         }
@@ -40,7 +47,8 @@ $(document).ready(function () {
         } else {
           html += '<ul>';
           resp.devices.forEach(function (dev) {
-            const link = `/clients/${encodeURIComponent(dev.ip)}`;
+            const link = `/clients/${encodeURIComponent(dev.mac)}`;
+
             html += `<li><a href="${link}">${dev.ip}</a> (${dev.mac})</li>`;
           });
           html += '</ul>';

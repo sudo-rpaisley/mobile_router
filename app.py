@@ -7,7 +7,13 @@ import threading
 import asyncio
 
 from scripts.interfaceTools import *
-from scripts.networkScan import active_scan, passive_scan, get_mac_by_ip
+from scripts.networkScan import (
+    active_scan,
+    passive_scan,
+    get_mac_by_ip,
+    get_ip_by_mac,
+)
+
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -91,13 +97,14 @@ def traceroute_page():
                            interfaces=network_interfaces)
 
 
-@app.route('/clients/<ip>')
-def client_detail(ip):
-    mac = get_mac_by_ip(ip)
+@app.route('/clients/<mac>')
+def client_detail(mac):
+    ip = get_ip_by_mac(mac)
     manufacturer = lookup_manufacturer(mac) if mac else 'Unknown'
     return render_template(
         'client_detail.html',
-        title=f'Client {ip}',
+        title=f'Client {mac}',
+
         ip=ip,
         mac=mac,
         manufacturer=manufacturer,

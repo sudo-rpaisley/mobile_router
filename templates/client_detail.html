@@ -2,9 +2,10 @@
 <body class="d-flex flex-column min-vh-100">
   <div class="page-contents">
     <div class="details">
-      <h1>Client {{ ip }}</h1>
+      <h1>Client {{ mac }}</h1>
       <ul>
-        <li>IP Address: {{ ip }}</li>
+        <li>IP Address: {{ ip if ip else 'Unknown' }}</li>
+
         {% if mac %}
           <li>MAC Address: {{ mac }}</li>
           <li>Manufacturer: {{ manufacturer }}</li>
