@@ -78,7 +78,7 @@ def get_mac_by_ip(ip):
     except Exception:
         pass
     return None
-  
+
 def get_ip_by_mac(mac):
     """Return the IP address for a given MAC from the ARP table."""
     try:

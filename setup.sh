@@ -5,6 +5,9 @@ set -e
 PYTHON_BIN="python3"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYLIB_DIR="$PROJECT_DIR/pylibs"
+OUI_DIR="$PROJECT_DIR/oui"
+OUI_DB="$OUI_DIR/oui_db.csv"
+OUI_URL="https://standards-oui.ieee.org/oui/oui.csv"
 
 echo "==> Checking for $PYTHON_BIN..."
 
@@ -27,6 +30,21 @@ if [ -f "$PROJECT_DIR/requirements.txt" ]; then
     fi
 else
     echo "requirements.txt not found. Skipping dependency installation."
+fi
+
+# Ensure the OUI database is present and up to date
+echo "==> Ensuring OUI database is available..."
+mkdir -p "$OUI_DIR"
+if [ ! -f "$OUI_DB" ] || find "$OUI_DB" -mtime +30 >/dev/null 2>&1; then
+    echo "Downloading latest OUI database..."
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O "$OUI_DB" "$OUI_URL"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -L -o "$OUI_DB" "$OUI_URL"
+    else
+        echo "Neither wget nor curl is installed. Cannot download OUI database." >&2
+        exit 1
+    fi
 fi
 
 # Run the app

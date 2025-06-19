@@ -9,7 +9,8 @@ import re
 import shutil
 
 # Load a small local OUI database mapping prefixes to manufacturer names
-OUI_DB_PATH = os.path.join(os.path.dirname(__file__), 'oui_db.csv')
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+OUI_DB_PATH = os.path.join(BASE_DIR, 'oui', 'oui_db.csv')
 
 def _load_oui_db():
     db = {}

@@ -104,7 +104,6 @@ def client_detail(mac):
     return render_template(
         'client_detail.html',
         title=f'Client {mac}',
-
         ip=ip,
         mac=mac,
         manufacturer=manufacturer,

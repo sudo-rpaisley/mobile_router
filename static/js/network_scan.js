@@ -21,7 +21,7 @@ $(document).ready(function () {
               html += ` (${host.mac})`;
             }
             html += `</li>`;
-
+            
           });
           html += '</ul>';
         }
@@ -48,7 +48,6 @@ $(document).ready(function () {
           html += '<ul>';
           resp.devices.forEach(function (dev) {
             const link = `/clients/${encodeURIComponent(dev.mac)}`;
-
             html += `<li><a href="${link}">${dev.ip}</a> (${dev.mac})</li>`;
           });
           html += '</ul>';
