@@ -5,7 +5,8 @@ set -e
 PYTHON_BIN="python3"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYLIB_DIR="$PROJECT_DIR/pylibs"
-OUI_DIR="$PROJECT_DIR/oui"
+# Allow keeping the OUI database outside the repository
+OUI_DIR="$(dirname "$(dirname "$PROJECT_DIR")")/oui"
 OUI_DB="$OUI_DIR/oui_db.csv"
 OUI_URL="https://standards-oui.ieee.org/oui/oui.csv"
 

@@ -10,11 +10,26 @@ import shutil
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-OUI_DB_PATH = os.path.join(BASE_DIR, 'oui', 'oui_db.csv')
+PARENT_DIR = os.path.dirname(BASE_DIR)
+GRANDPARENT_DIR = os.path.dirname(PARENT_DIR)
+
+# Try locating the OUI database inside the project directory or one of the
+# parent directories. This allows keeping the file outside the repository if
+# desired.
+OUI_DB_PATH = None
+for candidate in [
+    os.path.join(BASE_DIR, 'oui', 'oui_db.csv'),
+    os.path.join(PARENT_DIR, 'oui', 'oui_db.csv'),
+    os.path.join(GRANDPARENT_DIR, 'oui', 'oui_db.csv'),
+]:
+    if os.path.exists(candidate):
+        OUI_DB_PATH = candidate
+        break
 
 def _load_oui_db():
+    """Load the OUI database from the detected path if available."""
     db = {}
-    if os.path.exists(OUI_DB_PATH):
+    if OUI_DB_PATH and os.path.exists(OUI_DB_PATH):
         with open(OUI_DB_PATH) as f:
             for line in f:
                 line = line.strip()

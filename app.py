@@ -5,6 +5,7 @@ import json
 import time
 import threading
 import asyncio
+import re
 
 from scripts.interfaceTools import *
 from scripts.networkScan import (
@@ -97,13 +98,28 @@ def traceroute_page():
                            interfaces=network_interfaces)
 
 
-@app.route('/clients/<mac>')
-def client_detail(mac):
-    ip = get_ip_by_mac(mac)
+@app.route('/clients/<identifier>')
+def client_detail(identifier):
+    """Display details for a client identified by MAC or IP address."""
+    mac_re = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+
+    mac = None
+    ip = None
+
+    if mac_re.match(identifier):
+        # Identifier is a MAC address
+        mac = identifier
+        ip = get_ip_by_mac(mac)
+    else:
+        # Identifier is likely an IP address
+        ip = identifier
+        mac = get_mac_by_ip(ip)
+
     manufacturer = lookup_manufacturer(mac) if mac else 'Unknown'
+
     return render_template(
         'client_detail.html',
-        title=f'Client {mac}',
+        title=f'Client {identifier}',
         ip=ip,
         mac=mac,
         manufacturer=manufacturer,
