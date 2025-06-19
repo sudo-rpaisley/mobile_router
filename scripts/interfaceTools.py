@@ -42,9 +42,12 @@ def _load_oui_db():
 OUI_DB = _load_oui_db()
 
 def lookup_manufacturer(mac):
+    """Return the vendor for the given MAC address using the local OUI database."""
     if not mac:
         return 'Unknown'
+
     normalized = ':'.join(mac.lower().split(':')[:3])
+
     return OUI_DB.get(normalized, 'Unknown')
 
 class NetworkInterface:
