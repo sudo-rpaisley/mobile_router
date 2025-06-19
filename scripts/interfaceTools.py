@@ -7,6 +7,8 @@ import os
 import ipaddress
 import re
 import shutil
+import urllib.request
+import urllib.parse
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -42,10 +44,33 @@ def _load_oui_db():
 OUI_DB = _load_oui_db()
 
 def lookup_manufacturer(mac):
+    """Return the vendor for the given MAC address.
+
+    The function first checks the local OUI database. If no entry is found it
+    will attempt to query a free external API. The API lookup is best-effort
+    and silently ignored on failure so the function always returns a string.
+    """
     if not mac:
         return 'Unknown'
+
     normalized = ':'.join(mac.lower().split(':')[:3])
-    return OUI_DB.get(normalized, 'Unknown')
+
+    vendor = OUI_DB.get(normalized)
+    if vendor:
+        return vendor
+
+    # Fallback to external lookup
+    try:
+        url = f"https://api.macvendors.com/{urllib.parse.quote(mac)}"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            vendor = resp.read().decode().strip()
+            if vendor:
+                OUI_DB[normalized] = vendor  # cache for future lookups
+                return vendor
+    except Exception:
+        pass
+
+    return 'Unknown'
 
 class NetworkInterface:
     def __init__(self, name, interface_type):

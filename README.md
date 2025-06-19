@@ -56,3 +56,8 @@ The application looks for an `oui` directory containing `oui_db.csv`. By
 default this folder lives in the project directory, but the lookup logic now
 also checks the parent directory **and** one level above that. This allows
 keeping the OUI database outside the repository if desired.
+
+If a MAC address is not found in the local database the application will try to
+query the free [MAC Vendors API](https://macvendors.com/) at runtime. This
+network request is best-effort and failures simply result in the manufacturer
+being reported as "Unknown".
