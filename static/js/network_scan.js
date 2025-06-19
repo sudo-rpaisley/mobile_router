@@ -21,6 +21,7 @@ $(document).ready(function () {
               html += ` (${host.mac})`;
             }
             html += `</li>`;
+            
           });
           html += '</ul>';
         }

@@ -14,6 +14,7 @@ from scripts.networkScan import (
     get_ip_by_mac,
 )
 
+
 app = Flask(__name__)
 socketio = SocketIO(app)
 
