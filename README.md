@@ -49,3 +49,10 @@ python app.py
 The server listens on `0.0.0.0:8080`. Once running, navigate to
 `http://localhost:8080` in a web browser to access the UI. From there you can
 browse interfaces or open the **Red Team** page to try the network utilities.
+
+### OUI Database Location
+
+The application looks for an `oui` directory containing `oui_db.csv`. By
+default this folder lives in the project directory, but the lookup logic now
+also checks the parent directory **and** one level above that. This allows
+keeping the OUI database outside the repository if desired.

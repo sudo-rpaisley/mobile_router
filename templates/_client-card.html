@@ -1,36 +1,34 @@
 <div class="card m-1 d-flex align-items-center" style="width: 250px;">
-  <div class="row no-gutters align-items-center w-100" onclick="redirectToDetailPage('{{ interface.interface_type | lower }}', '{{ interface.name }}');" style="cursor: pointer;">
-    <!-- ------------------------ image ---------------------- -->
-    {% include '_interfaceImage.html' %}
+  <div class="row no-gutters align-items-center w-100" onclick="redirectToClientDetail('{{ mac if mac else ip }}');" style="cursor: pointer;">
+    <!-- ------------------------ icon ---------------------- -->
+    <div class="col-md-3 d-flex align-items-center justify-content-center p-3">
+      {% if manufacturer == 'Raspberry Pi Foundation' %}
+        <i class="fa-brands fa-raspberry-pi fa-3x text-primary"></i>
+      {% elif manufacturer == 'Windows' %}
+        <i class="fa-brands fa-windows fa-3x text-primary"></i>
+      {% elif manufacturer == 'Apple' %}
+        <i class="fa-brands fa-apple fa-3x text-primary"></i>
+      {% elif manufacturer == 'VMware' %}
+        <i class="fa-brands fa-vmware fa-3x text-primary"></i>
+      {% else %}
+        <i class="fa-solid fa-desktop fa-3x text-primary"></i>
+      {% endif %}
+    </div>
     <!-- ---------------- text ---------------- -->
     <div class="col-md-9">
       <div class="card-body py-2">
-        <h5 class="card-title mb-1">{{ mac }} {% include '_manufacturerIcon.html' %}</h5>
-        <p class="card-text mb-0">
-          Type: <a href="/{{ interface.interface_type | lower }}" class="no-link-design" onclick="event.stopPropagation();">{{ interface.interface_type }}</a>
-        </p>
-        <p class="card-text mb-1">Address: <span id="mac-{{ interface.name }}-card">{{ interface.addresses[0].address }}</span> <a href="#" class="edit-mac ml-1" data-interface="{{ interface.name }}" data-current="{{ interface.addresses[0].address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a></p>
+        <h5 class="card-title mb-1">{{ ip if ip else mac }}</h5>
+        {% if mac %}
+          <p class="card-text mb-0">MAC: {{ mac }}</p>
+        {% endif %}
+        <p class="card-text mb-1">Manufacturer: {{ manufacturer }}</p>
       </div>
-
     </div>
   </div>
 </div>
 
 <script>
-  function redirectToDetailPage(interfaceType, interfaceName) {
-    window.location.href = '/' + interfaceType + '/' + interfaceName;
+  function redirectToClientDetail(identifier) {
+    window.location.href = '/clients/' + encodeURIComponent(identifier);
   }
 </script>
-
-
-<!-- 
-      <h1>Client {{ mac }}</h1>
-      <ul>
-        <li>IP Address: {{ ip if ip else 'Unknown' }}</li>
-
-        {% if mac %}
-          <li>MAC Address: {{ mac }}</li>
-          <li>Manufacturer: {{ manufacturer }}</li>
-        {% else %}
-          <li>MAC Address: Unknown</li>
-        {% endif %} -->
