@@ -19,7 +19,7 @@ def _get_ipv4_cidr(interface):
 
 
 def active_scan(interface):
-    """Perform a ping sweep to discover live hosts."""
+    """Perform a ping sweep and return live hosts with MAC addresses."""
     cidr = _get_ipv4_cidr(interface)
     if not cidr:
         return []
@@ -37,7 +37,8 @@ def active_scan(interface):
                 stderr=subprocess.DEVNULL,
             )
             if result.returncode == 0:
-                live_hosts.append(str(ip))
+                mac = get_mac_by_ip(str(ip))
+                live_hosts.append({"ip": str(ip), "mac": mac})
         except Exception:
             continue
     return live_hosts
@@ -51,8 +52,43 @@ def passive_scan(interface):
             next(f)  # skip header
             for line in f:
                 parts = line.split()
-                if len(parts) >= 6 and parts[5] == interface:
+                if (
+                    len(parts) >= 6
+                    and parts[5] == interface
+                    and parts[3] != "00:00:00:00:00:00"
+                ):
                     devices.append({"ip": parts[0], "mac": parts[3]})
     except Exception:
         pass
     return devices
+
+
+def get_mac_by_ip(ip):
+    """Return the MAC address for a given IP from the ARP table."""
+    try:
+        with open("/proc/net/arp") as f:
+            next(f)  # skip header
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 4 and parts[0] == ip:
+                    mac = parts[3]
+                    if mac != "00:00:00:00:00:00":
+                        return mac
+                    break
+    except Exception:
+        pass
+    return None
+
+
+def get_ip_by_mac(mac):
+    """Return the IP address for a given MAC from the ARP table."""
+    try:
+        with open("/proc/net/arp") as f:
+            next(f)  # skip header
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 4 and parts[3].lower() == mac.lower():
+                    return parts[0]
+    except Exception:
+        pass
+    return None
