@@ -264,6 +264,27 @@ def traceroute_route():
     return jsonify({'hops': hops})
 
 
+@app.route('/wireless/network')
+def wireless_network_detail():
+    ssid = request.args.get('ssid')
+    bssid = request.args.get('bssid')
+    selected_interface = request.args.get('interface')
+
+    if not ssid and not bssid:
+        return "Wireless network not specified", 400
+
+    from scripts.wifi import utils as wifi_utils
+    network = wifi_utils.get_network_detail(ssid=ssid, bssid=bssid, interface_name=selected_interface)
+    back_url = f"/wireless/{selected_interface}" if selected_interface else "/wireless"
+    return render_template(
+        'wireless_network_detail.html',
+        title=f"{network['ssid']} Details",
+        network=network,
+        back_url=back_url,
+        **current_context(),
+    )
+
+
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
     requested_type = interface_type.lower()

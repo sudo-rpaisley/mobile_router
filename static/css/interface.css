@@ -340,3 +340,24 @@
     justify-content: flex-start;
   }
 }
+
+.wireless-network-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.wireless-network-clickable:hover,
+.wireless-network-clickable:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.network-detail-page .interface-extra-card {
+  grid-column: auto;
+}
+
+.network-detail-grid {
+  margin-top: 1.25rem;
+}

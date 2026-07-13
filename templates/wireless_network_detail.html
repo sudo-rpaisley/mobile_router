@@ -1,0 +1,98 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+
+<body class="d-flex flex-column min-vh-100">
+  <main class="page-contents interface-detail-page network-detail-page">
+    <section class="interface-hero card shadow-sm network-detail-hero">
+      <div class="interface-hero-icon">
+        <div class="col-md-3 text-center">
+          <i class="fa-solid fa-wifi fa-3x text-primary"></i>
+        </div>
+      </div>
+      <div class="interface-hero-copy">
+        <p class="interface-kicker mb-1">Wireless Network</p>
+        <h1 class="interface-detail-title mb-2">{{ network.ssid }}</h1>
+        <div class="interface-badges">
+          <span class="badge {{ 'badge-success' if network.security == 'Open' else 'badge-secondary' }}">{{ network.security }}</span>
+          <span class="badge badge-primary">{{ network.access_points | length }} {{ 'AP' if network.access_points | length == 1 else 'APs' }}</span>
+          {% if network.interface %}<span class="badge badge-light border">{{ network.interface }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="interface-actions">
+        <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>
+      </div>
+    </section>
+
+    {% if not network.discovered %}
+      <div class="alert alert-warning mt-3" role="alert">
+        This network was opened from card data, but it is not currently in the in-memory scan cache. Re-scan from the adapter page for live AP/client details.
+      </div>
+    {% endif %}
+
+    <section class="interface-detail-grid network-detail-grid">
+      <article class="card shadow-sm interface-summary-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Overview</h2>
+          <dl class="interface-definition-list">
+            <div><dt>SSID</dt><dd>{{ network.ssid }}</dd></div>
+            <div><dt>Primary BSSID</dt><dd>{{ network.bssid or 'Unknown' }}</dd></div>
+            <div><dt>Security</dt><dd>{{ network.security }}</dd></div>
+            <div><dt>Signal</dt><dd>{{ network.signal_label }}</dd></div>
+            <div><dt>Channel</dt><dd>{{ network.channel or 'Unknown' }}</dd></div>
+          </dl>
+        </div>
+      </article>
+
+      <article class="card shadow-sm interface-address-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Discovered Devices</h2>
+          {% if network.clients %}
+            <div class="address-card-grid">
+              {% for client in network.clients %}
+                <section class="address-card">
+                  <div class="address-card-header"><span class="address-family">Client</span></div>
+                  <dl class="interface-definition-list compact">
+                    <div><dt>MAC</dt><dd>{{ client.mac }}</dd></div>
+                    <div><dt>Signal</dt><dd>{{ client.signal_label }}</dd></div>
+                    <div><dt>Seen On</dt><dd>{{ client.bssid or 'Unknown AP' }}</dd></div>
+                  </dl>
+                </section>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No client devices have been discovered for this SSID yet. Packet/monitor scans can populate this section when client traffic is observed.</p>
+          {% endif %}
+        </div>
+      </article>
+    </section>
+
+    <section class="card shadow-sm interface-extra-card mt-3">
+      <div class="card-body">
+        <h2 class="interface-section-title">Access Points</h2>
+        {% if network.access_points %}
+          <div class="wireless-network-grid">
+            {% for ap in network.access_points %}
+              <article class="wireless-network-card">
+                <div class="wireless-network-main">
+                  <div>
+                    <h3 class="wireless-network-ssid mb-1">{{ ap.bssid or 'Unknown BSSID' }}</h3>
+                    <div class="wireless-network-meta">
+                      <span><i class="fa-solid fa-wave-square"></i> Ch {{ ap.channel or 'Unknown' }}</span>
+                      <span><i class="fa-solid fa-signal"></i> {{ ap.signal_label }}</span>
+                    </div>
+                  </div>
+                  <span class="badge badge-light border">{{ ap.clients | length }} {{ 'client' if ap.clients | length == 1 else 'clients' }}</span>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No access point details are available yet.</p>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  {% include '_footer.html' %}
+</body>
+</html>

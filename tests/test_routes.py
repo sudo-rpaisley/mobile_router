@@ -46,6 +46,36 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()['message'], 'Authorization confirmation is required')
 
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_detail_page_renders_discovered_devices(self, get_detail):
+        get_detail.return_value = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'channel': '6',
+            'signal': 82,
+            'signal_label': '82%',
+            'interface': 'wlan0',
+            'discovered': True,
+            'access_points': [
+                {
+                    'bssid': 'aa:bb:cc:dd:ee:ff',
+                    'channel': '6',
+                    'signal': 82,
+                    'signal_label': '82%',
+                    'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff'}],
+                }
+            ],
+            'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff'}],
+        }
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'TrainingNet', response.data)
+        self.assertIn(b'Discovered Devices', response.data)
+        self.assertIn(b'11:22:33:44:55:66', response.data)
+
     @patch('app.run_bluetoothctl_action')
     def test_bluetooth_action_success(self, run_action):
         run_action.return_value = 'Device disconnected'

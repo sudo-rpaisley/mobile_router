@@ -349,6 +349,78 @@ def get_networks_summary():
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
 
 
+def _format_signal(signal):
+    if signal in (None, ''):
+        return 'Unknown signal'
+    try:
+        value = int(signal)
+    except (TypeError, ValueError):
+        return str(signal)
+    return f'{value}%' if value >= 0 else f'{value} dBm'
+
+
+def get_network_detail(ssid=None, bssid=None, interface_name=None):
+    """Return detailed information for a scanned SSID/BSSID, including AP clients."""
+    requested_ssid = (ssid or '').strip()
+    requested_bssid = (bssid or '').strip().lower()
+    matched = None
+
+    for network in networks.values():
+        ssid_matches = requested_ssid and network.ssid == requested_ssid
+        bssid_matches = requested_bssid and any((ap.bssid or '').lower() == requested_bssid for ap in network.access_points)
+        if ssid_matches or bssid_matches:
+            matched = network
+            break
+
+    access_points = []
+    clients = []
+    discovered = matched is not None
+
+    if matched:
+        for ap in matched.access_points:
+            ap_clients = [
+                {
+                    'mac': client.mac,
+                    'signal': client.signal,
+                    'signal_label': _format_signal(client.signal),
+                    'bssid': ap.bssid,
+                }
+                for client in ap.clients
+            ]
+            access_points.append({
+                'bssid': ap.bssid,
+                'channel': ap.channel,
+                'signal': ap.signal,
+                'signal_label': _format_signal(ap.signal),
+                'clients': ap_clients,
+            })
+            clients.extend(ap_clients)
+        strongest_ap = max(matched.access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
+        detail_ssid = matched.ssid
+        security = getattr(matched, 'security', 'Unknown')
+        primary_bssid = strongest_ap.bssid if strongest_ap else (bssid or None)
+        channel = strongest_ap.channel if strongest_ap else None
+        signal = strongest_ap.signal if strongest_ap else None
+    else:
+        detail_ssid = requested_ssid or '<Hidden SSID>'
+        security = 'Unknown'
+        primary_bssid = bssid or None
+        channel = None
+        signal = None
+
+    return {
+        'ssid': detail_ssid,
+        'bssid': primary_bssid,
+        'security': security,
+        'channel': channel,
+        'signal': signal,
+        'signal_label': _format_signal(signal),
+        'interface': interface_name,
+        'access_points': access_points,
+        'clients': clients,
+        'discovered': discovered,
+    }
+
 def connect_to_network(ssid, password=None, interface_name=None):
     """Attempt to connect to a wireless network using pywifi."""
     if importlib.util.find_spec('pywifi') is None:

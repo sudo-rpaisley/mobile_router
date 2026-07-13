@@ -87,9 +87,10 @@ $(document).ready(function () {
       const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
       const isOpen = security === 'Open';
+      const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ssid)}&bssid=${encodeURIComponent(bssid)}`;
 
       return `
-        <article class="wireless-network-card">
+        <article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" aria-label="View details for ${escapeHtml(ssid)}">
           <div class="wireless-network-main">
             <div class="wireless-network-identity">
               <h3 class="wireless-network-ssid mb-1">${escapeHtml(ssid)}</h3>
@@ -101,6 +102,7 @@ $(document).ready(function () {
             <div class="wireless-network-badges">
               <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
               <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
+              <span class="badge badge-info"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
             </div>
           </div>
           <div class="wireless-network-bottom">
@@ -135,6 +137,28 @@ $(document).ready(function () {
       </section>
     `;
   }
+
+  function openNetworkDetails(card) {
+    const detailUrl = card.data('detailUrl');
+    if (detailUrl) {
+      window.location.href = detailUrl;
+    }
+  }
+
+  $(document).on('click', '.wireless-network-clickable', function (event) {
+    if ($(event.target).closest('a, button, input, label, select, textarea, form').length) {
+      return;
+    }
+    openNetworkDetails($(this));
+  });
+
+  $(document).on('keydown', '.wireless-network-clickable', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openNetworkDetails($(this));
+    }
+  });
+
 
   $(document).on('click', 'button#wlan-scan', function () {
     const button = $(this);
