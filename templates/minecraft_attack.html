@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Minecraft Attack{% endblock %}
+
+{% block content %}
+<h2>Minecraft Attack Lab</h2>
+<p>
+  Run a bounded Minecraft Java status-query load test against an authorized test server.
+  This provides GUI-driven security demo traffic without creating player bots or sending raw packet floods.
+</p>
+<form id="minecraft-attack-form">
+  <div class="form-group">
+    <label for="minecraft-host">Server host</label>
+    <input type="text" class="form-control" id="minecraft-host" placeholder="127.0.0.1" required>
+  </div>
+  <div class="form-row">
+    <div class="col">
+      <label for="minecraft-port">Port</label>
+      <input type="number" class="form-control" id="minecraft-port" value="25565" min="1" max="65535" required>
+    </div>
+    <div class="col">
+      <label for="minecraft-requests">Requests</label>
+      <input type="number" class="form-control" id="minecraft-requests" value="25" min="1" max="100" required>
+    </div>
+    <div class="col">
+      <label for="minecraft-concurrency">Concurrency</label>
+      <input type="number" class="form-control" id="minecraft-concurrency" value="5" min="1" max="20" required>
+    </div>
+    <div class="col">
+      <label for="minecraft-timeout">Timeout seconds</label>
+      <input type="number" class="form-control" id="minecraft-timeout" value="1.5" min="0.1" max="5" step="0.1" required>
+    </div>
+  </div>
+  <div class="form-check mt-3">
+    <input class="form-check-input" type="checkbox" id="minecraft-authorized" required>
+    <label class="form-check-label" for="minecraft-authorized">
+      I am authorized to test this Minecraft server.
+    </label>
+  </div>
+  <button id="minecraft-attack-btn" class="btn btn-primary mt-3">Run Demo</button>
+</form>
+<div id="minecraft-attack-results" class="mt-3"></div>
+
+<h3 class="mt-4">Mob Toggles</h3>
+<p>
+  Each mob button sends an on/off command to the mob-specific control port defined in
+  <code>config/minecraft_mobs.json</code>. Edit that file to add mobs or change ports.
+</p>
+<div id="minecraft-mob-grid" class="mt-2">
+  {% for mob in mobs %}
+    <button
+      type="button"
+      class="btn btn-secondary minecraft-mob-toggle m-1"
+      data-mob-id="{{ mob.id }}"
+      data-mob-name="{{ mob.name }}"
+      data-mob-port="{{ mob.port }}"
+      data-state="off"
+      {% if not mob.enabled %}disabled{% endif %}>
+      {{ mob.name }}: Off <small>port {{ mob.port }}</small>
+    </button>
+  {% endfor %}
+</div>
+<div id="minecraft-mob-results" class="mt-3"></div>
+<script src="/static/js/minecraft_attack.js"></script>
+{% endblock %}

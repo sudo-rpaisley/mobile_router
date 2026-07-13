@@ -7,7 +7,9 @@ import threading
 import asyncio
 import re
 
+from routes import register_blueprints
 from scripts.interfaceTools import *
+from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
     passive_scan,
@@ -17,6 +19,7 @@ from scripts.networkScan import (
 
 
 app = Flask(__name__)
+log_path = configure_logging(app)
 socketio = SocketIO(app)
 
 # Fetch network interfaces at the start
@@ -30,7 +33,7 @@ def poll_interfaces():
         if updated_interfaces != network_interfaces:
             network_interfaces = updated_interfaces
             networkTechnologies = {iface.interface_type for iface in network_interfaces}
-            socketio.emit('update_interfaces', {'interfaces': [iface.__dict__ for iface in network_interfaces]})
+            socketio.emit('update_interfaces', {'interfaces': [iface.to_dict() for iface in network_interfaces]})
         time.sleep(5)  # Poll every 5 seconds
 
 # Start polling in a separate thread
@@ -73,11 +76,17 @@ def favicon():
 def red_team():
     return render_template('red-team.html', title='Red Team', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
 
+
+register_blueprints(app, lambda: {
+    'networkTechnologies': networkTechnologies,
+    'interfaces': network_interfaces,
+})
+
 # Endpoint to fetch the current list of network adapters
 @app.route('/adapters', methods=['POST'])
 def adapters():
     """Return the available network interfaces as JSON."""
-    return jsonify({'interfaces': [iface.__dict__ for iface in network_interfaces]})
+    return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
 
 @app.route('/network-scan')
 def network_scan():
@@ -90,6 +99,7 @@ def port_scan_page():
     return render_template('port_scan.html', title='Port Scan',
                            networkTechnologies=networkTechnologies,
                            interfaces=network_interfaces)
+
 
 @app.route('/traceroute')
 def traceroute_page():
@@ -154,9 +164,15 @@ def port_scan_route():
         start_port = int(start)
         end_port = int(end)
     except ValueError:
-        return jsonify({'status': 'error', 'message': 'Invalid port range'}), 400
-    from scripts.portScanner import scan_ports
-    ports = scan_ports(host, start_port, end_port)
+        return jsonify({'status': 'error', 'message': 'Ports must be integers'}), 400
+
+    from scripts.portScanner import PortScanError, scan_ports
+
+    try:
+        ports = scan_ports(host, start_port, end_port)
+    except PortScanError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
     return jsonify({'ports': ports})
 
 @app.route('/traceroute', methods=['POST'])
@@ -364,5 +380,5 @@ def aireplay_deauth_route():
 if __name__ == '__main__':
     host = '0.0.0.0'
     port = 8080
-    print(f"Server running at http://{host}:{port}")
+    app.logger.info("Server running at http://%s:%s (log file: %s)", host, port, log_path)
     socketio.run(app, host=host, port=port, debug=True)

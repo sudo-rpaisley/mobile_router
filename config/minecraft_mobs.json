@@ -1,0 +1,10 @@
+{
+  "mobs": [
+    {"id": "chicken", "name": "Chicken", "port": 25571, "enabled": true},
+    {"id": "creeper", "name": "Creeper", "port": 25572, "enabled": true},
+    {"id": "zombie", "name": "Zombie", "port": 25573, "enabled": true},
+    {"id": "skeleton", "name": "Skeleton", "port": 25574, "enabled": true},
+    {"id": "spider", "name": "Spider", "port": 25575, "enabled": true},
+    {"id": "enderman", "name": "Enderman", "port": 25576, "enabled": true}
+  ]
+}

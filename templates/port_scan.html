@@ -7,14 +7,14 @@
 <form id="port-scan-form">
   <div class="form-group">
     <label for="scan-host">Host</label>
-    <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1">
+    <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1" required>
   </div>
   <div class="form-row">
     <div class="col">
-      <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1">
+      <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1" min="1" max="65535" required>
     </div>
     <div class="col">
-      <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024">
+      <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024" min="1" max="65535" required>
     </div>
   </div>
   <button id="port-scan-btn" class="btn btn-primary mt-2">Scan</button>

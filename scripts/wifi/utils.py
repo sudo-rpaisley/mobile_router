@@ -1,6 +1,6 @@
 import platform
 import time
-from network import Network
+from .network import Network
 
 # Global dictionary to store networks
 networks = {}
