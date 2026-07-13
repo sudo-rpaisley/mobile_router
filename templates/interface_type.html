@@ -1,21 +1,32 @@
 {% include '_header.html' %}
 <body class="d-flex flex-column min-vh-100">
-    <h1>{{ title }} Interfaces</h1>
-    <div class="container-fluid">
-        <div class="row flex-nowrap overflow-auto">
-            {% for interface in filtered_interfaces %}
-                {% if interface.interface_type == technology %}
-                    <div class="m-2 p-2">
-                        {% if interface.interface_type == 'Wireless' %}
-                            {% include '_adapters-card-large.html' %}
-                        {% else %}
-                            {% include '_adapters-card.html' %}
-                        {% endif %}
-                    </div>
+  <main class="page-shell">
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Adapters</p>
+        <h1 class="page-title">{{ title }} Interfaces</h1>
+        <p class="page-subtitle">Review every {{ title | lower }} interface detected on this device.</p>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <div class="interface-category-list d-flex flex-nowrap overflow-auto" tabindex="0" aria-label="{{ title }} interfaces">
+          {% for interface in filtered_interfaces %}
+            {% if interface.interface_type == technology %}
+              <div class="interface-category-card m-2 p-2">
+                {% if interface.interface_type == 'Wireless' %}
+                  {% include '_adapters-card-large.html' %}
+                {% else %}
+                  {% include '_adapters-card.html' %}
                 {% endif %}
-            {% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
         </div>
-    </div>
+      </div>
+    </section>
+  </main>
 </body>
 <script src="/static/js/wireless-scripts.js"></script>
 {% include '_footer.html' %}

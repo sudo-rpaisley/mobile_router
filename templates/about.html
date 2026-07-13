@@ -3,11 +3,23 @@
 {% block title %}About{% endblock %}
 
 {% block content %}
-<h2>About</h2>
-<p>The Mobile Router interface provides a local dashboard for managing network adapters and trying small red team utilities.</p>
-<ul>
-  <li>Lists wired, wireless and Bluetooth interfaces with live updates.</li>
-  <li>View adapter details and scan for nearby networks or devices.</li>
-  <li>Experiment with DoS and beacon spoofing tools from the Red Team section.</li>
-</ul>
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Mobile Router</p>
+    <h1 class="page-title">About</h1>
+    <p class="page-subtitle">A local dashboard for managing network adapters and safely trying small red-team utilities.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">What this dashboard does</h2>
+    <ul class="theme-list">
+      <li>Lists wired, wireless, VPN, virtual, and Bluetooth interfaces with live updates.</li>
+      <li>Shows adapter details, addresses, operating status, and wireless mode controls.</li>
+      <li>Scans nearby networks or devices from the matching adapter detail page.</li>
+      <li>Provides bounded demos for network scans, traceroute, port scans, and red-team labs.</li>
+    </ul>
+  </div>
+</section>
 {% endblock %}

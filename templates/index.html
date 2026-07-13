@@ -4,7 +4,13 @@
 
 
 {% block content %}
-  <h1>Network Interfaces</h1>
+  <section class="page-hero">
+    <div class="page-hero-copy">
+      <p class="page-kicker">Adapters</p>
+      <h1 class="page-title">Network Interfaces</h1>
+      <p class="page-subtitle">Browse adapters grouped by category, then open a card for details, scanning, and mode controls.</p>
+    </div>
+  </section>
   <div class="container-fluid interface-category-page">
     {% for interface_type, category_interfaces in interfaces | groupby('interface_type') %}
       <section class="interface-category mb-4" aria-labelledby="interface-category-{{ loop.index }}">

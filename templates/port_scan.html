@@ -3,22 +3,37 @@
 {% block title %}Port Scan{% endblock %}
 
 {% block content %}
-<h2>Port Scan</h2>
-<form id="port-scan-form">
-  <div class="form-group">
-    <label for="scan-host">Host</label>
-    <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1" required>
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Services</p>
+    <h1 class="page-title">Port Scan</h1>
+    <p class="page-subtitle">Check a host for open ports in an authorized range.</p>
   </div>
-  <div class="form-row">
-    <div class="col">
-      <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1" min="1" max="65535" required>
-    </div>
-    <div class="col">
-      <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024" min="1" max="65535" required>
-    </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <form id="port-scan-form" class="theme-form">
+      <div class="form-group mb-0">
+        <label for="scan-host">Host</label>
+        <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1" required>
+      </div>
+      <div class="form-row">
+        <div class="col">
+          <label for="scan-start">Start Port</label>
+          <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1" min="1" max="65535" required>
+        </div>
+        <div class="col">
+          <label for="scan-end">End Port</label>
+          <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024" min="1" max="65535" required>
+        </div>
+      </div>
+      <div class="theme-actions">
+        <button id="port-scan-btn" class="btn btn-primary">Scan</button>
+      </div>
+    </form>
+    <div id="port-scan-results" class="theme-results"></div>
   </div>
-  <button id="port-scan-btn" class="btn btn-primary mt-2">Scan</button>
-</form>
-<div id="port-scan-results" class="mt-3"></div>
+</section>
 <script src="/static/js/port_scan.js"></script>
 {% endblock %}

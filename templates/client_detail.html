@@ -1,19 +1,34 @@
 {% include '_header.html' %}
 <body class="d-flex flex-column min-vh-100">
-  <div class="page-contents">
-    <div class="details">
-      <h1>Client {{ mac }}</h1>
-      <ul>
-        <li>IP Address: {{ ip if ip else 'Unknown' }}</li>
-        {% if mac %}
-          <li>MAC Address: {{ mac }}</li>
-          <li>Manufacturer: {{ manufacturer }}</li>
-        {% else %}
-          <li>MAC Address: Unknown</li>
-        {% endif %}
-      </ul>
-    </div>
-  </div>
+  <main class="page-shell">
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Client</p>
+        <h1 class="page-title">{{ mac if mac else ip }}</h1>
+        <p class="page-subtitle">Device identity and manufacturer details discovered from scan results.</p>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Overview</h2>
+        <dl class="interface-definition-list">
+          <div>
+            <dt>IP Address</dt>
+            <dd>{{ ip if ip else 'Unknown' }}</dd>
+          </div>
+          <div>
+            <dt>MAC Address</dt>
+            <dd>{{ mac if mac else 'Unknown' }}</dd>
+          </div>
+          <div>
+            <dt>Manufacturer</dt>
+            <dd>{{ manufacturer }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </main>
 </body>
-  {% include '_footer.html' %}
+{% include '_footer.html' %}
 </html>
