@@ -1,12 +1,14 @@
 import subprocess
 import socket
-from bleak import BleakScanner
-import threading
-import time
+import platform
+import importlib
+import importlib.util
 import os
 import ipaddress
 import re
 import shutil
+
+AF_PACKET_FAMILY = getattr(socket, "AF_PACKET", 17)
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -57,8 +59,6 @@ class NetworkInterface:
         self.state = self.get_state()  # Initialize the state when the object is created
         self.addresses = []
         self.manufacturer = 'Unknown'
-        self.update_thread = threading.Thread(target=self.update_state_periodically, daemon=True)
-        self.update_thread.start()
         self.extra_info = {}
 
     def add_address(self, family, address, netmask, broadcast, ptp):
@@ -76,7 +76,8 @@ class NetworkInterface:
             2: 'AF_INET (IPv4)',
             10: 'AF_INET6 (IPv6)',
             16: 'AF_APPLETALK (AppleTalk)',
-            17: 'AF_PACKET (MAC)',
+            AF_PACKET_FAMILY: 'AF_PACKET (MAC)',
+            getattr(socket, 'AF_LINK', 18): 'AF_LINK (MAC)',
             24: 'AF_PPPOX (PPPoX)',
             29: 'AF_CAN (Controller Area Network)',
             31: 'AF_BLUETOOTH (Bluetooth)',
@@ -87,7 +88,7 @@ class NetworkInterface:
 
     def get_mac_address(self):
         for addr in self.addresses:
-            if addr['family'] == 'AF_PACKET (MAC)':
+            if addr['family'] in {'AF_PACKET (MAC)', 'AF_LINK (MAC)'}:
                 return addr['address']
         return None
 
@@ -104,14 +105,16 @@ class NetworkInterface:
         return None
 
     def get_state(self):
-        """Get the operational state of the interface."""
+        """Get the operational state of the interface when the OS exposes it."""
         state_file = f"/sys/class/net/{self.name}/operstate"
-        try:
-            with open(state_file) as f:
-                state = f.read().strip()
-            return 'UP' if state == 'up' else 'DOWN'
-        except FileNotFoundError:
-            return 'UNKNOWN'
+        if os.path.exists(state_file):
+            try:
+                with open(state_file) as f:
+                    state = f.read().strip()
+                return 'UP' if state == 'up' else 'DOWN'
+            except OSError:
+                return 'UNKNOWN'
+        return 'UNKNOWN'
 
     def update_state(self):
         """Update the state of the interface."""
@@ -119,11 +122,20 @@ class NetworkInterface:
         if new_state != self.state:
             self.state = new_state
 
-    def update_state_periodically(self, interval=5):
-        """Periodically update the state of the interface."""
-        while True:
-            self.update_state()
-            time.sleep(interval)
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'interface_type': self.interface_type,
+            'state': self.state,
+            'addresses': self.addresses,
+            'manufacturer': self.manufacturer,
+            'extra_info': self.extra_info,
+        }
+
+    def __eq__(self, other):
+        if not isinstance(other, NetworkInterface):
+            return NotImplemented
+        return self.to_dict() == other.to_dict()
 
     def __str__(self):
         addresses_str = "\n".join(
@@ -237,13 +249,116 @@ def get_station_info(name):
         return ""
 
 
-def get_network_interfaces():
+def _list_interface_names():
+    """Return interface names without relying on Linux-only /sys paths."""
     base_path = "/sys/class/net"
-    interface_names = [
-        name
-        for name in os.listdir(base_path)
-        if os.path.isdir(os.path.join(base_path, name))
-    ]
+    if os.path.isdir(base_path):
+        return [
+            name
+            for name in os.listdir(base_path)
+            if os.path.isdir(os.path.join(base_path, name))
+        ]
+
+    try:
+        return [name for _, name in socket.if_nameindex()]
+    except OSError:
+        return []
+
+
+def _parse_unix_ifconfig(name):
+    """Parse IPv4, IPv6, and MAC details from ifconfig on macOS/BSD/minimal Linux."""
+    ifconfig_tool = shutil.which("ifconfig")
+    if not ifconfig_tool:
+        return {"mac": None, "ipv4": [], "ipv6": []}
+
+    try:
+        output = subprocess.check_output([ifconfig_tool, name], encoding="utf-8", errors="ignore")
+    except Exception:
+        return {"mac": None, "ipv4": [], "ipv6": []}
+
+    mac = None
+    ipv4 = []
+    ipv6 = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        mac_match = re.search(r"(?:ether|HWaddr)\s+([0-9A-Fa-f:]{17})", stripped)
+        if mac_match:
+            mac = mac_match.group(1).lower()
+
+        inet_match = re.search(r"inet (?:addr:)?(\d+(?:\.\d+){3})", stripped)
+        if inet_match and not stripped.startswith("inet6"):
+            netmask_match = re.search(r"(?:netmask |Mask:)(0x[0-9A-Fa-f]+|\d+(?:\.\d+){3})", stripped)
+            broadcast_match = re.search(r"(?:broadcast |Bcast:)(\d+(?:\.\d+){3})", stripped)
+            netmask = netmask_match.group(1) if netmask_match else None
+            if netmask and netmask.startswith("0x"):
+                try:
+                    netmask = str(ipaddress.IPv4Address(int(netmask, 16)))
+                except ValueError:
+                    netmask = None
+            ipv4.append({"address": inet_match.group(1), "netmask": netmask, "broadcast": broadcast_match.group(1) if broadcast_match else None})
+
+        inet6_match = re.search(r"inet6 (?:addr: )?([0-9A-Fa-f:]+)", stripped)
+        if inet6_match:
+            ipv6.append({"address": inet6_match.group(1), "netmask": None, "broadcast": None})
+
+    return {"mac": mac, "ipv4": ipv4, "ipv6": ipv6}
+
+
+def _parse_windows_ipconfig(name):
+    """Parse adapter details from ipconfig /all for Windows."""
+    try:
+        output = subprocess.check_output(["ipconfig", "/all"], encoding="utf-8", errors="ignore")
+    except Exception:
+        return {"mac": None, "ipv4": [], "ipv6": []}
+
+    blocks = re.split(r"\r?\n\r?\n", output)
+    for block in blocks:
+        header = block.splitlines()[0] if block.splitlines() else ""
+        if name.lower() not in header.lower():
+            continue
+
+        mac = None
+        ipv4 = []
+        ipv6 = []
+        for line in block.splitlines():
+            if "Physical Address" in line:
+                value = line.split(":", 1)[-1].strip().replace("-", ":").lower()
+                if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", value):
+                    mac = value
+            if "IPv4 Address" in line:
+                value = line.split(":", 1)[-1].strip().split("(")[0].strip()
+                ipv4.append({"address": value, "netmask": None, "broadcast": None})
+            if "IPv6 Address" in line and "Temporary" not in line:
+                value = line.split(":", 1)[-1].strip().split("(")[0].strip()
+                ipv6.append({"address": value, "netmask": None, "broadcast": None})
+        return {"mac": mac, "ipv4": ipv4, "ipv6": ipv6}
+
+    return {"mac": None, "ipv4": [], "ipv6": []}
+
+
+def _get_interface_details(name):
+    if platform.system() == "Windows":
+        return _parse_windows_ipconfig(name)
+
+    details = _parse_unix_ifconfig(name)
+    linux_mac_path = f"/sys/class/net/{name}/address"
+    if os.path.exists(linux_mac_path):
+        try:
+            with open(linux_mac_path) as f:
+                details["mac"] = f.read().strip()
+        except OSError:
+            pass
+
+    ip_tool = shutil.which("ip")
+    if ip_tool:
+        details["ipv4"] = _parse_ip_addrs(name, "inet")
+        details["ipv6"] = _parse_ip_addrs(name, "inet6")
+
+    return details
+
+
+def get_network_interfaces():
+    interface_names = _list_interface_names()
     network_objects = []
 
     for name in interface_names:
@@ -257,44 +372,30 @@ def get_network_interfaces():
         elif interface_type == 'Station':
             network_interface.extra_info['link'] = get_station_info(name)
 
-        # MAC address
-        try:
-            with open(f"/sys/class/net/{name}/address") as f:
-                mac = f.read().strip()
-            network_interface.add_address(socket.AF_PACKET, mac, None, None, None)
-        except FileNotFoundError:
-            pass
+        details = _get_interface_details(name)
+        if details["mac"]:
+            network_interface.add_address(AF_PACKET_FAMILY, details["mac"], None, None, None)
 
-        # IPv4 addresses
-        for info in _parse_ip_addrs(name, "inet"):
-            network_interface.add_address(
-                socket.AF_INET,
-                info["address"],
-                info["netmask"],
-                info["broadcast"],
-                None,
-            )
+        for info in details["ipv4"]:
+            network_interface.add_address(socket.AF_INET, info["address"], info["netmask"], info["broadcast"], None)
 
-        # IPv6 addresses
-        for info in _parse_ip_addrs(name, "inet6"):
-            network_interface.add_address(
-                socket.AF_INET6,
-                info["address"],
-                info["netmask"],
-                info["broadcast"],
-                None,
-            )
+        for info in details["ipv6"]:
+            network_interface.add_address(socket.AF_INET6, info["address"], info["netmask"], info["broadcast"], None)
 
-        # Determine manufacturer based on MAC address
         network_interface.manufacturer = lookup_manufacturer(network_interface.get_mac_address())
         network_objects.append(network_interface)
-    
+
     return network_objects
 
 
 async def get_bluetooth_devices():
+    if importlib.util.find_spec("bleak") is None:
+        print("Bluetooth scan unavailable: bleak is not installed")
+        return []
+
+    bleak_module = importlib.import_module("bleak")
     try:
-        devices = await BleakScanner.discover()
+        devices = await bleak_module.BleakScanner.discover()
         bluetooth_objects = [BluetoothDevice(address=device.address, name=device.name) for device in devices]
         return bluetooth_objects
     except Exception as e:

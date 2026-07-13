@@ -30,7 +30,7 @@ def poll_interfaces():
         if updated_interfaces != network_interfaces:
             network_interfaces = updated_interfaces
             networkTechnologies = {iface.interface_type for iface in network_interfaces}
-            socketio.emit('update_interfaces', {'interfaces': [iface.__dict__ for iface in network_interfaces]})
+            socketio.emit('update_interfaces', {'interfaces': [iface.to_dict() for iface in network_interfaces]})
         time.sleep(5)  # Poll every 5 seconds
 
 # Start polling in a separate thread
@@ -73,11 +73,21 @@ def favicon():
 def red_team():
     return render_template('red-team.html', title='Red Team', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
 
+
+@app.route('/capabilities')
+def capabilities_page():
+    from scripts.capabilities import build_capabilities
+
+    return render_template('capabilities.html', title='Capabilities',
+                           networkTechnologies=networkTechnologies,
+                           interfaces=network_interfaces,
+                           capabilities=build_capabilities())
+
 # Endpoint to fetch the current list of network adapters
 @app.route('/adapters', methods=['POST'])
 def adapters():
     """Return the available network interfaces as JSON."""
-    return jsonify({'interfaces': [iface.__dict__ for iface in network_interfaces]})
+    return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
 
 @app.route('/network-scan')
 def network_scan():
@@ -90,6 +100,65 @@ def port_scan_page():
     return render_template('port_scan.html', title='Port Scan',
                            networkTechnologies=networkTechnologies,
                            interfaces=network_interfaces)
+
+@app.route('/minecraft-attack')
+def minecraft_attack_page():
+    from scripts.minecraft_attack import load_mob_mappings
+
+    return render_template('minecraft_attack.html', title='Minecraft Attack',
+                           networkTechnologies=networkTechnologies,
+                           interfaces=network_interfaces,
+                           mobs=load_mob_mappings())
+
+
+@app.route('/minecraft-attack', methods=['POST'])
+def minecraft_attack_route():
+    data = request.form
+    if data.get('authorized') != 'true':
+        return jsonify({'status': 'error', 'message': 'Authorization confirmation is required'}), 400
+
+    host = data.get('host')
+    try:
+        port = int(data.get('port', 25565))
+        requests_count = int(data.get('requests', 25))
+        concurrency = int(data.get('concurrency', 5))
+        timeout = float(data.get('timeout', 1.5))
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Port, requests, concurrency, and timeout must be numeric'}), 400
+
+    from scripts.minecraft_attack import MinecraftAttackError, run_status_load_test
+
+    try:
+        result = run_status_load_test(host, port, requests_count, concurrency, timeout)
+    except MinecraftAttackError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+    return jsonify({'status': 'success', 'result': result.to_dict()})
+
+
+@app.route('/minecraft-attack/mobs/<mob_id>/toggle', methods=['POST'])
+def minecraft_mob_toggle_route(mob_id):
+    data = request.form
+    if data.get('authorized') != 'true':
+        return jsonify({'status': 'error', 'message': 'Authorization confirmation is required'}), 400
+
+    host = data.get('host')
+    state = data.get('state')
+    try:
+        timeout = float(data.get('timeout', 1.5))
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Timeout must be numeric'}), 400
+
+    from scripts.minecraft_attack import MinecraftAttackError, send_mob_toggle
+
+    try:
+        result = send_mob_toggle(host, mob_id, state, timeout)
+    except MinecraftAttackError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+    except OSError as e:
+        return jsonify({'status': 'error', 'message': f'Mob toggle connection failed: {str(e)}'}), 502
+
+    return jsonify({'status': 'success', 'result': result})
 
 @app.route('/traceroute')
 def traceroute_page():
@@ -154,9 +223,15 @@ def port_scan_route():
         start_port = int(start)
         end_port = int(end)
     except ValueError:
-        return jsonify({'status': 'error', 'message': 'Invalid port range'}), 400
-    from scripts.portScanner import scan_ports
-    ports = scan_ports(host, start_port, end_port)
+        return jsonify({'status': 'error', 'message': 'Ports must be integers'}), 400
+
+    from scripts.portScanner import PortScanError, scan_ports
+
+    try:
+        ports = scan_ports(host, start_port, end_port)
+    except PortScanError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
     return jsonify({'ports': ports})
 
 @app.route('/traceroute', methods=['POST'])

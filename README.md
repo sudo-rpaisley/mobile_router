@@ -22,9 +22,10 @@ wireless and wired adapters.
 
 ## Setup
 
-Running the following script will ensure Python 3 is available, install any
-required packages to a local `pylibs` directory and then start the server.
-If `requirements.txt` is missing the dependency step will be skipped.
+Running the following script will ensure Python 3 is available, install the
+core packages from `requirements.txt` to a local `pylibs` directory and then
+start the server. If `requirements.txt` is missing the dependency step will be
+skipped.
 
 ```bash
 ./setup.sh
@@ -37,6 +38,22 @@ directory on another machine and copy it to the router.
 This project avoids packages that require native extensions. The network
 interface code now uses built-in utilities instead of `psutil` so the
 application can run on systems without a compiler.
+
+
+## Platform Compatibility
+
+The core web UI and Minecraft lab are designed to run on Windows, macOS, Linux,
+and constrained Linux/OpenWRT devices such as the GL.iNet GL-AXT1800. Network
+interface discovery uses built-in OS commands (`ip`, `ifconfig`, `ipconfig`) and
+Python's socket APIs instead of native-extension inventory libraries.
+
+Some radio-specific features still depend on platform tools or optional Python
+packages being present. For example, Bluetooth scanning requires `bleak`, Wi-Fi
+packet capture requires Linux monitor-mode support and `scapy`, and Windows Wi-Fi
+connection management requires `pywifi`. These optional packages live in
+`requirements-optional.txt` so limited systems can install only the core web app.
+When optional tools are missing, the core app should continue running while the
+specific feature returns no results or an error message.
 
 ## Usage
 
