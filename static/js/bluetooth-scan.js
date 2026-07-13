@@ -9,15 +9,15 @@ $(document).ready(function () {
   }
 
   const bluetoothActions = [
-    { action: 'info', label: 'Info', style: 'outline-secondary', icon: 'circle-info' },
-    { action: 'connect', label: 'Connect', style: 'outline-primary', icon: 'link' },
-    { action: 'disconnect', label: 'Disconnect', style: 'outline-warning', icon: 'link-slash' },
-    { action: 'pair', label: 'Pair', style: 'outline-primary', icon: 'handshake' },
-    { action: 'trust', label: 'Trust', style: 'outline-success', icon: 'shield-halved' },
-    { action: 'untrust', label: 'Untrust', style: 'outline-secondary', icon: 'shield' },
-    { action: 'block', label: 'Block', style: 'outline-danger', icon: 'ban' },
-    { action: 'unblock', label: 'Unblock', style: 'outline-success', icon: 'check' },
-    { action: 'remove', label: 'Remove', style: 'outline-danger', icon: 'trash' }
+    { action: 'info', label: 'Info', style: 'outline-secondary', icon: 'circle-info', description: 'Show cached details and controller state for this Bluetooth device.' },
+    { action: 'connect', label: 'Connect', style: 'outline-primary', icon: 'link', description: 'Ask this host adapter to connect to the selected device.' },
+    { action: 'disconnect', label: 'Disconnect', style: 'outline-warning', icon: 'link-slash', description: 'Disconnect this device from this host adapter only.' },
+    { action: 'pair', label: 'Pair', style: 'outline-primary', icon: 'handshake', description: 'Start pairing this device with this host adapter.' },
+    { action: 'trust', label: 'Trust', style: 'outline-success', icon: 'shield-halved', description: 'Mark this device as trusted for future local connections.' },
+    { action: 'untrust', label: 'Untrust', style: 'outline-secondary', icon: 'shield', description: 'Remove trusted status for this device on this host.' },
+    { action: 'block', label: 'Block', style: 'outline-danger', icon: 'ban', description: 'Block local connections from this Bluetooth device.' },
+    { action: 'unblock', label: 'Unblock', style: 'outline-success', icon: 'check', description: 'Allow local connections from this Bluetooth device again.' },
+    { action: 'remove', label: 'Remove', style: 'outline-danger', icon: 'trash', description: 'Remove the device from this host adapter pairing cache.' }
   ];
 
   function renderDevice(device, actionCapability) {
@@ -26,9 +26,9 @@ $(document).ready(function () {
     const manufacturer = device.manufacturer || 'Unknown manufacturer';
     const actionsAvailable = Boolean(actionCapability?.available);
     const disabled = actionsAvailable ? '' : 'disabled';
-    const disabledTitle = actionsAvailable ? '' : `title="${escapeHtml(actionCapability?.message || 'Bluetooth actions are unavailable on this host.')}"`;
     const actionButtons = bluetoothActions.map(function (item) {
-      return `<button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}" ${disabled} ${disabledTitle}><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button>`;
+      const tooltip = actionsAvailable ? item.description : `${item.description} ${actionCapability?.message || 'Bluetooth actions are unavailable on this host.'}`;
+      return `<span class="bluetooth-action-tooltip" data-toggle="tooltip" data-placement="top" title="${escapeHtml(tooltip)}"><button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}" aria-label="${escapeHtml(item.label + ': ' + tooltip)}" ${disabled}><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button></span>`;
     }).join('');
 
     return `
@@ -73,6 +73,7 @@ $(document).ready(function () {
         }
         btDiv += `</div></section>`;
         result.html(btDiv);
+        result.find('[data-toggle="tooltip"]').tooltip({ container: 'body' });
       },
       error: function (xhr) {
         const message = xhr.responseJSON?.message || 'Error occurred during Bluetooth scan';

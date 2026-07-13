@@ -104,7 +104,7 @@ $(document).ready(function () {
             <div class="wireless-network-badges">
               <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
               <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
-              <span class="badge badge-info"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
+              <span class="badge badge-info" title="Open the full network detail page for APs, clients, gateway, and radio information"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
             </div>
           </div>
           <div class="wireless-network-bottom">
@@ -115,7 +115,7 @@ $(document).ready(function () {
               <div class="input-group input-group-sm">
                 <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">
                 <div class="input-group-append">
-                  <button class="btn btn-outline-primary" type="submit">Connect</button>
+                  <button class="btn btn-outline-primary" type="submit" title="Connect this host adapter to the selected SSID using the supplied password">Connect</button>
                 </div>
               </div>
             </form>

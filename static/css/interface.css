@@ -367,3 +367,7 @@
   flex-wrap: wrap;
   gap: 0.35rem;
 }
+
+.bluetooth-action-tooltip {
+  display: inline-flex;
+}
