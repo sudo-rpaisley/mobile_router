@@ -57,11 +57,11 @@
 
 <section class="theme-card card">
   <div class="card-body">
-    <h2 class="theme-section-title">Commands</h2>
+    <h2 class="theme-section-title">Relevant Commands</h2>
     <table class="table table-sm theme-table">
       <thead><tr><th>Command</th><th>Status</th><th>Path</th></tr></thead>
       <tbody>
-        {% for command, info in capabilities.commands.items() %}
+        {% for command, info in capabilities.display_commands.items() %}
           <tr>
             <td>{{ command }}</td>
             <td>{% if info.available %}<span class="badge badge-success">Found</span>{% else %}<span class="badge badge-warning">Missing</span>{% endif %}</td>

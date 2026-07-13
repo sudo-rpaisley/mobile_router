@@ -27,6 +27,14 @@ def _available(commands, *names):
     return any(commands.get(name, {}).get("available") for name in names)
 
 
+def _display_command_names(system):
+    if system == "Windows":
+        return ["ipconfig", "arp", "ping", "tracert", "netsh", "powershell", "pwsh"]
+    if system == "Linux":
+        return ["ip", "ifconfig", "arp", "ping", "traceroute", "tracepath", "nmcli", "iw", "bluetoothctl", "rfkill", "hciconfig", "aireplay-ng"]
+    return ["ifconfig", "ping", "traceroute", "arp"]
+
+
 def build_capabilities() -> Dict[str, object]:
     commands = command_status(CORE_COMMANDS + OPTIONAL_COMMANDS)
     packages = package_status(OPTIONAL_PACKAGES)
@@ -66,6 +74,9 @@ def build_capabilities() -> Dict[str, object]:
         "Aireplay deauth": "Requires the external aireplay-ng command from aircrack-ng.",
     }
 
+    display_command_names = _display_command_names(system)
+    display_commands = {name: commands[name] for name in display_command_names if name in commands}
+
     return {
         "platform": {
             "system": system,
@@ -74,6 +85,7 @@ def build_capabilities() -> Dict[str, object]:
             "python_version": sys.version.split()[0],
         },
         "commands": commands,
+        "display_commands": display_commands,
         "packages": packages,
         "features": features,
         "feature_notes": feature_notes,
