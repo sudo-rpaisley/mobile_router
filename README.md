@@ -48,9 +48,12 @@ interface discovery uses built-in OS commands (`ip`, `ifconfig`, `ipconfig`) and
 Python's socket APIs instead of native-extension inventory libraries.
 
 Some radio-specific features still depend on platform tools or optional Python
-packages being present. For example, Bluetooth scanning requires `bleak`, Wi-Fi
-packet capture requires Linux monitor-mode support and `scapy`, and Windows Wi-Fi
-connection management requires `pywifi`. These optional packages live in
+packages being present. Bluetooth scanning can use `bleak` for BLE discovery and
+falls back to Windows PowerShell or Linux `bluetoothctl` when available. Wi-Fi
+network scanning can use `nmcli`/`iw`/`scapy` on Linux or `netsh`/`pywifi` on
+Windows; deeper Linux packet capture still requires monitor-mode support and
+`scapy`. Windows Wi-Fi connection management requires `pywifi`, and aireplay
+deauthentication requires `aireplay-ng`. Optional Python packages live in
 `requirements-optional.txt` so limited systems can install only the core web app.
 When optional tools are missing, the core app should continue running while the
 specific feature returns no results or an error message.

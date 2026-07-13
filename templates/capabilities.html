@@ -34,7 +34,12 @@
         <tbody>
           {% for feature, available in capabilities.features.items() %}
             <tr>
-              <td>{{ feature }}</td>
+              <td>
+                {{ feature }}
+                {% if capabilities.feature_notes.get(feature) %}
+                  <div class="text-muted small">{{ capabilities.feature_notes.get(feature) }}</div>
+                {% endif %}
+              </td>
               <td>{% if available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
             </tr>
           {% endfor %}
