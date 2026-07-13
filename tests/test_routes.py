@@ -1,6 +1,8 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import app as app_module
 from app import app
 
 
@@ -12,6 +14,22 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Runtime Capabilities', response.data)
+
+
+    def test_interface_type_preserves_uppercase_vpn(self):
+        vpn_interface = SimpleNamespace(
+            name='VPN Adapter',
+            interface_type='VPN',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+        )
+        with patch.object(app_module, 'network_interfaces', [vpn_interface]):
+            response = self.client.get('/vpn')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'VPN Interfaces', response.data)
+        self.assertIn(b'VPN Adapter', response.data)
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

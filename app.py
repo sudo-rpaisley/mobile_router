@@ -226,10 +226,11 @@ def traceroute_route():
 
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
-    interface_type = interface_type.capitalize()
-    filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
+    requested_type = interface_type.lower()
+    filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == requested_type]
     if filtered_interfaces:
-        return render_template('interface_type.html', title=f'{interface_type}', filtered_interfaces=filtered_interfaces, technology=interface_type, **current_context())
+        display_type = filtered_interfaces[0].interface_type
+        return render_template('interface_type.html', title=display_type, filtered_interfaces=filtered_interfaces, technology=display_type, **current_context())
     else:
         return "No interfaces found for this type", 404
 
