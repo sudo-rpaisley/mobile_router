@@ -34,7 +34,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'VPN Interfaces', response.data)
         self.assertIn(b'VPN Adapter', response.data)
 
-    def test_wireless_type_page_links_to_detail_without_scan_controls(self):
+    def test_wireless_type_page_uses_standard_adapter_card_without_scan_controls(self):
         wireless_interface = SimpleNamespace(
             name='WiFi',
             interface_type='Wireless',
@@ -50,9 +50,9 @@ class RouteSmokeTest(unittest.TestCase):
             response = self.client.get('/wireless')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'View Adapter Details', response.data)
         self.assertIn(b'adapter-card', response.data)
         self.assertIn(b'interface-icon', response.data)
+        self.assertNotIn(b'adapter-card-large', response.data)
         self.assertNotIn(b'Scan for Networks', response.data)
         self.assertNotIn(b'id="wlans-WiFi"', response.data)
 

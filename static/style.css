@@ -233,8 +233,7 @@ html[data-theme="dark"] pre {
 }
 
 html[data-theme="dark"] .dropdown-item,
-html[data-theme="dark"] .no-link-design,
-html[data-theme="dark"] .adapter-card-link {
+html[data-theme="dark"] .no-link-design {
     color: var(--theme-text) !important;
 }
 

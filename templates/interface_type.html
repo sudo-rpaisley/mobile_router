@@ -13,11 +13,7 @@
         <div class="interface-category-list d-flex flex-nowrap overflow-auto" tabindex="0" aria-label="{{ title }} interfaces">
           {% for interface in filtered_interfaces %}
             <div class="interface-category-card">
-              {% if interface.interface_type == 'Wireless' %}
-                {% include '_adapters-card-large.html' %}
-              {% else %}
-                {% include '_adapters-card.html' %}
-              {% endif %}
+              {% include '_adapters-card.html' %}
             </div>
           {% endfor %}
         </div>

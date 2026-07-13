@@ -24,13 +24,6 @@
   flex: 1 1 auto;
 }
 
-.adapter-card-large .adapter-card-link {
-  flex: 1 1 auto;
-}
-
-.adapter-card-large .adapter-card-row {
-  min-height: 100%;
-}
 
 .adapter-card.card:hover,
 .adapters-card:hover {
@@ -46,12 +39,6 @@
   flex-wrap: nowrap;
 }
 
-.adapter-card-link {
-  color: inherit !important;
-  display: flex;
-  text-decoration: none !important;
-  width: 100%;
-}
 
 .interface-icon,
 .interfaceImage {
@@ -93,15 +80,7 @@
   word-break: normal;
 }
 
-.adapter-card-large .card-body {
-  padding-bottom: 0.65rem;
-}
 
-.adapter-detail-link {
-  display: block;
-  margin: 0 auto 0.65rem;
-  width: calc(100% - 1.5rem);
-}
 
 .interfaceBody {
   width: 70%;
