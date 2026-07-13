@@ -124,3 +124,56 @@ BSS 11:22:33:44:55:66(on wlan0)
     assert summary[0]['signal'] == -42
     assert summary[0]['security'] == 'WPA2/WPA3'
     assert summary[1]['security'] == 'Open'
+
+
+def test_record_observed_device_adds_client_to_matching_access_point():
+    utils.networks = {}
+    utils._add_network('Office', 'AA:BB:CC:DD:EE:FF', 6, -42, 'WPA2')
+
+    recorded = utils._record_observed_device('aa:bb:cc:dd:ee:ff', '10:22:33:44:55:66', -51)
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert recorded is True
+    assert detail['clients'] == [
+        {
+            'mac': '10:22:33:44:55:66',
+            'signal': -51,
+            'signal_label': '-51 dBm',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+        }
+    ]
+    assert detail['access_points'][0]['clients'][0]['mac'] == '10:22:33:44:55:66'
+
+
+def test_record_observed_device_ignores_ap_broadcast_and_unknown_bssid():
+    utils.networks = {}
+    utils._add_network('Office', 'aa:bb:cc:dd:ee:ff', 6, -42, 'WPA2')
+
+    assert utils._record_observed_device('aa:bb:cc:dd:ee:ff', 'aa:bb:cc:dd:ee:ff', -51) is False
+    assert utils._record_observed_device('aa:bb:cc:dd:ee:ff', 'ff:ff:ff:ff:ff:ff', -51) is False
+    assert utils._record_observed_device('22:33:44:55:66:77', '10:22:33:44:55:66', -51) is False
+    assert utils.get_network_detail(ssid='Office')['clients'] == []
+
+
+def test_linux_scan_listens_for_devices_after_active_scan(monkeypatch):
+    utils.networks = {}
+
+    monkeypatch.setattr(utils.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(
+        utils,
+        '_scan_linux_with_nmcli',
+        lambda interface_name: utils._add_network('Office', 'aa:bb:cc:dd:ee:ff', 6, -42, 'WPA2'),
+    )
+    monkeypatch.setattr(utils, '_scan_linux_with_iw', lambda interface_name: None)
+    monkeypatch.setattr(
+        utils,
+        '_scan_linux_with_scapy',
+        lambda interface_name, timeout: utils._record_observed_device('aa:bb:cc:dd:ee:ff', '10:22:33:44:55:66', -51),
+    )
+    monkeypatch.setattr(utils, 'display_all_networks', lambda: None)
+    monkeypatch.setattr(utils, 'send_alerts', lambda: None)
+
+    utils.scan_networks('wlan0', timeout=12)
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert detail['clients'][0]['mac'] == '10:22:33:44:55:66'

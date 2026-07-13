@@ -71,8 +71,65 @@ def _add_network(ssid, bssid=None, channel=None, signal=None, security=None):
         networks[network_key].security = security
 
     if bssid:
-        networks[network_key].add_access_point(bssid, channel, signal)
+        networks[network_key].add_access_point(_normalize_mac(bssid), channel, signal)
 
+
+def _normalize_mac(mac):
+    return (mac or '').strip().lower()
+
+
+def _is_usable_device_mac(mac):
+    normalized = _normalize_mac(mac)
+    if not normalized or normalized == 'ff:ff:ff:ff:ff:ff':
+        return False
+    first_octet = normalized.split(':', 1)[0]
+    try:
+        return not bool(int(first_octet, 16) & 1)
+    except ValueError:
+        return False
+
+
+def _find_network_by_bssid(bssid):
+    normalized_bssid = _normalize_mac(bssid)
+    if not normalized_bssid:
+        return None, None
+    for network in networks.values():
+        for ap in network.access_points:
+            if _normalize_mac(ap.bssid) == normalized_bssid:
+                return network, ap
+    return None, None
+
+
+def _record_observed_device(bssid, device_mac, signal=None):
+    """Attach an observed wireless device to the network/AP where it was seen."""
+    normalized_bssid = _normalize_mac(bssid)
+    normalized_device = _normalize_mac(device_mac)
+    if not _is_usable_device_mac(normalized_device) or normalized_device == normalized_bssid:
+        return False
+
+    network, ap = _find_network_by_bssid(normalized_bssid)
+    if not network or not ap:
+        return False
+
+    network.add_client(ap.bssid, normalized_device, signal)
+    return True
+
+
+def _known_bssid_from_addresses(*addresses):
+    for address in addresses:
+        network, ap = _find_network_by_bssid(address)
+        if network and ap:
+            return ap.bssid
+    return None
+
+
+def _device_from_addresses(bssid, *addresses):
+    normalized_bssid = _normalize_mac(bssid)
+    for address in addresses:
+        normalized = _normalize_mac(address)
+        if normalized != normalized_bssid and _is_usable_device_mac(normalized):
+            return normalized
+    return None
 
 def _run_command(command, timeout=20):
     return subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
@@ -165,29 +222,37 @@ def _scan_linux_with_iw(interface_name):
 
 def _scan_linux_with_scapy(interface_name, timeout):
     from scapy.all import sniff
-    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt, Dot11ProbeReq, Dot11AssoReq, Dot11Addr2, Dot11Addr3
+    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt
 
     if not interface_name:
         raise RuntimeError("A wireless interface is required for packet scanning")
 
     def sniff_networks(packet):
+        if not packet.haslayer(Dot11):
+            return
+
+        dot11 = packet[Dot11]
+        addr1 = getattr(dot11, 'addr1', None)
+        addr2 = getattr(dot11, 'addr2', None)
+        addr3 = getattr(dot11, 'addr3', None)
+        dbm_signal = getattr(packet, "dBm_AntSignal", None)
+
         if packet.haslayer(Dot11Beacon) or packet.haslayer(Dot11ProbeResp):
-            ssid = packet[Dot11Elt].info.decode(errors="replace")
-            bssid = packet[Dot11].addr3
+            ssid = packet[Dot11Elt].info.decode(errors="replace") if packet.haslayer(Dot11Elt) else None
+            bssid = addr3 or addr2
             channel = None
             if packet.haslayer(Dot11Elt) and packet.getlayer(Dot11Elt, ID=3):
                 channel_info = packet.getlayer(Dot11Elt, ID=3).info
                 channel = channel_info[0] if channel_info else None
-            dbm_signal = getattr(packet, "dBm_AntSignal", None)
             _add_network(ssid, bssid, channel, dbm_signal)
+            return
 
-        if packet.haslayer(Dot11AssoReq) or packet.haslayer(Dot11ProbeReq):
-            client_mac = packet[Dot11Addr2].addr2
-            bssid = packet[Dot11Addr3].addr3
-            dbm_signal = getattr(packet, "dBm_AntSignal", None)
+        bssid = _known_bssid_from_addresses(addr3, addr1, addr2)
+        if not bssid:
+            return
 
-            for network in networks.values():
-                network.add_client(bssid, client_mac, dbm_signal)
+        device_mac = _device_from_addresses(bssid, addr2, addr1, addr3)
+        _record_observed_device(bssid, device_mac, dbm_signal)
 
     sniff(iface=interface_name, prn=sniff_networks, timeout=timeout)
 
@@ -197,7 +262,6 @@ def _parse_signal(signal):
         return int(signal)
     except (TypeError, ValueError):
         return signal or None
-
 
 
 def _parse_percent_signal(signal):
@@ -294,11 +358,12 @@ def scan_networks(interface_name=None, timeout=12):
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
             scan_errors.append(str(exc))
 
-        if _network_count() == 0:
-            try:
-                _scan_linux_with_scapy(interface_name, timeout)
-            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
-                scan_errors.append(str(exc))
+        sniff_timeout = timeout if _network_count() == 0 else min(timeout, 5)
+        try:
+            _scan_linux_with_scapy(interface_name, sniff_timeout)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+            scan_errors.append(str(exc))
+            if _network_count() == 0:
                 raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
     elif system == "Windows":
         scan_errors = []
