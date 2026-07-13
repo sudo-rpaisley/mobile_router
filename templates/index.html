@@ -9,6 +9,10 @@
       <h1 class="page-title">Network Interfaces</h1>
       <p class="page-subtitle">Browse adapters grouped by category, then open a card for details, scanning, and mode controls.</p>
     </div>
+    <div class="page-hero-actions">
+      <a class="btn btn-outline-primary" href="/export/interfaces.json">Export interfaces</a>
+      <a class="btn btn-outline-secondary" href="/export/capabilities.json">Export capabilities</a>
+    </div>
   </section>
   <div class="container-fluid interface-category-page">
     {% for interface_type, category_interfaces in interfaces | groupby('interface_type') %}

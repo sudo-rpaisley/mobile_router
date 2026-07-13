@@ -77,7 +77,7 @@ $(document).ready(function () {
       },
       error: function (xhr) {
         const message = xhr.responseJSON?.message || 'Error occurred during Bluetooth scan';
-        result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)}</div>`);
+        result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);
       },
       complete: function () {
         button.prop('disabled', false).text('Scan for Devices');

@@ -376,3 +376,22 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   background: var(--theme-surface-soft);
   box-shadow: inset 0 0 0 1px var(--theme-border);
 }
+
+.interface-readiness-card {
+  grid-column: 1 / -1;
+}
+
+.readiness-list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.readiness-list li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

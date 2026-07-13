@@ -52,6 +52,30 @@
         </div>
       </article>
 
+
+      <article class="card shadow-sm interface-readiness-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Action Readiness</h2>
+          <ul class="readiness-list">
+            <li><span class="badge badge-success">Ready</span> Interface inventory and address details</li>
+            {% if interface.interface_type == 'Wireless' %}
+              <li><span class="badge badge-primary">Available</span> Wireless network scan and adapter mode checks</li>
+              <li><span class="badge badge-info">Optional</span> pywifi/scapy may unlock deeper Wi-Fi actions</li>
+            {% elif interface.interface_type == 'Bluetooth' %}
+              <li><span class="badge badge-primary">Available</span> Bluetooth device scan</li>
+              <li><span class="badge badge-info">Host tools</span> Actions require BlueZ bluetoothctl or busctl support</li>
+            {% else %}
+              <li><span class="badge badge-primary">Available</span> Active/passive network scans from the Scan page</li>
+              <li><span class="badge badge-info">Available</span> Port scan and traceroute workflows</li>
+            {% endif %}
+            {% if not interface.addresses %}
+              <li><span class="badge badge-warning">Attention</span> No interface addresses were reported</li>
+            {% endif %}
+          </ul>
+          <a class="btn btn-sm btn-outline-primary" href="/capabilities">View capability details</a>
+        </div>
+      </article>
+
       <article class="card shadow-sm interface-address-card">
         <div class="card-body">
           <h2 class="interface-section-title">Addresses</h2>

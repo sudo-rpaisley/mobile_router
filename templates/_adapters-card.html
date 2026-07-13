@@ -15,6 +15,18 @@
           {% include '_manufacturerIcon.html' %}
         </h5>
 
+        <div class="adapter-health-badges mb-2">
+          {% if interface.state == 'UP' %}
+            <span class="badge badge-success">Ready</span>
+          {% elif interface.state %}
+            <span class="badge badge-secondary">{{ interface.state }}</span>
+          {% endif %}
+          {% if not interface.addresses %}
+            <span class="badge badge-warning">No address</span>
+          {% endif %}
+          <span class="badge badge-info">{{ interface.interface_type }}</span>
+        </div>
+
         <p class="card-text mb-0">
           Type:
           <a href="/{{ interface.interface_type | lower }}"

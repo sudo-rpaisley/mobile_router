@@ -229,7 +229,7 @@ $(document).ready(function () {
         if (networks.length === 0) {
           resultDiv.html(`
             <div class="alert alert-info mt-3" role="alert">
-              No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point or scanning again.
+              No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point, scanning again, or checking <a href="/capabilities">capabilities</a>.
             </div>
           `);
           return;
@@ -239,7 +239,7 @@ $(document).ready(function () {
       },
       error: function (xhr) {
         const message = xhr.responseJSON?.message || 'Error occurred during network scan';
-        resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)}</div>`);
+        resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities" class="alert-link">Check capabilities</a>.</div>`);
       },
       complete: function () {
         button.prop('disabled', false).text('Scan for Networks');

@@ -319,6 +319,25 @@ def adapters():
     return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
 
 
+
+
+@app.route('/export/interfaces.json')
+def export_interfaces_json():
+    return jsonify({
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'exported_at': time.time(),
+    })
+
+
+@app.route('/export/capabilities.json')
+def export_capabilities_json():
+    from scripts.capabilities import build_capabilities
+    return jsonify({
+        'capabilities': build_capabilities(),
+        'exported_at': time.time(),
+    })
+
+
 @app.route('/network-scan')
 def network_scan():
     return render_template('network_scan.html', title='Network Scan', **current_context())
