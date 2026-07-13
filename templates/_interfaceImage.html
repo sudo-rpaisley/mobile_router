@@ -1,30 +1,25 @@
 <!-- /root/flaskapp/templates/_interfaceImage.html -->
+{% set active_color = 'text-primary' if interface.state == 'UP' else 'text-black' %}
 <div class="col-md-3 d-flex align-items-center justify-content-center p-3">
   {% if interface.interface_type == 'Wireless' %}
-    {% if interface.state == 'UP' %}
-      <i class="fa-solid fa-wifi fa-3x text-primary"></i>
-    {% else %}
-      <i class="fa-solid fa-wifi fa-3x text-black"></i>
-    {% endif %}
+    <i class="fa-solid fa-wifi fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Wired' %}
-    {% if interface.state == 'UP' %}
-      <i class="fa-solid fa-ethernet fa-3x text-primary"></i>
-    {% else %}
-      <i class="fa-solid fa-ethernet fa-3x text-black"></i>
-    {% endif %}
+    <i class="fa-solid fa-ethernet fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Loopback' %}
     <i class="fa-solid fa-house fa-3x text-primary"></i>
   {% elif interface.interface_type == 'Bluetooth' %}
-    {% if interface.state == 'DOWN' %}
-      <i class="fa-brands fa-bluetooth-b fa-3x text-black"></i>
-    {% else %}
-      <i class="fa-brands fa-bluetooth-b fa-3x text-primary"></i>
-    {% endif %}
+    <i class="fa-brands fa-bluetooth-b fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Bridge' %}
-    <i class="fa-solid fa-project-diagram fa-3x text-primary"></i>
+    <i class="fa-solid fa-project-diagram fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Bond' %}
-    <i class="fa-solid fa-link fa-3x text-primary"></i>
+    <i class="fa-solid fa-link fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Station' %}
-    <i class="fa-solid fa-broadcast-tower fa-3x text-primary"></i>
+    <i class="fa-solid fa-broadcast-tower fa-3x {{ active_color }}"></i>
+  {% elif interface.interface_type == 'VPN' %}
+    <i class="fa-solid fa-shield-halved fa-3x {{ active_color }}"></i>
+  {% elif interface.interface_type == 'Virtual' %}
+    <i class="fa-solid fa-server fa-3x {{ active_color }}"></i>
+  {% else %}
+    <i class="fa-solid fa-network-wired fa-3x {{ active_color }}"></i>
   {% endif %}
 </div>
