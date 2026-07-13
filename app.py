@@ -287,26 +287,6 @@ def create_scan_job(scan_type, selected_interface):
     return scan_jobs[job_id]
 
 
-def build_network_map():
-    return {
-        'adapters': [
-            {
-                'name': iface.name,
-                'type': iface.interface_type,
-                'state': getattr(iface, 'state', None),
-                'addresses': [
-                    {
-                        'family': addr.get('family') if isinstance(addr, dict) else addr.family,
-                        'address': addr.get('address') if isinstance(addr, dict) else addr.address,
-                    }
-                    for addr in getattr(iface, 'addresses', [])
-                ],
-            }
-            for iface in network_interfaces
-        ]
-    }
-
-
 def current_context():
     return {
         'networkTechnologies': networkTechnologies,
@@ -375,11 +355,6 @@ def red_team():
 @app.route('/roadmap')
 def roadmap_page():
     return render_template('roadmap.html', title='Roadmap', roadmap_sections=ROADMAP_SECTIONS, **current_context())
-
-
-@app.route('/network-map')
-def network_map_page():
-    return render_template('network_map.html', title='Network Map', map_data=build_network_map(), **current_context())
 
 
 register_blueprints(app, current_context)

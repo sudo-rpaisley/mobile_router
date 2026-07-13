@@ -18,13 +18,6 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
 
-
-    def test_network_map_page_renders(self):
-        response = self.client.get('/network-map')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Network Map', response.data)
-        self.assertIn(b'Adapters and Addresses', response.data)
-
     def test_roadmap_page_renders_project_ideas(self):
         response = self.client.get('/roadmap')
         self.assertEqual(response.status_code, 200)

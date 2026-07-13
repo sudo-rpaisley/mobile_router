@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var pollIntervalMs = 5000;
   var lastSnapshot = null;
   var socketConnected = false;
-  var lastInterfaces = null;
 
   function setStatus(message) {
     if (status) {
@@ -55,30 +54,14 @@ document.addEventListener('DOMContentLoaded', function () {
       });
   }
 
-  function announceNewInterfaces(interfaces) {
-    if (!lastInterfaces || !window.deviceAlerts) {
-      lastInterfaces = interfaces || [];
-      return;
-    }
-    var known = new Set(lastInterfaces.map(function (iface) { return iface.name; }));
-    (interfaces || []).forEach(function (iface) {
-      if (!known.has(iface.name)) {
-        window.deviceAlerts.notify('New adapter detected', `${iface.name} (${iface.interface_type || 'Unknown'})`);
-      }
-    });
-    lastInterfaces = interfaces || [];
-  }
-
   function handleAdapterChange(interfaces) {
     var nextSnapshot = snapshot(interfaces);
     if (lastSnapshot === null) {
       lastSnapshot = nextSnapshot;
-      announceNewInterfaces(interfaces);
       return;
     }
     if (nextSnapshot !== lastSnapshot) {
       lastSnapshot = nextSnapshot;
-      announceNewInterfaces(interfaces);
       refreshPageFragments();
     }
   }

@@ -36,23 +36,6 @@ $(document).ready(function () {
     }).first();
   }
 
-  function networkKey(network) {
-    return `${network.ssid || '<Hidden SSID>'}|${network.bssid || ''}`;
-  }
-
-  function announceNewNetworks(interfaceName, networks) {
-    if (!window.deviceAlerts) {
-      return;
-    }
-    const previous = new Set(loadCachedNetworks(interfaceName).map(networkKey));
-    networks.forEach(function (network) {
-      const key = networkKey(network);
-      if (!previous.has(key)) {
-        window.deviceAlerts.notify('New Wi-Fi network', `${network.ssid || '<Hidden SSID>'} on ${interfaceName}`);
-      }
-    });
-  }
-
   function saveCachedNetworks(interfaceName, networks) {
     try {
       window.sessionStorage.setItem(scanCacheKey(interfaceName), JSON.stringify({
@@ -271,7 +254,6 @@ $(document).ready(function () {
             resultDiv.html(`<div class="alert alert-info mt-3" role="alert">No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point, scanning again, or checking <a href="/capabilities">capabilities</a>.</div>`);
             return;
           }
-          announceNewNetworks(interfaceName, networks);
           saveCachedNetworks(interfaceName, networks);
           resultDiv.html(renderNetworks(interfaceName, networks));
         }, function (message) {

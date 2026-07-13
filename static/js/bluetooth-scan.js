@@ -21,34 +21,6 @@ $(document).ready(function () {
   ];
 
 
-
-  function bluetoothCacheKey(interfaceName) {
-    return `mobile-router:bluetooth-scan:${interfaceName}`;
-  }
-
-  function announceNewBluetoothDevices(interfaceName, devices) {
-    if (!window.deviceAlerts) {
-      return;
-    }
-    let previous = [];
-    try {
-      previous = JSON.parse(window.sessionStorage.getItem(bluetoothCacheKey(interfaceName)) || '[]');
-    } catch (error) {
-      previous = [];
-    }
-    const known = new Set(previous.map(function (device) { return device.address; }));
-    devices.forEach(function (device) {
-      if (device.address && !known.has(device.address)) {
-        window.deviceAlerts.notify('New Bluetooth device', `${device.name || 'Unknown device'} (${device.address})`);
-      }
-    });
-    try {
-      window.sessionStorage.setItem(bluetoothCacheKey(interfaceName), JSON.stringify(devices));
-    } catch (error) {
-      // Ignore storage failures; alerts are best-effort.
-    }
-  }
-
   function pollScanJob(jobId, onComplete, onError) {
     window.setTimeout(function checkJob() {
       $.ajax({
@@ -107,7 +79,6 @@ $(document).ready(function () {
 
     function renderScanResult(response) {
       const devices = Array.isArray(response.devices) ? response.devices : [];
-      announceNewBluetoothDevices(interfaceName, devices);
       const actionCapability = response.action_capability || { available: false, message: 'Bluetooth action capability is unknown.' };
       let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
       if (!actionCapability.available) {
