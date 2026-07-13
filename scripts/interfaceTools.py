@@ -45,6 +45,16 @@ def _load_oui_db():
 
 OUI_DB = _load_oui_db()
 
+
+def _normalize_interface_state(status):
+    """Normalize platform-specific adapter status strings for display."""
+    normalized = str(status or '').strip().casefold()
+    if normalized in {'up', 'connected', 'running'}:
+        return 'UP'
+    if normalized in {'down', 'disconnected', 'disabled', 'not present', 'notpresent'}:
+        return 'DOWN'
+    return 'UNKNOWN'
+
 def lookup_manufacturer(mac):
     """Return the vendor for the given MAC address using the local OUI database."""
     if not mac:
@@ -108,12 +118,16 @@ class NetworkInterface:
 
     def get_state(self):
         """Get the operational state of the interface when the OS exposes it."""
+        metadata_status = _WINDOWS_INTERFACE_METADATA.get(self.name, {}).get("Status")
+        if metadata_status:
+            return _normalize_interface_state(metadata_status)
+
         state_file = f"/sys/class/net/{self.name}/operstate"
         if os.path.exists(state_file):
             try:
                 with open(state_file) as f:
                     state = f.read().strip()
-                return 'UP' if state == 'up' else 'DOWN'
+                return _normalize_interface_state(state)
             except OSError:
                 return 'UNKNOWN'
         return 'UNKNOWN'
