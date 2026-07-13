@@ -88,3 +88,39 @@ SSID 2 : Guest
     assert summary[0]['access_points'] == 2
     assert summary[1]['ssid'] == 'Guest'
     assert summary[1]['security'] == 'Open'
+
+
+def test_scan_linux_with_iw_parses_multiple_bss_results(monkeypatch):
+    utils.networks = {}
+    output = '''
+BSS aa:bb:cc:dd:ee:ff(on wlan0)
+	freq: 2412
+	signal: -42.00 dBm
+	SSID: Office
+	DS Parameter set: channel 1
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	RSN:
+BSS 11:22:33:44:55:66(on wlan0)
+	freq: 2437
+	signal: -61.00 dBm
+	SSID: Guest
+	DS Parameter set: channel 6
+	capability: ESS ShortSlotTime (0x0401)
+'''
+
+    class Result:
+        returncode = 0
+        stdout = output
+        stderr = ''
+
+    monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
+
+    utils._scan_linux_with_iw('wlan0')
+    summary = utils.get_networks_summary()
+
+    assert [network['ssid'] for network in summary] == ['Office', 'Guest']
+    assert summary[0]['bssid'] == 'aa:bb:cc:dd:ee:ff'
+    assert summary[0]['channel'] == 1
+    assert summary[0]['signal'] == -42
+    assert summary[0]['security'] == 'WPA2/WPA3'
+    assert summary[1]['security'] == 'Open'

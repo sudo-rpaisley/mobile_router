@@ -110,6 +110,59 @@ def _scan_linux_with_nmcli(interface_name):
         _add_network(ssid, bssid, channel, _parse_signal(signal), security)
 
 
+
+def _network_count():
+    return sum(len(network.access_points) for network in networks.values())
+
+
+def _scan_linux_with_iw(interface_name):
+    if not interface_name:
+        raise RuntimeError('A wireless interface is required for iw scanning')
+
+    result = _run_command(['iw', 'dev', interface_name, 'scan'], timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or 'iw wireless scan failed')
+
+    current_bssid = None
+    current_ssid = None
+    current_channel = None
+    current_signal = None
+    current_security = 'Open'
+
+    def flush_bss():
+        if current_bssid:
+            _add_network(current_ssid, current_bssid, current_channel, current_signal, current_security)
+
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('BSS '):
+            flush_bss()
+            current_bssid = stripped.split()[1].split('(')[0]
+            current_ssid = None
+            current_channel = None
+            current_signal = None
+            current_security = 'Open'
+        elif stripped.startswith('SSID:'):
+            current_ssid = stripped.split(':', 1)[1].strip()
+        elif stripped.startswith('freq:') and current_channel is None:
+            current_channel = _parse_signal(stripped.split(':', 1)[1].strip())
+        elif stripped.startswith('signal:'):
+            signal_value = stripped.split(':', 1)[1].strip().split()[0]
+            try:
+                current_signal = int(float(signal_value))
+            except (TypeError, ValueError):
+                current_signal = _parse_signal(signal_value)
+        elif stripped.startswith('DS Parameter set:') and 'channel' in stripped:
+            current_channel = _parse_signal(stripped.rsplit(' ', 1)[-1])
+        elif stripped.startswith('capability:') and 'Privacy' in stripped:
+            current_security = 'Secured'
+        elif stripped.startswith('RSN:'):
+            current_security = 'WPA2/WPA3'
+        elif stripped.startswith('WPA:'):
+            current_security = 'WPA'
+
+    flush_bss()
+
 def _scan_linux_with_scapy(interface_name, timeout):
     from scapy.all import sniff
     from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt, Dot11ProbeReq, Dot11AssoReq, Dot11Addr2, Dot11Addr3
@@ -152,8 +205,12 @@ def _parse_percent_signal(signal):
     return _parse_signal(value)
 
 
-def _scan_windows_with_netsh():
-    result = _run_command(['netsh', 'wlan', 'show', 'networks', 'mode=bssid'])
+def _scan_windows_with_netsh(interface_name=None):
+    command = ['netsh', 'wlan', 'show', 'networks', 'mode=bssid']
+    if interface_name:
+        command.append(f'interface={interface_name}')
+
+    result = _run_command(command)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or 'netsh wireless scan failed')
 
@@ -226,15 +283,38 @@ def scan_networks(interface_name=None, timeout=12):
 
     system = platform.system()
     if system == "Linux":
+        scan_errors = []
         try:
             _scan_linux_with_nmcli(interface_name)
-        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired):
-            _scan_linux_with_scapy(interface_name, timeout)
-    elif system == "Windows":
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            scan_errors.append(str(exc))
+
         try:
-            _scan_windows_with_netsh()
-        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired):
-            _scan_windows_with_pywifi(interface_name)
+            _scan_linux_with_iw(interface_name)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            scan_errors.append(str(exc))
+
+        if _network_count() == 0:
+            try:
+                _scan_linux_with_scapy(interface_name, timeout)
+            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+                scan_errors.append(str(exc))
+                raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
+    elif system == "Windows":
+        scan_errors = []
+        try:
+            _scan_windows_with_netsh(interface_name)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            scan_errors.append(str(exc))
+
+        if _network_count() <= 1:
+            try:
+                _scan_windows_with_pywifi(interface_name)
+            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+                scan_errors.append(str(exc))
+
+        if _network_count() == 0 and scan_errors:
+            raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
     else:
         raise RuntimeError("Wireless scanning is only supported on Linux and Windows")
 
