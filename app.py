@@ -7,7 +7,9 @@ import threading
 import asyncio
 import re
 
+from routes import register_blueprints
 from scripts.interfaceTools import *
+from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
     passive_scan,
@@ -17,6 +19,7 @@ from scripts.networkScan import (
 
 
 app = Flask(__name__)
+log_path = configure_logging(app)
 socketio = SocketIO(app)
 
 # Fetch network interfaces at the start
@@ -74,14 +77,10 @@ def red_team():
     return render_template('red-team.html', title='Red Team', networkTechnologies=networkTechnologies, interfaces=network_interfaces)
 
 
-@app.route('/capabilities')
-def capabilities_page():
-    from scripts.capabilities import build_capabilities
-
-    return render_template('capabilities.html', title='Capabilities',
-                           networkTechnologies=networkTechnologies,
-                           interfaces=network_interfaces,
-                           capabilities=build_capabilities())
+register_blueprints(app, lambda: {
+    'networkTechnologies': networkTechnologies,
+    'interfaces': network_interfaces,
+})
 
 # Endpoint to fetch the current list of network adapters
 @app.route('/adapters', methods=['POST'])
@@ -101,64 +100,6 @@ def port_scan_page():
                            networkTechnologies=networkTechnologies,
                            interfaces=network_interfaces)
 
-@app.route('/minecraft-attack')
-def minecraft_attack_page():
-    from scripts.minecraft_attack import load_mob_mappings
-
-    return render_template('minecraft_attack.html', title='Minecraft Attack',
-                           networkTechnologies=networkTechnologies,
-                           interfaces=network_interfaces,
-                           mobs=load_mob_mappings())
-
-
-@app.route('/minecraft-attack', methods=['POST'])
-def minecraft_attack_route():
-    data = request.form
-    if data.get('authorized') != 'true':
-        return jsonify({'status': 'error', 'message': 'Authorization confirmation is required'}), 400
-
-    host = data.get('host')
-    try:
-        port = int(data.get('port', 25565))
-        requests_count = int(data.get('requests', 25))
-        concurrency = int(data.get('concurrency', 5))
-        timeout = float(data.get('timeout', 1.5))
-    except ValueError:
-        return jsonify({'status': 'error', 'message': 'Port, requests, concurrency, and timeout must be numeric'}), 400
-
-    from scripts.minecraft_attack import MinecraftAttackError, run_status_load_test
-
-    try:
-        result = run_status_load_test(host, port, requests_count, concurrency, timeout)
-    except MinecraftAttackError as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 400
-
-    return jsonify({'status': 'success', 'result': result.to_dict()})
-
-
-@app.route('/minecraft-attack/mobs/<mob_id>/toggle', methods=['POST'])
-def minecraft_mob_toggle_route(mob_id):
-    data = request.form
-    if data.get('authorized') != 'true':
-        return jsonify({'status': 'error', 'message': 'Authorization confirmation is required'}), 400
-
-    host = data.get('host')
-    state = data.get('state')
-    try:
-        timeout = float(data.get('timeout', 1.5))
-    except ValueError:
-        return jsonify({'status': 'error', 'message': 'Timeout must be numeric'}), 400
-
-    from scripts.minecraft_attack import MinecraftAttackError, send_mob_toggle
-
-    try:
-        result = send_mob_toggle(host, mob_id, state, timeout)
-    except MinecraftAttackError as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 400
-    except OSError as e:
-        return jsonify({'status': 'error', 'message': f'Mob toggle connection failed: {str(e)}'}), 502
-
-    return jsonify({'status': 'success', 'result': result})
 
 @app.route('/traceroute')
 def traceroute_page():
@@ -439,5 +380,5 @@ def aireplay_deauth_route():
 if __name__ == '__main__':
     host = '0.0.0.0'
     port = 8080
-    print(f"Server running at http://{host}:{port}")
+    app.logger.info("Server running at http://%s:%s (log file: %s)", host, port, log_path)
     socketio.run(app, host=host, port=port, debug=True)
