@@ -6,7 +6,7 @@
 
 .adapter-card.card,
 .adapters-card {
-  width: min(100%, 22rem) !important;
+  width: 100% !important;
   height: 14rem;
   min-height: 14rem;
   border: 1px solid #ddd;
@@ -150,7 +150,8 @@
 
 .interface-category-card {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 22rem;
+  width: 22rem;
   min-width: 0;
   padding: 0.25rem;
 }
@@ -160,4 +161,11 @@ html[data-theme="dark"] .adapters-card {
   background: var(--theme-surface-soft);
   border-color: var(--theme-border);
   color: var(--theme-text);
+}
+
+@media (max-width: 480px) {
+  .interface-category-card {
+    flex-basis: calc(100vw - 2rem);
+    width: calc(100vw - 2rem);
+  }
 }
