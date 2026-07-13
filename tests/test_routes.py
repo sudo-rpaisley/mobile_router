@@ -97,7 +97,7 @@ class RouteSmokeTest(unittest.TestCase):
             'signal_label': '82%',
             'interface': 'wlan0',
             'discovered': True,
-            'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55'},
+            'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55', 'manufacturer': 'Training Vendor'},
             'bands': ['5 GHz'],
             'ap_groups': [
                 {
@@ -118,12 +118,13 @@ class RouteSmokeTest(unittest.TestCase):
                     'signal_label': '82%',
                     'frequency': 5180,
                     'band': '5 GHz',
+                    'manufacturer': 'Training Vendor',
                     'signal_quality': 'Strong',
                     'notes': ['DFS channel; may be affected by radar events'],
-                    'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff'}],
+                    'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff', 'manufacturer': 'Client Vendor'}],
                 }
             ],
-            'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff'}],
+            'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff', 'manufacturer': 'Client Vendor'}],
         }
 
         response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
@@ -134,7 +135,18 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'AP Identity Hints', response.data)
+        self.assertIn(b'Training Vendor', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
+
+    def test_bluetooth_scan_includes_manufacturer(self):
+        async def fake_get_bluetooth_devices():
+            return [SimpleNamespace(address='b8:27:eb:11:22:33', name='Lab Speaker')]
+
+        with patch.object(app_module, 'get_bluetooth_devices', fake_get_bluetooth_devices):
+            response = self.client.post('/bluetooth-scan', data={'selectedInterface': 'hci0'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['devices'][0]['manufacturer'], 'Raspberry Pi Foundation')
 
     @patch('app.run_bluetoothctl_action')
     def test_bluetooth_action_success(self, run_action):

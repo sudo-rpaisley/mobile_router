@@ -140,6 +140,7 @@ def test_record_observed_device_adds_client_to_matching_access_point():
             'signal': -51,
             'signal_label': '-51 dBm',
             'bssid': 'aa:bb:cc:dd:ee:ff',
+            'manufacturer': 'Unknown',
         }
     ]
     assert detail['access_points'][0]['clients'][0]['mac'] == '10:22:33:44:55:66'
@@ -242,6 +243,27 @@ def test_network_detail_includes_ap_radio_details(monkeypatch):
     assert detail['access_points'][0]['band'] == '5 GHz'
     assert detail['access_points'][0]['frequency'] == 5180
     assert detail['access_points'][0]['signal_quality'] == 'Excellent'
+
+
+def test_network_detail_includes_mac_manufacturers(monkeypatch):
+    utils.networks = {}
+    utils._add_network('Office', 'b8:27:eb:11:22:33', 6, -42, 'WPA2')
+    utils._record_observed_device('b8:27:eb:11:22:33', '00:0c:29:44:55:66', -51)
+    monkeypatch.setattr(
+        utils,
+        'get_default_gateway',
+        lambda interface_name=None: {
+            'ip': '192.168.1.1',
+            'mac': '00:50:56:aa:bb:cc',
+            'manufacturer': 'VMware',
+        },
+    )
+
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert detail['access_points'][0]['manufacturer'] == 'Raspberry Pi Foundation'
+    assert detail['clients'][0]['manufacturer'] == 'VMware'
+    assert detail['gateway']['manufacturer'] == 'VMware'
 
 
 def test_group_access_points_marks_related_bssids_as_same_physical_ap(monkeypatch):

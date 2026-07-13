@@ -421,7 +421,10 @@ def bluetooth_scan():
 
     try:
         devices = asyncio.run(get_bluetooth_devices())
-        devices_summary = [{'address': dev.address, 'name': dev.name} for dev in devices]
+        devices_summary = [
+            {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
+            for dev in devices
+        ]
         return json_success(devices=devices_summary)
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)

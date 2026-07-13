@@ -83,6 +83,7 @@ $(document).ready(function () {
       const security = network.security || 'Unknown';
       const bssid = network.bssid || 'Unknown BSSID';
       const channel = network.channel || network.freq || 'Unknown';
+      const bssidManufacturer = network.bssid_manufacturer || 'Unknown manufacturer';
       const signal = network.signal;
       const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
@@ -96,6 +97,7 @@ $(document).ready(function () {
               <h3 class="wireless-network-ssid mb-1">${escapeHtml(ssid)}</h3>
               <div class="wireless-network-meta">
                 <span title="BSSID"><i class="fa-solid fa-fingerprint"></i> ${escapeHtml(bssid)}</span>
+                <span title="Manufacturer"><i class="fa-solid fa-industry"></i> ${escapeHtml(bssidManufacturer)}</span>
                 <span title="Channel"><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(channel)}</span>
               </div>
             </div>

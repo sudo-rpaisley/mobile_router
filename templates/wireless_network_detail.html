@@ -44,6 +44,7 @@
             <div><dt>Radio Bands</dt><dd>{{ (network.bands | default([])) | join(', ') or 'Unknown' }}</dd></div>
             <div><dt>Default Gateway</dt><dd>{{ gateway.ip | default('Not detected', true) }}</dd></div>
             <div><dt>Gateway MAC</dt><dd>{{ gateway.mac | default('Not detected', true) }}</dd></div>
+            <div><dt>Gateway Manufacturer</dt><dd>{{ gateway.manufacturer | default('Unknown', true) }}</dd></div>
           </dl>
         </div>
       </article>
@@ -58,6 +59,7 @@
                   <div class="address-card-header"><span class="address-family">Client</span></div>
                   <dl class="interface-definition-list compact">
                     <div><dt>MAC</dt><dd>{{ client.mac }}</dd></div>
+                    <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
                     <div><dt>Signal</dt><dd>{{ client.signal_label }}</dd></div>
                     <div><dt>Seen On</dt><dd>{{ client.bssid or 'Unknown AP' }}</dd></div>
                   </dl>
@@ -121,6 +123,7 @@
                     <h3 class="wireless-network-ssid mb-1">{{ ap.bssid or 'Unknown BSSID' }}</h3>
                     <div class="wireless-network-meta">
                       <span><i class="fa-solid fa-wave-square"></i> Ch {{ ap.channel or 'Unknown' }}</span>
+                      <span><i class="fa-solid fa-industry"></i> {{ ap.manufacturer or 'Unknown manufacturer' }}</span>
                       <span><i class="fa-solid fa-tower-broadcast"></i> {{ ap.band or 'Unknown band' }}</span>
                       {% if ap.frequency %}<span><i class="fa-solid fa-gauge-high"></i> {{ ap.frequency }} MHz</span>{% endif %}
                       <span><i class="fa-solid fa-signal"></i> {{ ap.signal_label }} ({{ ap.signal_quality }})</span>

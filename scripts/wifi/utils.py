@@ -406,6 +406,7 @@ def get_networks_summary():
         results.append({
             'ssid': network.ssid,
             'bssid': strongest_ap.bssid if strongest_ap else None,
+            'bssid_manufacturer': _mac_manufacturer(strongest_ap.bssid) if strongest_ap else 'Unknown',
             'channel': strongest_ap.channel if strongest_ap else None,
             'freq': strongest_ap.channel if strongest_ap else None,
             'signal': strongest_ap.signal if strongest_ap else None,
@@ -413,6 +414,14 @@ def get_networks_summary():
             'access_points': len(access_points),
         })
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
+
+
+def _mac_manufacturer(mac):
+    try:
+        from scripts.interfaceTools import lookup_manufacturer
+    except ImportError:
+        return 'Unknown'
+    return lookup_manufacturer(mac)
 
 
 def _mac_bytes(mac):
@@ -497,6 +506,7 @@ def _group_access_points(access_points):
         })
 
     return access_points, ap_groups
+
 
 def _coerce_int(value):
     try:
@@ -605,6 +615,7 @@ def _ap_radio_details(channel=None, signal=None):
         'notes': _channel_notes(display_channel, frequency),
     }
 
+
 def _format_signal(signal):
     if signal in (None, ''):
         return 'Unknown signal'
@@ -640,12 +651,14 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
                     'signal': client.signal,
                     'signal_label': _format_signal(client.signal),
                     'bssid': ap.bssid,
+                    'manufacturer': _mac_manufacturer(client.mac),
                 }
                 for client in ap.clients
             ]
             radio = _ap_radio_details(ap.channel, ap.signal)
             access_points.append({
                 'bssid': ap.bssid,
+                'manufacturer': _mac_manufacturer(ap.bssid),
                 'channel': radio['channel'],
                 'raw_channel': ap.channel,
                 'frequency': radio['frequency'],
@@ -754,7 +767,7 @@ def get_default_gateway(interface_name=None):
         commands.append(['route', 'print', '-4', '0.0.0.0'])
         parser = _parse_windows_default_gateway
     else:
-        return {'ip': None, 'mac': None}
+        return {'ip': None, 'mac': None, 'manufacturer': 'Unknown'}
 
     for command in commands:
         try:
@@ -765,9 +778,11 @@ def get_default_gateway(interface_name=None):
             continue
         gateway_ip = parser(result.stdout or '')
         if gateway_ip:
-            return {'ip': gateway_ip, 'mac': _lookup_arp_mac(gateway_ip)}
+            gateway_mac = _lookup_arp_mac(gateway_ip)
+            return {'ip': gateway_ip, 'mac': gateway_mac, 'manufacturer': _mac_manufacturer(gateway_mac)}
 
-    return {'ip': None, 'mac': None}
+    return {'ip': None, 'mac': None, 'manufacturer': 'Unknown'}
+
 
 def connect_to_network(ssid, password=None, interface_name=None):
     """Attempt to connect to a wireless network using pywifi."""

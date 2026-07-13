@@ -23,6 +23,7 @@ $(document).ready(function () {
   function renderDevice(device) {
     const name = device.name || 'Unknown';
     const address = device.address || '';
+    const manufacturer = device.manufacturer || 'Unknown manufacturer';
     const actionButtons = bluetoothActions.map(function (item) {
       return `<button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}"><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button>`;
     }).join('');
@@ -33,6 +34,7 @@ $(document).ready(function () {
           <div>
             <h3 class="wireless-network-ssid mb-1">${escapeHtml(name)}</h3>
             <p class="wireless-network-meta mb-0"><i class="fa-brands fa-bluetooth-b"></i> ${escapeHtml(address || 'Unknown address')}</p>
+            <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> ${escapeHtml(manufacturer)}</p>
           </div>
           <span class="badge badge-info">Bluetooth</span>
         </div>
