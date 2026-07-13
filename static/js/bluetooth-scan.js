@@ -8,41 +8,94 @@ $(document).ready(function () {
       .replace(/'/g, '&#039;');
   }
 
-  $("button#bluetooth-scan").on("click", function () {
-    const interfaceName = $(this).val();
+  const bluetoothActions = [
+    { action: 'info', label: 'Info', style: 'outline-secondary', icon: 'circle-info' },
+    { action: 'connect', label: 'Connect', style: 'outline-primary', icon: 'link' },
+    { action: 'disconnect', label: 'Disconnect', style: 'outline-warning', icon: 'link-slash' },
+    { action: 'pair', label: 'Pair', style: 'outline-primary', icon: 'handshake' },
+    { action: 'trust', label: 'Trust', style: 'outline-success', icon: 'shield-halved' },
+    { action: 'untrust', label: 'Untrust', style: 'outline-secondary', icon: 'shield' },
+    { action: 'block', label: 'Block', style: 'outline-danger', icon: 'ban' },
+    { action: 'unblock', label: 'Unblock', style: 'outline-success', icon: 'check' },
+    { action: 'remove', label: 'Remove', style: 'outline-danger', icon: 'trash' }
+  ];
+
+  function renderDevice(device) {
+    const name = device.name || 'Unknown';
+    const address = device.address || '';
+    const actionButtons = bluetoothActions.map(function (item) {
+      return `<button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}"><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button>`;
+    }).join('');
+
+    return `
+      <article class="wireless-network-card bluetooth-device-card">
+        <div class="wireless-network-main">
+          <div>
+            <h3 class="wireless-network-ssid mb-1">${escapeHtml(name)}</h3>
+            <p class="wireless-network-meta mb-0"><i class="fa-brands fa-bluetooth-b"></i> ${escapeHtml(address || 'Unknown address')}</p>
+          </div>
+          <span class="badge badge-info">Bluetooth</span>
+        </div>
+        <div class="bluetooth-action-grid mt-3">${actionButtons}</div>
+        <pre class="bluetooth-action-output d-none mt-3 mb-0"></pre>
+      </article>
+    `;
+  }
+
+  $(document).on("click", "button#bluetooth-scan", function () {
+    const button = $(this);
+    const interfaceName = button.val();
+    const result = $("#bluetooth-devices");
     $.ajax({
       url: "/bluetooth-scan",
       type: "POST",
       data: { 'selectedInterface': interfaceName },
       beforeSend: function () {
-        console.log(`Scanning for Bluetooth devices on ${interfaceName}`);
+        button.prop('disabled', true).text('Scanning...');
+        result.html(`<div class="wireless-scan-state card shadow-sm"><div class="card-body d-flex align-items-center"><div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div><div><strong>Scanning ${escapeHtml(interfaceName)}</strong><p class="text-muted mb-0">Looking for nearby Bluetooth devices.</p></div></div></div>`);
       },
       success: function (response) {
-        console.log(`Bluetooth scan on ${interfaceName} successful`);
-        let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div></div>`;
-        if (response.devices.length === 0) {
+        const devices = Array.isArray(response.devices) ? response.devices : [];
+        let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
+        if (devices.length === 0) {
           btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;
         } else {
-          response.devices.forEach(function (device) {
-            const name = device.name || 'Unknown';
-            btDiv += `
-              <div class="wireless-network-card mb-2">
-                <div>
-                  <h5 class="card-title">${escapeHtml(name)}</h5>
-                  <p class="card-text">${escapeHtml(device.address)}</p>
-                </div>
-              </div>
-            `;
-          });
+          btDiv += `<div class="wireless-network-grid">${devices.map(renderDevice).join('')}</div>`;
         }
         btDiv += `</div></section>`;
-        $("#bluetooth-devices").html(btDiv);
+        result.html(btDiv);
       },
-      error: function (error) {
-        console.log("Error occurred during bluetooth scan");
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Error occurred during Bluetooth scan';
+        result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)}</div>`);
       },
       complete: function () {
-        console.log("Bluetooth scan completed");
+        button.prop('disabled', false).text('Scan for Devices');
+      }
+    });
+  });
+
+  $(document).on('click', '.bluetooth-action', function () {
+    const button = $(this);
+    const card = button.closest('.bluetooth-device-card');
+    const output = card.find('.bluetooth-action-output');
+    $.ajax({
+      url: '/bluetooth-action',
+      type: 'POST',
+      data: { action: button.data('action'), address: button.data('address') },
+      beforeSend: function () {
+        button.prop('disabled', true);
+        output.removeClass('d-none text-danger text-success').addClass('text-muted').text('Running action...');
+      },
+      success: function (response) {
+        output.removeClass('text-muted text-danger').addClass('text-success').text(response.output || response.message || 'Action completed.');
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Bluetooth action failed';
+        output.removeClass('text-muted text-success').addClass('text-danger').text(message);
+      },
+      complete: function () {
+        button.prop('disabled', false);
       }
     });
   });

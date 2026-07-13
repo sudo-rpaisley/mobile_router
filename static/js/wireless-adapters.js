@@ -84,30 +84,39 @@ $(document).ready(function () {
       const bssid = network.bssid || 'Unknown BSSID';
       const channel = network.channel || network.freq || 'Unknown';
       const signal = network.signal;
+      const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
+      const isOpen = security === 'Open';
 
       return `
-        <div class="wireless-network-card">
+        <article class="wireless-network-card">
           <div class="wireless-network-main">
-            <div>
-              <h3 class="wireless-network-ssid">${escapeHtml(ssid)}</h3>
-              <p class="wireless-network-meta mb-0">${escapeHtml(bssid)} · Channel ${escapeHtml(channel)}</p>
-            </div>
-            <span class="badge ${security === 'Open' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
-          </div>
-          <div class="wireless-network-stats">
-            <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalLabel(signal))}</span>
-            <span><i class="fa-solid fa-tower-broadcast"></i> ${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
-          </div>
-          <form class="wireless-connect-form mt-3" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
-            <div class="input-group input-group-sm">
-              <input type="password" class="form-control" name="password" placeholder="Password (leave blank for open networks)" aria-label="Password for ${escapeHtml(ssid)}">
-              <div class="input-group-append">
-                <button class="btn btn-outline-primary" type="submit">Connect</button>
+            <div class="wireless-network-identity">
+              <h3 class="wireless-network-ssid mb-1">${escapeHtml(ssid)}</h3>
+              <div class="wireless-network-meta">
+                <span title="BSSID"><i class="fa-solid fa-fingerprint"></i> ${escapeHtml(bssid)}</span>
+                <span title="Channel"><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(channel)}</span>
               </div>
             </div>
-          </form>
-        </div>
+            <div class="wireless-network-badges">
+              <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
+              <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
+            </div>
+          </div>
+          <div class="wireless-network-bottom">
+            <div class="wireless-network-stats" aria-label="Signal strength">
+              <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalText)}</span>
+            </div>
+            <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
+              <div class="input-group input-group-sm">
+                <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">
+                <div class="input-group-append">
+                  <button class="btn btn-outline-primary" type="submit">Connect</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </article>
       `;
     }).join('');
 

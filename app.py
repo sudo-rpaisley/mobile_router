@@ -6,6 +6,8 @@ import time
 import threading
 import asyncio
 import re
+import shutil
+import subprocess
 
 from routes import register_blueprints
 from scripts.interfaceTools import (
@@ -31,6 +33,44 @@ socketio = SocketIO(app)
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
 
+
+BLUETOOTHCTL_ACTIONS = {
+    'info': 'info',
+    'connect': 'connect',
+    'disconnect': 'disconnect',
+    'pair': 'pair',
+    'trust': 'trust',
+    'untrust': 'untrust',
+    'block': 'block',
+    'unblock': 'unblock',
+    'remove': 'remove',
+}
+BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+
+
+def run_bluetoothctl_action(action, address, timeout=15):
+    """Run a safe local bluetoothctl action against a device visible to this host."""
+    command = BLUETOOTHCTL_ACTIONS.get(action)
+    if not command:
+        raise ValueError('Unsupported Bluetooth action')
+    if not BLUETOOTH_MAC_RE.match(address or ''):
+        raise ValueError('A valid Bluetooth device address is required')
+
+    bluetoothctl = shutil.which('bluetoothctl')
+    if not bluetoothctl:
+        raise RuntimeError('bluetoothctl is not installed on this host')
+
+    result = subprocess.run(
+        [bluetoothctl, command, address],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    output = (result.stdout or result.stderr or '').strip()
+    if result.returncode != 0:
+        raise RuntimeError(output or f'bluetoothctl {command} failed')
+    return output or f'bluetoothctl {command} completed'
 
 def json_error(message, status=400):
     """Return a consistently shaped JSON error response."""
@@ -364,6 +404,21 @@ def bluetooth_scan():
         return json_success(devices=devices_summary)
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)
+
+
+@app.route('/bluetooth-action', methods=['POST'])
+def bluetooth_action():
+    data = request.form
+    action = data.get('action')
+    address = data.get('address')
+
+    try:
+        output = run_bluetoothctl_action(action, address)
+        return json_success(message='Bluetooth action completed', output=output)
+    except ValueError as e:
+        return json_error(str(e))
+    except Exception as e:
+        return json_error(f'Bluetooth action error: {str(e)}', 500)
 
 
 @app.route('/spoof-mac', methods=['POST'])

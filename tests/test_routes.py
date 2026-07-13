@@ -46,6 +46,28 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()['message'], 'Authorization confirmation is required')
 
+    @patch('app.run_bluetoothctl_action')
+    def test_bluetooth_action_success(self, run_action):
+        run_action.return_value = 'Device disconnected'
+
+        response = self.client.post('/bluetooth-action', data={
+            'action': 'disconnect',
+            'address': 'aa:bb:cc:dd:ee:ff',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['output'], 'Device disconnected')
+        run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff')
+
+    def test_bluetooth_action_rejects_invalid_action(self):
+        response = self.client.post('/bluetooth-action', data={
+            'action': 'force-disconnect-third-party',
+            'address': 'aa:bb:cc:dd:ee:ff',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Unsupported Bluetooth action')
+
     @patch('routes.minecraft.send_mob_toggle')
     def test_minecraft_mob_toggle_success(self, send_mob_toggle):
         send_mob_toggle.return_value = {
