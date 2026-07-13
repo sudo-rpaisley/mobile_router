@@ -1,5 +1,5 @@
-<div class="card m-1 d-flex align-items-center" style="width: 250px;">
-  <div class="row no-gutters align-items-center w-100"
+<div class="card adapter-card adapter-card-compact d-flex align-items-center">
+  <div class="row no-gutters align-items-center w-100 adapter-card-row"
        onclick="redirectToDetailPage('{{ interface.interface_type | lower }}', '{{ interface.name }}');"
        style="cursor: pointer;">
 
@@ -8,12 +8,24 @@
 
     <!-- Text -->
     <div class="col-md-9">
-      <div class="card-body py-2">
+      <div class="card-body">
 
         <h5 class="card-title mb-1">
           {{ interface.name }}
           {% include '_manufacturerIcon.html' %}
         </h5>
+
+        <div class="adapter-health-badges mb-2">
+          {% if interface.state == 'UP' %}
+            <span class="badge badge-success">Ready</span>
+          {% elif interface.state %}
+            <span class="badge badge-secondary">{{ interface.state }}</span>
+          {% endif %}
+          {% if not interface.addresses %}
+            <span class="badge badge-warning">No address</span>
+          {% endif %}
+          <span class="badge badge-info">{{ interface.interface_type }}</span>
+        </div>
 
         <p class="card-text mb-0">
           Type:

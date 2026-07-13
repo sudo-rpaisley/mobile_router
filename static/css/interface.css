@@ -261,3 +261,137 @@
 .adapter-mode-status {
   font-size: 0.85rem;
 }
+
+/* Compact scan results keep dense wireless/Bluetooth output readable after scans. */
+.wlans,
+#bluetooth-devices {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.wireless-network-grid {
+  grid-template-columns: 1fr;
+}
+
+.wireless-network-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.wireless-network-identity {
+  min-width: 0;
+}
+
+.wireless-network-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.9rem;
+}
+
+.wireless-network-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.wireless-network-bottom {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) minmax(18rem, 28rem);
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.wireless-connect-form {
+  justify-self: end;
+  width: 100%;
+}
+
+.bluetooth-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.bluetooth-action-output {
+  border-radius: 0.65rem;
+  background: #f8f9fa;
+  border: 1px solid #e9eef5;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 767.98px) {
+  .wireless-results-header,
+  .wireless-network-main,
+  .wireless-network-bottom {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .wireless-network-main,
+  .wireless-results-header {
+    flex-direction: column;
+  }
+
+  .wireless-network-badges,
+  .wireless-connect-form {
+    justify-self: stretch;
+    justify-content: flex-start;
+  }
+}
+
+.wireless-network-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.wireless-network-clickable:hover,
+.wireless-network-clickable:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.network-detail-page .interface-extra-card {
+  grid-column: auto;
+}
+
+.network-detail-grid {
+  margin-top: 1.25rem;
+}
+
+.wireless-network-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.bluetooth-action-tooltip {
+  display: inline-flex;
+}
+
+html[data-theme="dark"] .interface-hero-icon .col-md-3 {
+  background: var(--theme-surface-soft);
+  box-shadow: inset 0 0 0 1px var(--theme-border);
+}
+
+.interface-readiness-card {
+  grid-column: 1 / -1;
+}
+
+.readiness-list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.readiness-list li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

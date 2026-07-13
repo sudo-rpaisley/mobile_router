@@ -26,7 +26,46 @@ $(document).ready(function () {
     return `${signal}${Number(signal) > 0 ? '%' : ' dBm'}`;
   }
 
+  function scanCacheKey(interfaceName) {
+    return `mobile-router:wlan-scan:${interfaceName}`;
+  }
 
+  function scanResultContainer(interfaceName) {
+    return $('.wlans').filter(function () {
+      return $(this).data('interface') === interfaceName;
+    }).first();
+  }
+
+  function saveCachedNetworks(interfaceName, networks) {
+    try {
+      window.sessionStorage.setItem(scanCacheKey(interfaceName), JSON.stringify({
+        networks: networks,
+        scannedAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      // Some browsers disable storage; scans should still render for this page view.
+    }
+  }
+
+  function loadCachedNetworks(interfaceName) {
+    try {
+      const cached = JSON.parse(window.sessionStorage.getItem(scanCacheKey(interfaceName)) || 'null');
+      return Array.isArray(cached?.networks) ? cached.networks : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function restoreCachedScanResults() {
+    $('.wlans[data-interface]').each(function () {
+      const container = $(this);
+      const interfaceName = container.data('interface');
+      const networks = loadCachedNetworks(interfaceName);
+      if (networks.length > 0) {
+        container.html(renderNetworks(interfaceName, networks));
+      }
+    });
+  }
 
   function modeInputId(interfaceName, mode) {
     return `mode-${interfaceName}-${mode}`.replace(/[^A-Za-z0-9_-]/g, '-');
@@ -83,31 +122,44 @@ $(document).ready(function () {
       const security = network.security || 'Unknown';
       const bssid = network.bssid || 'Unknown BSSID';
       const channel = network.channel || network.freq || 'Unknown';
+      const bssidManufacturer = network.bssid_manufacturer || 'Unknown manufacturer';
       const signal = network.signal;
+      const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
+      const isOpen = security === 'Open';
+      const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ssid)}&bssid=${encodeURIComponent(bssid)}`;
 
       return `
-        <div class="wireless-network-card">
+        <article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" aria-label="View details for ${escapeHtml(ssid)}">
           <div class="wireless-network-main">
-            <div>
-              <h3 class="wireless-network-ssid">${escapeHtml(ssid)}</h3>
-              <p class="wireless-network-meta mb-0">${escapeHtml(bssid)} · Channel ${escapeHtml(channel)}</p>
-            </div>
-            <span class="badge ${security === 'Open' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
-          </div>
-          <div class="wireless-network-stats">
-            <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalLabel(signal))}</span>
-            <span><i class="fa-solid fa-tower-broadcast"></i> ${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
-          </div>
-          <form class="wireless-connect-form mt-3" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
-            <div class="input-group input-group-sm">
-              <input type="password" class="form-control" name="password" placeholder="Password (leave blank for open networks)" aria-label="Password for ${escapeHtml(ssid)}">
-              <div class="input-group-append">
-                <button class="btn btn-outline-primary" type="submit">Connect</button>
+            <div class="wireless-network-identity">
+              <h3 class="wireless-network-ssid mb-1">${escapeHtml(ssid)}</h3>
+              <div class="wireless-network-meta">
+                <span title="BSSID"><i class="fa-solid fa-fingerprint"></i> ${escapeHtml(bssid)}</span>
+                <span title="Manufacturer"><i class="fa-solid fa-industry"></i> ${escapeHtml(bssidManufacturer)}</span>
+                <span title="Channel"><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(channel)}</span>
               </div>
             </div>
-          </form>
-        </div>
+            <div class="wireless-network-badges">
+              <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
+              <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
+              <span class="badge badge-info" title="Open the full network detail page for APs, clients, gateway, and radio information"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
+            </div>
+          </div>
+          <div class="wireless-network-bottom">
+            <div class="wireless-network-stats" aria-label="Signal strength">
+              <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalText)}</span>
+            </div>
+            <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
+              <div class="input-group input-group-sm">
+                <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">
+                <div class="input-group-append">
+                  <button class="btn btn-outline-primary" type="submit" title="Connect this host adapter to the selected SSID using the supplied password">Connect</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </article>
       `;
     }).join('');
 
@@ -127,47 +179,92 @@ $(document).ready(function () {
     `;
   }
 
+
+  function pollScanJob(jobId, onComplete, onError) {
+    window.setTimeout(function checkJob() {
+      $.ajax({
+        url: `/scan-jobs/${encodeURIComponent(jobId)}`,
+        type: 'GET',
+        success: function (response) {
+          const job = response.job || {};
+          if (job.status === 'completed') {
+            onComplete(job.result || {});
+          } else if (job.status === 'failed') {
+            onError(job.error || 'Scan job failed');
+          } else {
+            window.setTimeout(checkJob, 1000);
+          }
+        },
+        error: function (xhr) {
+          onError(xhr.responseJSON?.message || 'Unable to check scan job');
+        }
+      });
+    }, 1000);
+  }
+
+  function openNetworkDetails(card) {
+    const detailUrl = card.data('detailUrl');
+    if (detailUrl) {
+      window.location.href = detailUrl;
+    }
+  }
+
+  $(document).on('click', '.wireless-network-clickable', function (event) {
+    if ($(event.target).closest('a, button, input, label, select, textarea, form').length) {
+      return;
+    }
+    openNetworkDetails($(this));
+  });
+
+  $(document).on('keydown', '.wireless-network-clickable', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openNetworkDetails($(this));
+    }
+  });
+
+
   $(document).on('click', 'button#wlan-scan', function () {
     const button = $(this);
     const interfaceName = button.val();
-    const resultDiv = $(`#wlans-${interfaceName}`);
+    const resultDiv = scanResultContainer(interfaceName);
+
+    button.prop('disabled', true).text('Scanning...');
+    resultDiv.html(`
+      <div class="wireless-scan-state card shadow-sm">
+        <div class="card-body d-flex align-items-center">
+          <div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div>
+          <div>
+            <strong>Scanning ${escapeHtml(interfaceName)}</strong>
+            <p class="text-muted mb-0">Running this scan in the background.</p>
+          </div>
+        </div>
+      </div>
+    `);
 
     $.ajax({
-      url: '/wlan-scan',
+      url: '/scan-jobs',
       type: 'POST',
-      data: { selectedInterface: interfaceName },
-      beforeSend: function () {
-        button.prop('disabled', true).text('Scanning...');
-        resultDiv.html(`
-          <div class="wireless-scan-state card shadow-sm">
-            <div class="card-body d-flex align-items-center">
-              <div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div>
-              <div>
-                <strong>Scanning ${escapeHtml(interfaceName)}</strong>
-                <p class="text-muted mb-0">Looking for nearby wireless networks.</p>
-              </div>
-            </div>
-          </div>
-        `);
-      },
+      data: { scanType: 'wlan', selectedInterface: interfaceName },
       success: function (response) {
-        const networks = Array.isArray(response.wlans) ? response.wlans : [];
-        if (networks.length === 0) {
-          resultDiv.html(`
-            <div class="alert alert-info mt-3" role="alert">
-              No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point or scanning again.
-            </div>
-          `);
-          return;
-        }
-        resultDiv.html(renderNetworks(interfaceName, networks));
+        pollScanJob(response.job.id, function (result) {
+          const networks = Array.isArray(result.wlans) ? result.wlans : [];
+          button.prop('disabled', false).text('Scan for Networks');
+          if (networks.length === 0) {
+            resultDiv.html(`<div class="alert alert-info mt-3" role="alert">No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point, scanning again, or checking <a href="/capabilities">capabilities</a>.</div>`);
+            return;
+          }
+          saveCachedNetworks(interfaceName, networks);
+          resultDiv.html(renderNetworks(interfaceName, networks));
+        }, function (message) {
+          button.prop('disabled', false).text('Scan for Networks');
+          resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities" class="alert-link">Check capabilities</a>.</div>`);
+        });
       },
       error: function (xhr) {
-        const message = xhr.responseJSON?.message || 'Error occurred during network scan';
-        resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)}</div>`);
-      },
-      complete: function () {
         button.prop('disabled', false).text('Scan for Networks');
+        const message = xhr.responseJSON?.message || 'Unable to start wireless scan';
+        resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities" class="alert-link">Check capabilities</a>.</div>`);
       }
     });
   });
@@ -201,6 +298,8 @@ $(document).ready(function () {
       }
     });
   });
+
+  restoreCachedScanResults();
 
   $('.adapter-mode-switches').each(function () {
     loadAdapterModes($(this));

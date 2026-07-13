@@ -1,5 +1,6 @@
 import importlib.util
 import platform
+import re
 import subprocess
 import time
 from .network import Network
@@ -71,8 +72,65 @@ def _add_network(ssid, bssid=None, channel=None, signal=None, security=None):
         networks[network_key].security = security
 
     if bssid:
-        networks[network_key].add_access_point(bssid, channel, signal)
+        networks[network_key].add_access_point(_normalize_mac(bssid), channel, signal)
 
+
+def _normalize_mac(mac):
+    return (mac or '').strip().lower()
+
+
+def _is_usable_device_mac(mac):
+    normalized = _normalize_mac(mac)
+    if not normalized or normalized == 'ff:ff:ff:ff:ff:ff':
+        return False
+    first_octet = normalized.split(':', 1)[0]
+    try:
+        return not bool(int(first_octet, 16) & 1)
+    except ValueError:
+        return False
+
+
+def _find_network_by_bssid(bssid):
+    normalized_bssid = _normalize_mac(bssid)
+    if not normalized_bssid:
+        return None, None
+    for network in networks.values():
+        for ap in network.access_points:
+            if _normalize_mac(ap.bssid) == normalized_bssid:
+                return network, ap
+    return None, None
+
+
+def _record_observed_device(bssid, device_mac, signal=None):
+    """Attach an observed wireless device to the network/AP where it was seen."""
+    normalized_bssid = _normalize_mac(bssid)
+    normalized_device = _normalize_mac(device_mac)
+    if not _is_usable_device_mac(normalized_device) or normalized_device == normalized_bssid:
+        return False
+
+    network, ap = _find_network_by_bssid(normalized_bssid)
+    if not network or not ap:
+        return False
+
+    network.add_client(ap.bssid, normalized_device, signal)
+    return True
+
+
+def _known_bssid_from_addresses(*addresses):
+    for address in addresses:
+        network, ap = _find_network_by_bssid(address)
+        if network and ap:
+            return ap.bssid
+    return None
+
+
+def _device_from_addresses(bssid, *addresses):
+    normalized_bssid = _normalize_mac(bssid)
+    for address in addresses:
+        normalized = _normalize_mac(address)
+        if normalized != normalized_bssid and _is_usable_device_mac(normalized):
+            return normalized
+    return None
 
 def _run_command(command, timeout=20):
     return subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
@@ -165,29 +223,37 @@ def _scan_linux_with_iw(interface_name):
 
 def _scan_linux_with_scapy(interface_name, timeout):
     from scapy.all import sniff
-    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt, Dot11ProbeReq, Dot11AssoReq, Dot11Addr2, Dot11Addr3
+    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt
 
     if not interface_name:
         raise RuntimeError("A wireless interface is required for packet scanning")
 
     def sniff_networks(packet):
+        if not packet.haslayer(Dot11):
+            return
+
+        dot11 = packet[Dot11]
+        addr1 = getattr(dot11, 'addr1', None)
+        addr2 = getattr(dot11, 'addr2', None)
+        addr3 = getattr(dot11, 'addr3', None)
+        dbm_signal = getattr(packet, "dBm_AntSignal", None)
+
         if packet.haslayer(Dot11Beacon) or packet.haslayer(Dot11ProbeResp):
-            ssid = packet[Dot11Elt].info.decode(errors="replace")
-            bssid = packet[Dot11].addr3
+            ssid = packet[Dot11Elt].info.decode(errors="replace") if packet.haslayer(Dot11Elt) else None
+            bssid = addr3 or addr2
             channel = None
             if packet.haslayer(Dot11Elt) and packet.getlayer(Dot11Elt, ID=3):
                 channel_info = packet.getlayer(Dot11Elt, ID=3).info
                 channel = channel_info[0] if channel_info else None
-            dbm_signal = getattr(packet, "dBm_AntSignal", None)
             _add_network(ssid, bssid, channel, dbm_signal)
+            return
 
-        if packet.haslayer(Dot11AssoReq) or packet.haslayer(Dot11ProbeReq):
-            client_mac = packet[Dot11Addr2].addr2
-            bssid = packet[Dot11Addr3].addr3
-            dbm_signal = getattr(packet, "dBm_AntSignal", None)
+        bssid = _known_bssid_from_addresses(addr3, addr1, addr2)
+        if not bssid:
+            return
 
-            for network in networks.values():
-                network.add_client(bssid, client_mac, dbm_signal)
+        device_mac = _device_from_addresses(bssid, addr2, addr1, addr3)
+        _record_observed_device(bssid, device_mac, dbm_signal)
 
     sniff(iface=interface_name, prn=sniff_networks, timeout=timeout)
 
@@ -197,7 +263,6 @@ def _parse_signal(signal):
         return int(signal)
     except (TypeError, ValueError):
         return signal or None
-
 
 
 def _parse_percent_signal(signal):
@@ -294,11 +359,12 @@ def scan_networks(interface_name=None, timeout=12):
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
             scan_errors.append(str(exc))
 
-        if _network_count() == 0:
-            try:
-                _scan_linux_with_scapy(interface_name, timeout)
-            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
-                scan_errors.append(str(exc))
+        sniff_timeout = timeout if _network_count() == 0 else min(timeout, 5)
+        try:
+            _scan_linux_with_scapy(interface_name, sniff_timeout)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+            scan_errors.append(str(exc))
+            if _network_count() == 0:
                 raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
     elif system == "Windows":
         scan_errors = []
@@ -340,6 +406,7 @@ def get_networks_summary():
         results.append({
             'ssid': network.ssid,
             'bssid': strongest_ap.bssid if strongest_ap else None,
+            'bssid_manufacturer': _mac_manufacturer(strongest_ap.bssid) if strongest_ap else 'Unknown',
             'channel': strongest_ap.channel if strongest_ap else None,
             'freq': strongest_ap.channel if strongest_ap else None,
             'signal': strongest_ap.signal if strongest_ap else None,
@@ -347,6 +414,374 @@ def get_networks_summary():
             'access_points': len(access_points),
         })
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
+
+
+def _mac_manufacturer(mac):
+    try:
+        from scripts.interfaceTools import lookup_manufacturer
+    except ImportError:
+        return 'Unknown'
+    return lookup_manufacturer(mac)
+
+
+def _mac_bytes(mac):
+    normalized = _normalize_mac(mac)
+    parts = normalized.split(':')
+    if len(parts) != 6:
+        return None
+    try:
+        return [int(part, 16) for part in parts]
+    except ValueError:
+        return None
+
+
+def _ap_identity_reasons(left_bssid, right_bssid):
+    left = _mac_bytes(left_bssid)
+    right = _mac_bytes(right_bssid)
+    if not left or not right:
+        return []
+
+    reasons = []
+    if left[:5] == right[:5]:
+        reasons.append('BSSIDs share the first five octets and differ only by radio/BSSID index')
+    if left[1:5] == right[1:5] and abs(left[5] - right[5]) <= 16:
+        reasons.append('BSSIDs share the same device-specific suffix with nearby radio indexes')
+    if left[:3] == right[:3] and abs(left[5] - right[5]) <= 16:
+        reasons.append('BSSIDs share an OUI and nearby last-octet values')
+    return reasons
+
+
+def _group_access_points(access_points):
+    """Infer likely physical AP groupings from BSSID patterns for one SSID."""
+    if not access_points:
+        return [], []
+
+    parents = list(range(len(access_points)))
+    group_reasons = {}
+
+    def find(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left, right, reasons):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+        root = find(left_root)
+        group_reasons.setdefault(root, set()).update(reasons)
+
+    for left_index, left_ap in enumerate(access_points):
+        for right_index in range(left_index + 1, len(access_points)):
+            right_ap = access_points[right_index]
+            reasons = _ap_identity_reasons(left_ap.get('bssid'), right_ap.get('bssid'))
+            if reasons:
+                union(left_index, right_index, reasons)
+
+    grouped = {}
+    for index, ap in enumerate(access_points):
+        root = find(index)
+        grouped.setdefault(root, []).append(ap)
+
+    ap_groups = []
+    for group_number, (root, members) in enumerate(grouped.items(), start=1):
+        reasons = sorted(group_reasons.get(root, []))
+        strong_reason = any('first five octets' in reason or 'device-specific suffix' in reason for reason in reasons)
+        confidence = 'High' if len(members) > 1 and strong_reason else 'Medium'
+        label = f'AP group {group_number}' if len(members) > 1 else 'Unique AP'
+        for member in members:
+            member['physical_ap_group'] = label
+            member['identity_confidence'] = confidence if len(members) > 1 else 'Low'
+            member['identity_reasons'] = reasons
+        ap_groups.append({
+            'label': label,
+            'bssids': [member.get('bssid') for member in members],
+            'bands': sorted({member.get('band') for member in members if member.get('band') and member.get('band') != 'Unknown band'}),
+            'channels': [member.get('channel') for member in members if member.get('channel')],
+            'confidence': confidence if len(members) > 1 else 'Low',
+            'reasons': reasons,
+            'likely_same_physical_ap': len(members) > 1,
+        })
+
+    return access_points, ap_groups
+
+
+def _coerce_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _channel_from_frequency(frequency):
+    freq = _coerce_int(frequency)
+    if freq is None:
+        return None
+    if freq == 2484:
+        return 14
+    if 2412 <= freq <= 2472:
+        return int((freq - 2407) / 5)
+    if 5000 <= freq <= 5900:
+        return int((freq - 5000) / 5)
+    if 5955 <= freq <= 7115:
+        return int((freq - 5950) / 5)
+    return None
+
+
+def _frequency_from_channel(channel):
+    channel_number = _coerce_int(channel)
+    if channel_number is None:
+        return None
+    if channel_number == 14:
+        return 2484
+    if 1 <= channel_number <= 13:
+        return 2407 + (channel_number * 5)
+    if 32 <= channel_number <= 177:
+        return 5000 + (channel_number * 5)
+    return None
+
+
+def _frequency_band(channel=None, frequency=None):
+    freq = _coerce_int(frequency)
+    if freq:
+        if 2400 <= freq < 2500:
+            return '2.4 GHz'
+        if 4900 <= freq < 5925:
+            return '5 GHz'
+        if 5925 <= freq <= 7125:
+            return '6 GHz'
+
+    channel_number = _coerce_int(channel)
+    if channel_number is None:
+        return 'Unknown band'
+    if 1 <= channel_number <= 14:
+        return '2.4 GHz'
+    if 32 <= channel_number <= 177:
+        return '5 GHz'
+    if 1 <= channel_number <= 233:
+        return '6 GHz'
+    return 'Unknown band'
+
+
+def _signal_quality(signal):
+    value = _coerce_int(signal)
+    if value is None:
+        return 'Unknown signal'
+    if value >= 0:
+        if value >= 70:
+            return 'Strong'
+        if value >= 40:
+            return 'Usable'
+        return 'Weak'
+    if value >= -55:
+        return 'Excellent'
+    if value >= -67:
+        return 'Good'
+    if value >= -75:
+        return 'Fair'
+    return 'Weak'
+
+
+def _channel_notes(channel=None, frequency=None):
+    notes = []
+    channel_number = _coerce_int(channel) or _channel_from_frequency(frequency)
+    band = _frequency_band(channel_number, frequency)
+
+    if band == '2.4 GHz':
+        if channel_number in {1, 6, 11}:
+            notes.append('Preferred non-overlapping 2.4 GHz channel')
+        elif channel_number:
+            notes.append('Overlaps with nearby 2.4 GHz channels')
+    elif band == '5 GHz' and channel_number in range(52, 145):
+        notes.append('DFS channel; may be affected by radar events')
+    elif band == '6 GHz':
+        notes.append('6 GHz requires Wi-Fi 6E/7 client support')
+
+    return notes
+
+
+def _ap_radio_details(channel=None, signal=None):
+    channel_number = _coerce_int(channel)
+    frequency = channel_number if channel_number and channel_number > 1000 else _frequency_from_channel(channel_number)
+    display_channel = _channel_from_frequency(channel_number) if channel_number and channel_number > 1000 else channel_number
+
+    return {
+        'channel': display_channel if display_channel is not None else channel,
+        'frequency': frequency,
+        'band': _frequency_band(display_channel, frequency),
+        'signal_quality': _signal_quality(signal),
+        'notes': _channel_notes(display_channel, frequency),
+    }
+
+
+def _format_signal(signal):
+    if signal in (None, ''):
+        return 'Unknown signal'
+    try:
+        value = int(signal)
+    except (TypeError, ValueError):
+        return str(signal)
+    return f'{value}%' if value >= 0 else f'{value} dBm'
+
+
+def get_network_detail(ssid=None, bssid=None, interface_name=None):
+    """Return detailed information for a scanned SSID/BSSID, including AP clients."""
+    requested_ssid = (ssid or '').strip()
+    requested_bssid = (bssid or '').strip().lower()
+    matched = None
+
+    for network in networks.values():
+        ssid_matches = requested_ssid and network.ssid == requested_ssid
+        bssid_matches = requested_bssid and any((ap.bssid or '').lower() == requested_bssid for ap in network.access_points)
+        if ssid_matches or bssid_matches:
+            matched = network
+            break
+
+    access_points = []
+    clients = []
+    discovered = matched is not None
+
+    if matched:
+        for ap in matched.access_points:
+            ap_clients = [
+                {
+                    'mac': client.mac,
+                    'signal': client.signal,
+                    'signal_label': _format_signal(client.signal),
+                    'bssid': ap.bssid,
+                    'manufacturer': _mac_manufacturer(client.mac),
+                }
+                for client in ap.clients
+            ]
+            radio = _ap_radio_details(ap.channel, ap.signal)
+            access_points.append({
+                'bssid': ap.bssid,
+                'manufacturer': _mac_manufacturer(ap.bssid),
+                'channel': radio['channel'],
+                'raw_channel': ap.channel,
+                'frequency': radio['frequency'],
+                'band': radio['band'],
+                'signal': ap.signal,
+                'signal_label': _format_signal(ap.signal),
+                'signal_quality': radio['signal_quality'],
+                'notes': radio['notes'],
+                'clients': ap_clients,
+            })
+            clients.extend(ap_clients)
+        access_points, ap_groups = _group_access_points(access_points)
+        strongest_ap = max(matched.access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
+        detail_ssid = matched.ssid
+        security = getattr(matched, 'security', 'Unknown')
+        primary_bssid = strongest_ap.bssid if strongest_ap else (bssid or None)
+        channel = strongest_ap.channel if strongest_ap else None
+        signal = strongest_ap.signal if strongest_ap else None
+    else:
+        detail_ssid = requested_ssid or '<Hidden SSID>'
+        security = 'Unknown'
+        primary_bssid = bssid or None
+        channel = None
+        signal = None
+        ap_groups = []
+
+    return {
+        'ssid': detail_ssid,
+        'bssid': primary_bssid,
+        'security': security,
+        'channel': channel,
+        'signal': signal,
+        'signal_label': _format_signal(signal),
+        'interface': interface_name,
+        'gateway': get_default_gateway(interface_name),
+        'bands': sorted({ap['band'] for ap in access_points if ap.get('band') and ap.get('band') != 'Unknown band'}),
+        'ap_groups': ap_groups,
+        'access_points': access_points,
+        'clients': clients,
+        'discovered': discovered,
+    }
+
+
+def _parse_linux_default_gateway(output):
+    for line in output.splitlines():
+        parts = line.split()
+        if parts and parts[0] == 'default' and 'via' in parts:
+            return parts[parts.index('via') + 1]
+    return None
+
+
+def _parse_windows_default_gateway(output):
+    for line in output.splitlines():
+        if 'Default Gateway' not in line:
+            continue
+        _, _, value = line.partition(':')
+        gateway = value.strip()
+        if gateway:
+            return gateway
+    for line in output.splitlines():
+        match = re.match(r'\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)\s+', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _lookup_arp_mac(ip_address):
+    if not ip_address:
+        return None
+
+    commands = []
+    if platform.system() == 'Windows':
+        commands.append(['arp', '-a', ip_address])
+    else:
+        commands.extend([
+            ['ip', 'neigh', 'show', ip_address],
+            ['arp', '-n', ip_address],
+        ])
+
+    for command in commands:
+        try:
+            result = _run_command(command, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        output = result.stdout or ''
+        mac_match = re.search(r'([0-9a-fA-F]{2}(?:[:-][0-9a-fA-F]{2}){5})', output)
+        if mac_match:
+            return mac_match.group(1).replace('-', ':').lower()
+    return None
+
+
+def get_default_gateway(interface_name=None):
+    """Return the default gateway IP/MAC when the host OS exposes it."""
+    system = platform.system()
+    commands = []
+    parser = None
+
+    if system == 'Linux':
+        if interface_name:
+            commands.append(['ip', 'route', 'show', 'default', 'dev', interface_name])
+        commands.append(['ip', 'route', 'show', 'default'])
+        parser = _parse_linux_default_gateway
+    elif system == 'Windows':
+        if interface_name:
+            commands.append(['netsh', 'interface', 'ip', 'show', 'config', f'name={interface_name}'])
+        commands.append(['route', 'print', '-4', '0.0.0.0'])
+        parser = _parse_windows_default_gateway
+    else:
+        return {'ip': None, 'mac': None, 'manufacturer': 'Unknown'}
+
+    for command in commands:
+        try:
+            result = _run_command(command, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode != 0:
+            continue
+        gateway_ip = parser(result.stdout or '')
+        if gateway_ip:
+            gateway_mac = _lookup_arp_mac(gateway_ip)
+            return {'ip': gateway_ip, 'mac': gateway_mac, 'manufacturer': _mac_manufacturer(gateway_mac)}
+
+    return {'ip': None, 'mac': None, 'manufacturer': 'Unknown'}
 
 
 def connect_to_network(ssid, password=None, interface_name=None):
