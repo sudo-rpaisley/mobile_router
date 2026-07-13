@@ -289,7 +289,7 @@ def wlan_scan():
 
     try:
         from scripts.wifi import utils as wifi_utils
-        wifi_utils.scan_networks()
+        wifi_utils.scan_networks(selected_interface)
         wlans = wifi_utils.get_networks_summary()
         return json_success(message=f'Got wlans for {selected_interface}', wlans=wlans)
     except Exception as e:

@@ -1,4 +1,4 @@
-from access_point import AccessPoint
+from .access_point import AccessPoint
 import time
 
 class Network:

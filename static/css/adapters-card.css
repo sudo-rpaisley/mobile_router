@@ -58,3 +58,43 @@
   text-decoration: none;
   color: inherit;
 }
+
+.interface-category-page {
+  padding-bottom: 1rem;
+}
+
+.interface-category {
+  border-bottom: 1px solid #e5e5e5;
+  padding-bottom: 1.25rem;
+}
+
+.interface-category-header {
+  gap: 1rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.interface-category-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.interface-category-count {
+  color: #6c757d;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.interface-category-list {
+  gap: 0.5rem;
+  padding: 0.75rem 0.25rem 0.5rem;
+  scrollbar-color: #8c8c8c #f5f5f5;
+}
+
+.interface-category-list:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+.interface-category-card {
+  flex: 0 0 auto;
+}

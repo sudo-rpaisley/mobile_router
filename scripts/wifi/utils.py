@@ -1,4 +1,5 @@
 import platform
+import subprocess
 import time
 from .network import Network
 
@@ -21,6 +22,7 @@ authorized_aps = {
 tracked_clients = {}  # Format: {"client_mac": {"last_seen": timestamp, "signal": signal}}
 alerts = []
 
+
 def display_all_networks():
     for network in networks.values():
         print(network)
@@ -29,6 +31,7 @@ def display_all_networks():
             print("Clients:")
             for client in clients:
                 print(f"  {client}")
+
 
 def track_client_devices():
     global tracked_clients
@@ -42,6 +45,7 @@ def track_client_devices():
     timeout = 300
     tracked_clients = {mac: info for mac, info in tracked_clients.items() if current_time - info["last_seen"] < timeout}
 
+
 def detect_rogue_aps():
     global alerts
     for network in networks.values():
@@ -50,92 +54,158 @@ def detect_rogue_aps():
                 alert = f"Rogue AP detected: BSSID {ap.bssid}, SSID {network.ssid}"
                 alerts.append(alert)
 
+
 def send_alerts():
     for alert in alerts:
         print(alert)
     alerts.clear()
 
-def scan_networks():
+
+def _add_network(ssid, bssid=None, channel=None, signal=None, security=None):
+    network_key = ssid or "<Hidden SSID>"
+    if network_key not in networks:
+        networks[network_key] = Network(network_key)
+        networks[network_key].security = security or "Unknown"
+    elif security and getattr(networks[network_key], "security", "Unknown") == "Unknown":
+        networks[network_key].security = security
+
+    if bssid:
+        networks[network_key].add_access_point(bssid, channel, signal)
+
+
+def _run_command(command, timeout=20):
+    return subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
+
+
+def _scan_linux_with_nmcli(interface_name):
+    command = [
+        "nmcli",
+        "-t",
+        "--escape",
+        "no",
+        "-f",
+        "SSID,BSSID,CHAN,SIGNAL,SECURITY",
+        "device",
+        "wifi",
+        "list",
+    ]
+    if interface_name:
+        command.extend(["ifname", interface_name])
+    command.extend(["--rescan", "yes"])
+
+    result = _run_command(command)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "nmcli wireless scan failed")
+
+    for line in result.stdout.splitlines():
+        parts = [part.strip() for part in line.split(":")]
+        if len(parts) < 10:
+            continue
+        security = parts[-1] or "Open"
+        signal = parts[-2]
+        channel = parts[-3]
+        bssid = ":".join(parts[-9:-3])
+        ssid = ":".join(parts[:-9])
+        _add_network(ssid, bssid, channel, _parse_signal(signal), security)
+
+
+def _scan_linux_with_scapy(interface_name, timeout):
+    from scapy.all import sniff
+    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt, Dot11ProbeReq, Dot11AssoReq, Dot11Addr2, Dot11Addr3
+
+    if not interface_name:
+        raise RuntimeError("A wireless interface is required for packet scanning")
+
+    def sniff_networks(packet):
+        if packet.haslayer(Dot11Beacon) or packet.haslayer(Dot11ProbeResp):
+            ssid = packet[Dot11Elt].info.decode(errors="replace")
+            bssid = packet[Dot11].addr3
+            channel = None
+            if packet.haslayer(Dot11Elt) and packet.getlayer(Dot11Elt, ID=3):
+                channel_info = packet.getlayer(Dot11Elt, ID=3).info
+                channel = channel_info[0] if channel_info else None
+            dbm_signal = getattr(packet, "dBm_AntSignal", None)
+            _add_network(ssid, bssid, channel, dbm_signal)
+
+        if packet.haslayer(Dot11AssoReq) or packet.haslayer(Dot11ProbeReq):
+            client_mac = packet[Dot11Addr2].addr2
+            bssid = packet[Dot11Addr3].addr3
+            dbm_signal = getattr(packet, "dBm_AntSignal", None)
+
+            for network in networks.values():
+                network.add_client(bssid, client_mac, dbm_signal)
+
+    sniff(iface=interface_name, prn=sniff_networks, timeout=timeout)
+
+
+def _parse_signal(signal):
+    try:
+        return int(signal)
+    except (TypeError, ValueError):
+        return signal or None
+
+
+def scan_networks(interface_name=None, timeout=12):
+    """Scan nearby wireless networks for the requested interface."""
     global networks
-    if platform.system() == "Linux":
-        from scapy.all import sniff
-        from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt, Dot11ProbeReq, Dot11AssoReq, Dot11Addr2, Dot11Addr3
+    networks = {}
 
-        def sniff_networks(packet):
-            if packet.haslayer(Dot11Beacon) or packet.haslayer(Dot11ProbeResp):
-                ssid = packet[Dot11Elt].info.decode()
-                bssid = packet[Dot11].addr3
-                channel = int(ord(packet[Dot11Elt:3].info))
-                dbm_signal = packet.dBm_AntSignal
-
-                if ssid not in networks:
-                    networks[ssid] = Network(ssid)
-                networks[ssid].add_access_point(bssid, channel, dbm_signal)
-            
-            if packet.haslayer(Dot11AssoReq) or packet.haslayer(Dot11ProbeReq):
-                client_mac = packet[Dot11Addr2].addr2
-                bssid = packet[Dot11Addr3].addr3
-                dbm_signal = packet.dBm_AntSignal
-
-                for network in networks.values():
-                    network.add_client(bssid, client_mac, dbm_signal)
-
-        print("Starting network scan on Linux...")
-        sniff(iface="wlan0", prn=sniff_networks, timeout=60)
-        print("Network scan completed.")
-        track_client_devices()
-        detect_rogue_aps()
-        send_alerts()
-        display_all_networks()
-
-    elif platform.system() == "Windows":
+    system = platform.system()
+    if system == "Linux":
+        try:
+            _scan_linux_with_nmcli(interface_name)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired):
+            _scan_linux_with_scapy(interface_name, timeout)
+    elif system == "Windows":
         import pywifi
-        from pywifi import const
 
         wifi = pywifi.PyWiFi()
-        iface = wifi.interfaces()[0]
+        ifaces = wifi.interfaces()
+        if not ifaces:
+            raise RuntimeError("No wireless interfaces found")
+
+        iface = ifaces[0]
+        if interface_name:
+            iface = next((candidate for candidate in ifaces if candidate.name() == interface_name), iface)
 
         iface.scan()
         time.sleep(5)  # Wait for the scan to complete
         scan_results = iface.scan_results()
 
-        networks = {}
         for network in scan_results:
-            ssid = network.ssid
-            bssid = network.bssid
-            signal = network.signal
-            channel = network.freq
-
-            if ssid not in networks:
-                networks[ssid] = Network(ssid)
-            networks[ssid].add_access_point(bssid, channel, signal)
-
-        print("Network scan completed.")
-        track_client_devices()
-        detect_rogue_aps()
-        send_alerts()
-        display_all_networks()
-
+            _add_network(network.ssid, network.bssid, network.freq, network.signal)
     else:
-        print("Unsupported platform. This script only supports Linux and Windows.")
+        raise RuntimeError("Wireless scanning is only supported on Linux and Windows")
+
+    track_client_devices()
+    detect_rogue_aps()
+    send_alerts()
+    display_all_networks()
+
 
 def get_frequent_clients(threshold=3600):
     frequent_clients = {}
     for network in networks.values():
         frequent_clients.update(network.frequent_clients(threshold))
     return frequent_clients
+
+
 def get_networks_summary():
-    """Return a list summary of scanned networks."""
+    """Return a sorted summary of scanned networks grouped by SSID."""
     results = []
     for network in networks.values():
-        for ap in network.access_points:
-            results.append({
-                'ssid': network.ssid,
-                'bssid': ap.bssid,
-                'freq': ap.channel,
-                'signal': ap.signal
-            })
-    return results
+        access_points = network.access_points
+        strongest_ap = max(access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
+        results.append({
+            'ssid': network.ssid,
+            'bssid': strongest_ap.bssid if strongest_ap else None,
+            'channel': strongest_ap.channel if strongest_ap else None,
+            'freq': strongest_ap.channel if strongest_ap else None,
+            'signal': strongest_ap.signal if strongest_ap else None,
+            'security': getattr(network, 'security', 'Unknown'),
+            'access_points': len(access_points),
+        })
+    return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
 
 
 def connect_to_network(ssid, password=None, interface_name=None):
@@ -151,12 +221,9 @@ def connect_to_network(ssid, password=None, interface_name=None):
     iface = None
     if interface_name:
         for i in ifaces:
-            try:
-                if i.name() == interface_name:
-                    iface = i
-                    break
-            except Exception:
-                continue
+            if i.name() == interface_name:
+                iface = i
+                break
     if iface is None:
         iface = ifaces[0]
 
@@ -182,4 +249,3 @@ def connect_to_network(ssid, password=None, interface_name=None):
         return True
     iface.disconnect()
     return False
-
