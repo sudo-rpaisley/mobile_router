@@ -6,9 +6,9 @@
 
 .adapter-card.card,
 .adapters-card {
-  width: min(100%, 250px) !important;
-  height: 20rem;
-  min-height: 20rem;
+  width: min(100%, 22rem) !important;
+  height: 14rem;
+  min-height: 14rem;
   border: 1px solid #ddd;
   border-radius: 0.5rem;
   overflow: hidden;
