@@ -26,6 +26,14 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Bluetooth action checklist', response.data)
 
 
+
+    def test_scrollable_interface_lists_do_not_render_blue_focus_box(self):
+        css = open('static/css/adapters-card.css').read()
+
+        self.assertIn('.interface-category-list:focus', css)
+        self.assertIn('outline: none;', css)
+        self.assertNotIn('outline: 2px solid #007bff', css)
+
     def test_interface_type_preserves_uppercase_vpn(self):
         vpn_interface = SimpleNamespace(
             name='VPN Adapter',

@@ -143,9 +143,9 @@
   scrollbar-color: #8c8c8c #f5f5f5;
 }
 
-.interface-category-list:focus {
-  outline: 2px solid #007bff;
-  outline-offset: 2px;
+.interface-category-list:focus,
+.interface-category-list:focus-visible {
+  outline: none;
 }
 
 .interface-category-card {
