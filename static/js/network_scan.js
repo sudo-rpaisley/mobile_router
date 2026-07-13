@@ -11,19 +11,14 @@ $(document).ready(function () {
         if (resp.hosts.length === 0) {
           html += '<p>No hosts found</p>';
         } else {
-          html += '<ul>';
+          html += '<div class="table-responsive"><table class="table theme-table"><thead><tr><th>IP</th><th>MAC</th><th>Manufacturer</th></tr></thead><tbody>';
           resp.hosts.forEach(function (host) {
-            const display = host.ip;
+            const display = host.ip || 'Unknown IP';
             const macParam = host.mac ? host.mac : host.ip;
             const link = `/clients/${encodeURIComponent(macParam)}`;
-            html += `<li><a href="${link}">${display}</a>`;
-            if (host.mac) {
-              html += ` (${host.mac})`;
-            }
-            html += `</li>`;
-            
+            html += `<tr><td><a href="${link}">${display}</a></td><td>${host.mac || '—'}</td><td>${host.manufacturer || 'Unknown'}</td></tr>`;
           });
-          html += '</ul>';
+          html += '</tbody></table></div><p><a href="/inventory">View full device inventory</a></p>';
         }
         $('#scan-results').html(html);
       },
@@ -45,12 +40,12 @@ $(document).ready(function () {
         if (resp.devices.length === 0) {
           html += '<p>No devices found</p>';
         } else {
-          html += '<ul>';
+          html += '<div class="table-responsive"><table class="table theme-table"><thead><tr><th>IP</th><th>MAC</th><th>Manufacturer</th></tr></thead><tbody>';
           resp.devices.forEach(function (dev) {
             const link = `/clients/${encodeURIComponent(dev.mac)}`;
-            html += `<li><a href="${link}">${dev.ip}</a> (${dev.mac})</li>`;
+            html += `<tr><td>${dev.ip || '—'}</td><td><a href="${link}">${dev.mac}</a></td><td>${dev.manufacturer || 'Unknown'}</td></tr>`;
           });
-          html += '</ul>';
+          html += '</tbody></table></div><p><a href="/inventory">View full device inventory</a></p>';
         }
         $('#scan-results').html(html);
       },

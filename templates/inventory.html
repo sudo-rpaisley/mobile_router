@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block title %}Device Inventory{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Network visibility</p>
+    <h1 class="page-title">Device Inventory</h1>
+    <p class="page-subtitle">Review discovered IPs, MAC addresses, manufacturers, interfaces, sources, and first/last seen timestamps in one place.</p>
+  </div>
+</section>
+
+<section class="theme-grid inventory-summary-grid" aria-label="Inventory summary">
+  <article class="theme-card inventory-stat-card">
+    <div class="card-body">
+      <p class="page-kicker">Total devices</p>
+      <strong>{{ insights.total_devices }}</strong>
+    </div>
+  </article>
+  <article class="theme-card inventory-stat-card">
+    <div class="card-body">
+      <p class="page-kicker">Known vendors</p>
+      <strong>{{ insights.known_manufacturers }}</strong>
+    </div>
+  </article>
+  <article class="theme-card inventory-stat-card {% if insights.unknown_manufacturers %}inventory-stat-warning{% endif %}">
+    <div class="card-body">
+      <p class="page-kicker">Unknown OUI</p>
+      <strong>{{ insights.unknown_manufacturers }}</strong>
+    </div>
+  </article>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Manufacturer/OUI insights</h2>
+    {% if insights.top_vendors %}
+      <div class="inventory-vendor-list">
+        {% for vendor in insights.top_vendors %}
+          <div class="inventory-vendor-row {% if vendor.manufacturer == 'Unknown' %}inventory-unknown-vendor{% endif %}">
+            <div>
+              <strong>{{ vendor.manufacturer }}</strong>
+              {% if vendor.manufacturer == 'Unknown' %}
+                <span class="badge badge-warning">Needs review</span>
+              {% endif %}
+            </div>
+            <span>{{ vendor.count }} device{% if vendor.count != 1 %}s{% endif %}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted">Run an active, passive, Bluetooth, or wireless scan to populate manufacturer insights.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="inventory-table-header">
+      <h2 class="theme-section-title">Discovered devices</h2>
+      <a class="btn btn-outline-primary btn-sm" href="/network-scan">Run scan</a>
+    </div>
+    {% if devices %}
+      <div class="table-responsive">
+        <table class="table theme-table inventory-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>IP</th>
+              <th>MAC / BSSID</th>
+              <th>Manufacturer</th>
+              <th>Sources</th>
+              <th>Interfaces</th>
+              <th>First seen</th>
+              <th>Last seen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for device in devices %}
+              <tr class="{% if device.is_unknown_manufacturer %}inventory-unknown-row{% endif %}">
+                <td>{{ device.display_name }}</td>
+                <td>{{ device.ip or '—' }}</td>
+                <td>
+                  {% if device.mac %}
+                    <a href="/clients/{{ device.mac|urlencode }}">{{ device.mac }}</a>
+                  {% else %}
+                    {{ device.bssid or '—' }}
+                  {% endif %}
+                </td>
+                <td>{{ device.manufacturer }}</td>
+                <td>{{ device.sources|join(', ') }}</td>
+                <td>{{ device.interfaces|join(', ') if device.interfaces else '—' }}</td>
+                <td>{{ device.first_seen_label }}</td>
+                <td>{{ device.last_seen_label }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted">No devices discovered yet. Run a scan to build the inventory.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -35,6 +35,10 @@ network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
 scan_jobs = {}
 scan_jobs_lock = threading.Lock()
+device_inventory = {}
+device_inventory_lock = threading.Lock()
+MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
+
 
 
 ROADMAP_SECTIONS = [
@@ -218,6 +222,113 @@ def run_bluetoothctl_action(action, address, timeout=15):
         raise RuntimeError(output or f'bluetoothctl {command} failed')
     return output or f'bluetoothctl {command} completed'
 
+
+def normalize_mac(mac):
+    """Normalize a MAC-like value to colon-separated lowercase format."""
+    if not mac:
+        return None
+    value = str(mac).strip().replace('-', ':').lower()
+    if MAC_RE.match(value):
+        return value
+    return None
+
+
+def inventory_key(device):
+    mac = normalize_mac(device.get('mac') or device.get('address'))
+    if mac:
+        return f"mac:{mac}"
+    ip = device.get('ip')
+    if ip:
+        return f"ip:{ip}"
+    ssid = device.get('ssid')
+    bssid = normalize_mac(device.get('bssid'))
+    if ssid or bssid:
+        return f"wifi:{ssid or 'hidden'}:{bssid or 'unknown'}"
+    return None
+
+
+def record_inventory_devices(devices, source, interface=None):
+    """Merge discovered devices into the in-memory inventory with OUI metadata."""
+    now = time.time()
+    changed_devices = []
+    with device_inventory_lock:
+        for raw_device in devices or []:
+            device = dict(raw_device)
+            mac = normalize_mac(device.get('mac') or device.get('address') or device.get('bssid'))
+            if mac:
+                device['mac'] = mac
+            key = inventory_key(device)
+            if not key:
+                continue
+            existing = device_inventory.get(key, {})
+            first_seen = existing.get('first_seen', now)
+            sources = sorted(set(existing.get('sources', [])) | {source})
+            interfaces_seen = sorted(set(existing.get('interfaces', [])) | ({interface} if interface else set()))
+            manufacturer = device.get('manufacturer') or (lookup_manufacturer(mac) if mac else None) or existing.get('manufacturer') or 'Unknown'
+            merged = {
+                **existing,
+                **{k: v for k, v in device.items() if v not in (None, '')},
+                'id': key,
+                'mac': mac or existing.get('mac'),
+                'manufacturer': manufacturer,
+                'first_seen': first_seen,
+                'last_seen': now,
+                'sources': sources,
+                'interfaces': interfaces_seen,
+            }
+            device_inventory[key] = merged
+            changed_devices.append(dict(merged))
+    return changed_devices
+
+
+def inventory_records():
+    """Return inventory entries enriched with display labels and sorted by last seen."""
+    interface_devices = []
+    for iface in network_interfaces:
+        mac = iface.get_mac_address() if hasattr(iface, 'get_mac_address') else None
+        if mac:
+            interface_devices.append({
+                'mac': mac,
+                'ip': iface.get_ipv4() if hasattr(iface, 'get_ipv4') else None,
+                'name': getattr(iface, 'name', None),
+                'device_type': f"Local {getattr(iface, 'interface_type', 'Interface')}",
+                'manufacturer': getattr(iface, 'manufacturer', None) or lookup_manufacturer(mac),
+            })
+    if interface_devices:
+        record_inventory_devices(interface_devices, 'local-adapter')
+
+    with device_inventory_lock:
+        records = [dict(item) for item in device_inventory.values()]
+    for item in records:
+        item['display_name'] = item.get('name') or item.get('hostname') or item.get('ssid') or item.get('ip') or item.get('mac') or 'Unknown device'
+        item['manufacturer'] = item.get('manufacturer') or 'Unknown'
+        item['is_unknown_manufacturer'] = item['manufacturer'] == 'Unknown'
+        item['first_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('first_seen', 0)))
+        item['last_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('last_seen', 0)))
+    return sorted(records, key=lambda item: item.get('last_seen', 0), reverse=True)
+
+
+def manufacturer_insights(records=None):
+    """Summarize the current inventory by manufacturer/OUI."""
+    records = records if records is not None else inventory_records()
+    vendors = {}
+    unknown = 0
+    for item in records:
+        vendor = item.get('manufacturer') or 'Unknown'
+        vendors.setdefault(vendor, {'manufacturer': vendor, 'count': 0, 'devices': []})
+        vendors[vendor]['count'] += 1
+        vendors[vendor]['devices'].append(item)
+        if vendor == 'Unknown':
+            unknown += 1
+    top_vendors = sorted(vendors.values(), key=lambda item: (-item['count'], item['manufacturer']))
+    return {
+        'total_devices': len(records),
+        'known_manufacturers': len([vendor for vendor in vendors if vendor != 'Unknown']),
+        'unknown_manufacturers': unknown,
+        'top_vendors': top_vendors,
+    }
+
+
 def json_error(message, status=400):
     """Return a consistently shaped JSON error response."""
     return jsonify({'status': 'error', 'message': message}), status
@@ -264,6 +375,8 @@ def _run_scan_job(job_id, scan_type, selected_interface):
             }
         else:
             raise ValueError('Unsupported scan type')
+        if scan_type == 'bluetooth':
+            record_inventory_devices(result.get('devices', []), 'bluetooth-scan', selected_interface)
         _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
     except Exception as exc:
         _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
@@ -391,6 +504,18 @@ def network_scan():
     return render_template('network_scan.html', title='Network Scan', **current_context())
 
 
+@app.route('/inventory')
+def inventory_page():
+    records = inventory_records()
+    return render_template(
+        'inventory.html',
+        title='Device Inventory',
+        devices=records,
+        insights=manufacturer_insights(records),
+        **current_context(),
+    )
+
+
 @app.route('/port-scan')
 def port_scan_page():
     return render_template('port_scan.html', title='Port Scan', **current_context())
@@ -436,7 +561,8 @@ def active_scan_route():
     if not iface:
         return json_error('Missing interface')
     hosts = active_scan(iface)
-    return jsonify({'hosts': hosts})
+    enriched_hosts = record_inventory_devices(hosts, 'active-scan', iface)
+    return jsonify({'hosts': enriched_hosts})
 
 
 @app.route('/passive-scan', methods=['POST'])
@@ -445,7 +571,8 @@ def passive_scan_route():
     if not iface:
         return json_error('Missing interface')
     devices = passive_scan(iface)
-    return jsonify({'devices': devices})
+    enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
+    return jsonify({'devices': enriched_devices})
 
 
 @app.route('/port-scan', methods=['POST'])

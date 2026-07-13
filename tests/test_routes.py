@@ -113,6 +113,33 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('capabilities', response.get_json())
 
+
+    def test_inventory_page_renders_manufacturer_insights(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.1.10', 'mac': 'b8:27:eb:11:22:33'},
+            {'ip': '192.168.1.11', 'mac': 'de:ad:be:ef:00:01'},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/inventory')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Device Inventory', response.data)
+        self.assertIn(b'Manufacturer/OUI insights', response.data)
+        self.assertIn(b'Raspberry Pi Foundation', response.data)
+        self.assertIn(b'Needs review', response.data)
+
+    @patch('app.active_scan')
+    def test_active_scan_records_inventory_with_manufacturer(self, scan):
+        app_module.device_inventory.clear()
+        scan.return_value = [{'ip': '192.168.1.10', 'mac': 'b8:27:eb:11:22:33'}]
+
+        response = self.client.post('/active-scan', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['hosts'][0]['manufacturer'], 'Raspberry Pi Foundation')
+        self.assertIn('mac:b8:27:eb:11:22:33', app_module.device_inventory)
+
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')
         self.assertEqual(response.status_code, 200)
