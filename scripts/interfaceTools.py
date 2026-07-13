@@ -7,8 +7,10 @@ import os
 import ipaddress
 import re
 import shutil
+import json
 
 AF_PACKET_FAMILY = getattr(socket, "AF_PACKET", 17)
+_WINDOWS_INTERFACE_METADATA = {}
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -162,21 +164,128 @@ class BluetoothDevice:
         return (f"Bluetooth Device: {self.name}\n"
                 f"  Address: {self.address}\n")
 
+def _get_windows_adapter_metadata():
+    """Return Windows adapter information indexed by friendly name."""
+
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        return {}
+
+    try:
+        output = subprocess.check_output(
+            [
+                powershell,
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                (
+                    "Get-NetAdapter | "
+                    "Select-Object Name,InterfaceDescription,Status,"
+                    "MediaType,PhysicalMediaType | "
+                    "ConvertTo-Json -Compress"
+                ),
+            ],
+            encoding="utf-8",
+            errors="ignore",
+        )
+
+        if not output.strip():
+            return {}
+
+        adapters = json.loads(output)
+
+        # ConvertTo-Json returns an object rather than a list when there
+        # is only one adapter.
+        if isinstance(adapters, dict):
+            adapters = [adapters]
+
+        return {
+            adapter["Name"]: adapter
+            for adapter in adapters
+            if isinstance(adapter, dict) and adapter.get("Name")
+        }
+
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+    ):
+        return {}
+
 def get_interface_type(name):
-    if name.startswith('wlan') or name.startswith('wifi') or name.startswith('wlo'):
-        return 'Wireless'
-    elif name.startswith('eth') or name.startswith('en'):
-        return 'Wired'
-    elif name.startswith('lo'):
-        return 'Loopback'
-    elif name.startswith('br'):
-        return 'Bridge'
-    elif name.startswith('bond'):
-        return 'Bond'
-    elif name.startswith('sta'):
-        return 'Station'
-    else:
-        return 'Unknown'
+    normalized_name = name.casefold()
+
+    metadata = _WINDOWS_INTERFACE_METADATA.get(name, {})
+    description = str(
+        metadata.get("InterfaceDescription") or ""
+    ).casefold()
+
+    combined = f"{normalized_name} {description}"
+
+    if "bluetooth" in combined:
+        return "Bluetooth"
+
+    vpn_markers = (
+        "vpn",
+        "openvpn",
+        "nordvpn",
+        "wireguard",
+        "tap-",
+        "wintun",
+        "tailscale",
+        "zerotier",
+    )
+    if any(marker in combined for marker in vpn_markers):
+        return "VPN"
+
+    virtual_markers = (
+        "vmware",
+        "vmnet",
+        "virtualbox",
+        "hyper-v",
+        "vethernet",
+        "virtual ethernet",
+        "docker",
+        "wsl",
+    )
+    if any(marker in combined for marker in virtual_markers):
+        return "Virtual"
+
+    wireless_markers = (
+        "wi-fi",
+        "wifi",
+        "wireless",
+        "802.11",
+    )
+    if (
+        normalized_name.startswith(("wlan", "wlo"))
+        or any(marker in combined for marker in wireless_markers)
+    ):
+        return "Wireless"
+
+    if (
+        normalized_name == "lo"
+        or normalized_name.startswith("loopback")
+    ):
+        return "Loopback"
+
+    if normalized_name.startswith("br"):
+        return "Bridge"
+
+    if normalized_name.startswith("bond"):
+        return "Bond"
+
+    if normalized_name.startswith("sta"):
+        return "Station"
+
+    if (
+        normalized_name.startswith(("eth", "en"))
+        or "ethernet" in combined
+        or normalized_name.startswith("local area connection")
+    ):
+        return "Wired"
+
+    return "Unknown"
 
 
 def _parse_ip_addrs(name, family):
@@ -250,7 +359,8 @@ def get_station_info(name):
 
 
 def _list_interface_names():
-    """Return interface names without relying on Linux-only /sys paths."""
+    """Return user-facing network-interface names."""
+
     base_path = "/sys/class/net"
     if os.path.isdir(base_path):
         return [
@@ -258,6 +368,15 @@ def _list_interface_names():
             for name in os.listdir(base_path)
             if os.path.isdir(os.path.join(base_path, name))
         ]
+
+    if platform.system() == "Windows":
+        metadata = _get_windows_adapter_metadata()
+
+        _WINDOWS_INTERFACE_METADATA.clear()
+        _WINDOWS_INTERFACE_METADATA.update(metadata)
+
+        if metadata:
+            return list(metadata)
 
     try:
         return [name for _, name in socket.if_nameindex()]
@@ -305,35 +424,90 @@ def _parse_unix_ifconfig(name):
 
 
 def _parse_windows_ipconfig(name):
-    """Parse adapter details from ipconfig /all for Windows."""
-    try:
-        output = subprocess.check_output(["ipconfig", "/all"], encoding="utf-8", errors="ignore")
-    except Exception:
-        return {"mac": None, "ipv4": [], "ipv6": []}
+    """Parse IPv4, IPv6 and MAC details from ipconfig /all."""
 
-    blocks = re.split(r"\r?\n\r?\n", output)
-    for block in blocks:
-        header = block.splitlines()[0] if block.splitlines() else ""
-        if name.lower() not in header.lower():
+    empty_result = {
+        "mac": None,
+        "ipv4": [],
+        "ipv6": [],
+    }
+
+    try:
+        output = subprocess.check_output(
+            ["ipconfig", "/all"],
+            encoding="utf-8",
+            errors="ignore",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return empty_result
+
+    # Find adapter headings such as:
+    # Ethernet adapter Ethernet:
+    # Wireless LAN adapter WiFi:
+    adapter_pattern = re.compile(
+        r"^[^\r\n]*?\badapter\s+(.+?):\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+    matches = list(adapter_pattern.finditer(output))
+
+    for index, match in enumerate(matches):
+        adapter_name = match.group(1).strip()
+
+        if adapter_name.casefold() != name.casefold():
             continue
+
+        section_start = match.end()
+        section_end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(output)
+        )
+        section = output[section_start:section_end]
 
         mac = None
         ipv4 = []
         ipv6 = []
-        for line in block.splitlines():
-            if "Physical Address" in line:
-                value = line.split(":", 1)[-1].strip().replace("-", ":").lower()
-                if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", value):
-                    mac = value
-            if "IPv4 Address" in line:
-                value = line.split(":", 1)[-1].strip().split("(")[0].strip()
-                ipv4.append({"address": value, "netmask": None, "broadcast": None})
-            if "IPv6 Address" in line and "Temporary" not in line:
-                value = line.split(":", 1)[-1].strip().split("(")[0].strip()
-                ipv6.append({"address": value, "netmask": None, "broadcast": None})
-        return {"mac": mac, "ipv4": ipv4, "ipv6": ipv6}
 
-    return {"mac": None, "ipv4": [], "ipv6": []}
+        for line in section.splitlines():
+            if "Physical Address" in line:
+                value = line.split(":", 1)[-1].strip()
+                value = value.replace("-", ":").lower()
+
+                if re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", value):
+                    mac = value
+
+            elif "IPv4 Address" in line:
+                value = line.split(":", 1)[-1]
+                value = value.split("(")[0].strip()
+
+                ipv4.append({
+                    "address": value,
+                    "netmask": None,
+                    "broadcast": None,
+                })
+
+            elif "Subnet Mask" in line and ipv4:
+                value = line.split(":", 1)[-1].strip()
+                ipv4[-1]["netmask"] = value
+
+            elif "IPv6 Address" in line:
+                value = line.split(":", 1)[-1]
+                value = value.split("(")[0].strip()
+
+                ipv6.append({
+                    "address": value,
+                    "netmask": None,
+                    "broadcast": None,
+                })
+
+        return {
+            "mac": mac,
+            "ipv4": ipv4,
+            "ipv6": ipv6,
+        }
+
+    return empty_result
 
 
 def _get_interface_details(name):
