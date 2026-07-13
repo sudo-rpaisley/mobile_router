@@ -46,10 +46,14 @@ def _load_oui_db():
 OUI_DB = _load_oui_db()
 
 
-def _normalize_interface_state(status):
+def _normalize_interface_state(status, interface_type=None):
     """Normalize platform-specific adapter status strings for display."""
     normalized = str(status or '').strip().casefold()
+    normalized_type = str(interface_type or '').strip().casefold()
+
     if normalized in {'up', 'connected', 'running'}:
+        return 'UP'
+    if normalized_type == 'bluetooth' and normalized == 'disconnected':
         return 'UP'
     if normalized in {'down', 'disconnected', 'disabled', 'not present', 'notpresent'}:
         return 'DOWN'
@@ -120,14 +124,14 @@ class NetworkInterface:
         """Get the operational state of the interface when the OS exposes it."""
         metadata_status = _WINDOWS_INTERFACE_METADATA.get(self.name, {}).get("Status")
         if metadata_status:
-            return _normalize_interface_state(metadata_status)
+            return _normalize_interface_state(metadata_status, self.interface_type)
 
         state_file = f"/sys/class/net/{self.name}/operstate"
         if os.path.exists(state_file):
             try:
                 with open(state_file) as f:
                     state = f.read().strip()
-                return _normalize_interface_state(state)
+                return _normalize_interface_state(state, self.interface_type)
             except OSError:
                 return 'UNKNOWN'
         return 'UNKNOWN'
@@ -576,19 +580,116 @@ def get_network_interfaces():
     return network_objects
 
 
-async def get_bluetooth_devices():
-    if importlib.util.find_spec("bleak") is None:
-        print("Bluetooth scan unavailable: bleak is not installed")
+def _dedupe_bluetooth_devices(devices):
+    seen = set()
+    unique = []
+    for device in devices:
+        key = (device.address or device.name or '').casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(device)
+    return unique
+
+
+def _parse_windows_bluetooth_devices(output):
+    if not output.strip():
         return []
 
-    bleak_module = importlib.import_module("bleak")
     try:
-        devices = await bleak_module.BleakScanner.discover()
-        bluetooth_objects = [BluetoothDevice(address=device.address, name=device.name) for device in devices]
-        return bluetooth_objects
-    except Exception as e:
-        print(f"Error discovering Bluetooth devices: {e}")
+        payload = json.loads(output)
+    except json.JSONDecodeError:
         return []
+
+    if isinstance(payload, dict):
+        payload = [payload]
+
+    devices = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        name = item.get('FriendlyName') or item.get('Name')
+        instance_id = item.get('InstanceId') or ''
+        address_match = re.search(r'([0-9A-Fa-f]{12})', instance_id)
+        address = None
+        if address_match:
+            raw = address_match.group(1).lower()
+            address = ':'.join(raw[index:index + 2] for index in range(0, 12, 2))
+        if name or address:
+            devices.append(BluetoothDevice(address or instance_id, name or 'Unknown'))
+    return devices
+
+
+def _get_windows_bluetooth_devices():
+    powershell = shutil.which('powershell') or shutil.which('pwsh')
+    if not powershell:
+        return []
+
+    try:
+        output = subprocess.check_output(
+            [
+                powershell,
+                '-NoProfile',
+                '-NonInteractive',
+                '-Command',
+                (
+                    "Get-PnpDevice -Class Bluetooth | "
+                    "Where-Object { $_.FriendlyName -or $_.Name } | "
+                    "Select-Object FriendlyName,Name,InstanceId,Status | "
+                    "ConvertTo-Json -Compress"
+                ),
+            ],
+            encoding='utf-8',
+            errors='ignore',
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    return _parse_windows_bluetooth_devices(output)
+
+
+def _parse_bluetoothctl_devices(output):
+    devices = []
+    for line in output.splitlines():
+        match = re.match(r'Device\s+([0-9A-Fa-f:]{17})\s+(.+)', line.strip())
+        if match:
+            devices.append(BluetoothDevice(match.group(1).lower(), match.group(2).strip()))
+    return devices
+
+
+def _get_linux_bluetooth_devices(timeout=8):
+    bluetoothctl = shutil.which('bluetoothctl')
+    if not bluetoothctl:
+        return []
+
+    try:
+        subprocess.run([bluetoothctl, '--timeout', str(timeout), 'scan', 'on'], capture_output=True, text=True, timeout=timeout + 3)
+        output = subprocess.check_output([bluetoothctl, 'devices'], encoding='utf-8', errors='ignore')
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    return _parse_bluetoothctl_devices(output)
+
+
+async def get_bluetooth_devices(timeout=10):
+    bluetooth_objects = []
+
+    if importlib.util.find_spec("bleak") is not None:
+        bleak_module = importlib.import_module("bleak")
+        try:
+            devices = await bleak_module.BleakScanner.discover(timeout=timeout)
+            bluetooth_objects.extend(BluetoothDevice(address=device.address, name=device.name) for device in devices)
+        except Exception as e:
+            print(f"Error discovering BLE devices: {e}")
+    else:
+        print("Bluetooth BLE scan unavailable: bleak is not installed")
+
+    if platform.system() == "Windows":
+        bluetooth_objects.extend(_get_windows_bluetooth_devices())
+    elif platform.system() == "Linux":
+        bluetooth_objects.extend(_get_linux_bluetooth_devices(timeout=timeout))
+
+    return _dedupe_bluetooth_devices(bluetooth_objects)
 
 def spoof_mac(interface, new_mac):
     """Change the MAC address of a network interface.

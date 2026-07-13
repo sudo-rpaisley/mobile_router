@@ -1,4 +1,13 @@
 $(document).ready(function () {
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   $("button#bluetooth-scan").on("click", function () {
     const interfaceName = $(this).val();
     $.ajax({
@@ -10,22 +19,23 @@ $(document).ready(function () {
       },
       success: function (response) {
         console.log(`Bluetooth scan on ${interfaceName} successful`);
-        let btDiv = `<h1>Bluetooth Devices</h1>`;
+        let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div></div>`;
         if (response.devices.length === 0) {
-          btDiv += `<p>No devices found</p>`;
+          btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;
         } else {
           response.devices.forEach(function (device) {
             const name = device.name || 'Unknown';
             btDiv += `
-              <div class="card mb-2">
-                <div class="card-body">
-                  <h5 class="card-title">${name}</h5>
-                  <p class="card-text">${device.address}</p>
+              <div class="wireless-network-card mb-2">
+                <div>
+                  <h5 class="card-title">${escapeHtml(name)}</h5>
+                  <p class="card-text">${escapeHtml(device.address)}</p>
                 </div>
               </div>
             `;
           });
         }
+        btDiv += `</div></section>`;
         $("#bluetooth-devices").html(btDiv);
       },
       error: function (error) {
