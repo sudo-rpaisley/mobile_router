@@ -96,6 +96,15 @@ class RouteSmokeTest(unittest.TestCase):
 
 
 
+
+    def test_red_team_card_forms_are_constrained_to_card_width(self):
+        css = open('static/css/red-team.css').read()
+
+        self.assertIn('.red-team-grid .form-inline', css)
+        self.assertIn('display: grid !important;', css)
+        self.assertIn('width: 100% !important;', css)
+        self.assertIn('max-width: 100%;', css)
+
     @patch('app.threading.Thread')
     def test_scan_job_routes_start_and_report_status(self, thread_cls):
         thread_cls.return_value.start.return_value = None

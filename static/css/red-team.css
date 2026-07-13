@@ -36,3 +36,28 @@
 .red-team-grid button {
   margin-bottom: 0 !important;
 }
+
+.red-team-grid .card,
+.red-team-grid .card * {
+  box-sizing: border-box;
+}
+
+.red-team-grid .form-inline {
+  align-items: stretch;
+  display: grid !important;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.red-team-grid .form-control,
+.red-team-grid .form-select,
+.red-team-grid .input-group,
+.red-team-grid .btn {
+  max-width: 100%;
+  min-width: 0;
+  width: 100% !important;
+}
+
+.red-team-grid .input-group .form-control {
+  flex: 1 1 0;
+}
