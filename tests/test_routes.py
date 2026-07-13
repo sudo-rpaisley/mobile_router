@@ -87,6 +87,23 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'data-interface="WiFi"', response.data)
 
 
+
+    @patch('app.threading.Thread')
+    def test_scan_job_routes_start_and_report_status(self, thread_cls):
+        thread_cls.return_value.start.return_value = None
+        response = self.client.post('/scan-jobs', data={'scanType': 'wlan', 'selectedInterface': 'WiFi'})
+        self.assertEqual(response.status_code, 200)
+        job = response.get_json()['job']
+        self.assertEqual(job['status'], 'queued')
+
+        response = self.client.get(f"/scan-jobs/{job['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['job']['scan_type'], 'wlan')
+
+    def test_scan_job_rejects_unknown_scan_type(self):
+        response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
+        self.assertEqual(response.status_code, 400)
+
     def test_export_routes_return_json(self):
         response = self.client.get('/export/interfaces.json')
         self.assertEqual(response.status_code, 200)

@@ -4,6 +4,7 @@ import os
 import json
 import time
 import threading
+import uuid
 import asyncio
 import re
 import shutil
@@ -32,6 +33,8 @@ socketio = SocketIO(app)
 # Fetch network interfaces at the start
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
+scan_jobs = {}
+scan_jobs_lock = threading.Lock()
 
 
 ROADMAP_SECTIONS = [
@@ -238,6 +241,52 @@ def parse_int(value, error_message):
         raise ValueError(error_message) from exc
 
 
+def _set_scan_job(job_id, **updates):
+    with scan_jobs_lock:
+        scan_jobs[job_id].update(updates)
+
+
+def _run_scan_job(job_id, scan_type, selected_interface):
+    _set_scan_job(job_id, status='running', started_at=time.time())
+    try:
+        if scan_type == 'wlan':
+            from scripts.wifi import utils as wifi_utils
+            wifi_utils.scan_networks(selected_interface)
+            result = {'wlans': wifi_utils.get_networks_summary()}
+        elif scan_type == 'bluetooth':
+            devices = asyncio.run(get_bluetooth_devices())
+            result = {
+                'devices': [
+                    {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
+                    for dev in devices
+                ],
+                'action_capability': bluetooth_action_capability(),
+            }
+        else:
+            raise ValueError('Unsupported scan type')
+        _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
+    except Exception as exc:
+        _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
+
+
+def create_scan_job(scan_type, selected_interface):
+    if scan_type not in {'wlan', 'bluetooth'}:
+        raise ValueError('Unsupported scan type')
+    if not selected_interface:
+        raise ValueError('Missing selected interface')
+    job_id = uuid.uuid4().hex
+    with scan_jobs_lock:
+        scan_jobs[job_id] = {
+            'id': job_id,
+            'scan_type': scan_type,
+            'selected_interface': selected_interface,
+            'status': 'queued',
+            'created_at': time.time(),
+        }
+    threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
+    return scan_jobs[job_id]
+
+
 def current_context():
     return {
         'networkTechnologies': networkTechnologies,
@@ -252,7 +301,6 @@ def poll_interfaces():
         if updated_interfaces != network_interfaces:
             network_interfaces = updated_interfaces
             networkTechnologies = {iface.interface_type for iface in network_interfaces}
-
             socketio.emit('update_interfaces', {'interfaces': [iface.to_dict() for iface in network_interfaces]})
         time.sleep(5)  # Poll every 5 seconds
 
@@ -539,6 +587,25 @@ def wlan_mode():
         return json_error(str(e))
     except Exception as e:
         return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
+@app.route('/scan-jobs', methods=['POST'])
+def start_scan_job():
+    data = request.form
+    try:
+        job = create_scan_job(data.get('scanType'), data.get('selectedInterface'))
+        return json_success(job=job)
+    except ValueError as e:
+        return json_error(str(e))
+
+
+@app.route('/scan-jobs/<job_id>')
+def scan_job_status(job_id):
+    with scan_jobs_lock:
+        job = scan_jobs.get(job_id)
+        if not job:
+            return json_error('Scan job not found', 404)
+        return json_success(job=dict(job))
 
 
 @app.route('/wlan-scan', methods=['POST'])
