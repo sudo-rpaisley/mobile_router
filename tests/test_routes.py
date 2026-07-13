@@ -18,6 +18,13 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
 
+    def test_roadmap_page_renders_project_ideas(self):
+        response = self.client.get('/roadmap')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Project Roadmap', response.data)
+        self.assertIn(b'Device inventory page', response.data)
+        self.assertIn(b'Bluetooth action checklist', response.data)
+
 
     def test_interface_type_preserves_uppercase_vpn(self):
         vpn_interface = SimpleNamespace(
