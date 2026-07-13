@@ -1,4 +1,4 @@
-from client import Client
+from .client import Client
 
 class AccessPoint:
     def __init__(self, bssid, channel, signal):

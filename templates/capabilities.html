@@ -1,61 +1,132 @@
 {% extends 'base.html' %}
 
-{% block title %}Capabilities{% endblock %}
+{% block title %}Capabilities<div id="package-install-response" class="theme-results"></div>
+<script src="/static/js/capabilities.js"></script>
+{% endblock %}
 
 {% block content %}
-<h2>Runtime Capabilities</h2>
-<p>
-  This page shows what the current device can support without guessing. It is useful
-  on Windows, macOS, Linux, and constrained OpenWRT devices such as the GL.iNet GL-AXT1800.
-</p>
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Runtime</p>
+    <h1 class="page-title">Runtime Capabilities</h1>
+    <p class="page-subtitle">See what this device can support without guessing across Windows, macOS, Linux, and constrained router builds.</p>
+  </div>
+</section>
 
-<h3>Platform</h3>
-<table class="table table-sm">
-  <tbody>
-    <tr><th>System</th><td>{{ capabilities.platform.system }}</td></tr>
-    <tr><th>Release</th><td>{{ capabilities.platform.release }}</td></tr>
-    <tr><th>Machine</th><td>{{ capabilities.platform.machine }}</td></tr>
-    <tr><th>Python</th><td>{{ capabilities.platform.python_version }}</td></tr>
-  </tbody>
-</table>
+<section class="theme-grid">
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Platform</h2>
+      <table class="table table-sm theme-table">
+        <tbody>
+          <tr><th>System</th><td>{{ capabilities.platform.system }}</td></tr>
+          <tr><th>Release</th><td>{{ capabilities.platform.release }}</td></tr>
+          <tr><th>Machine</th><td>{{ capabilities.platform.machine }}</td></tr>
+          <tr><th>Python</th><td>{{ capabilities.platform.python_version }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
 
-<h3>Features</h3>
-<table class="table table-sm">
-  <thead><tr><th>Feature</th><th>Status</th></tr></thead>
-  <tbody>
-    {% for feature, available in capabilities.features.items() %}
-      <tr>
-        <td>{{ feature }}</td>
-        <td>{% if available %}<span class="text-success">Available</span>{% else %}<span class="text-warning">Unavailable</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Features</h2>
+      <table class="table table-sm theme-table">
+        <thead><tr><th>Feature</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for feature, available in capabilities.display_features.items() %}
+            <tr>
+              <td>
+                {{ feature }}
+                {% if capabilities.feature_notes.get(feature) %}
+                  <i
+                    class="fa-solid fa-circle-info feature-info-icon"
+                    data-toggle="tooltip"
+                    data-placement="right"
+                    title="{{ capabilities.feature_notes.get(feature) }}"
+                    aria-label="{{ capabilities.feature_notes.get(feature) }}"
+                    tabindex="0"></i>
+                {% endif %}
+              </td>
+              <td>{% if available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
 
-<h3>Commands</h3>
-<table class="table table-sm">
-  <thead><tr><th>Command</th><th>Status</th><th>Path</th></tr></thead>
-  <tbody>
-    {% for command, info in capabilities.commands.items() %}
-      <tr>
-        <td>{{ command }}</td>
-        <td>{% if info.available %}<span class="text-success">Found</span>{% else %}<span class="text-warning">Missing</span>{% endif %}</td>
-        <td>{{ info.path or '' }}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Relevant Commands</h2>
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Command</th><th>Status</th><th>Path</th></tr></thead>
+      <tbody>
+        {% for command, info in capabilities.display_commands.items() %}
+          <tr>
+            <td>{{ command }}</td>
+            <td>{% if info.available %}<span class="badge badge-success">Found</span>{% else %}<span class="badge badge-warning">Missing</span>{% endif %}</td>
+            <td>{{ info.path or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 
-<h3>Optional Python Packages</h3>
-<table class="table table-sm">
-  <thead><tr><th>Package</th><th>Status</th></tr></thead>
-  <tbody>
-    {% for package, available in capabilities.packages.items() %}
-      <tr>
-        <td>{{ package }}</td>
-        <td>{% if available %}<span class="text-success">Installed</span>{% else %}<span class="text-warning">Not installed</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Optional Python Packages</h2>
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Package</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for package, available in capabilities.display_packages.items() %}
+          <tr>
+            <td>
+              {{ package }}
+              {% if capabilities.optional_package_specs.get(package) %}
+                <div class="text-muted small">{{ capabilities.optional_package_specs.get(package) }}</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if available %}
+                <span class="badge badge-success">Installed</span>
+              {% else %}
+                <span class="badge badge-warning">Not installed</span>
+                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Install</button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% if capabilities.display_host_dependencies %}
+<section id="host-dependencies" class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Host Dependencies</h2>
+    <p class="text-muted small mb-3">These are operating-system packages or services, so the web app shows install guidance instead of running a package manager automatically.</p>
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Dependency</th><th>Status</th><th>Install guidance</th></tr></thead>
+      <tbody>
+        {% for dependency in capabilities.display_host_dependencies %}
+          <tr>
+            <td>
+              {{ dependency.name }}
+              <div class="text-muted small">{{ dependency.details }}</div>
+            </td>
+            <td>{% if dependency.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
+            <td><code>{{ dependency.install_hint }}</code></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<div id="package-install-response" class="theme-results"></div>
+<script src="/static/js/capabilities.js"></script>
 {% endblock %}

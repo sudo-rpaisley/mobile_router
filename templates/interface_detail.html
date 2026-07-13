@@ -1,88 +1,155 @@
-    {% include '_header.html' %}
-    <link rel="stylesheet" href="/static/css/interface.css">
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+
 <body class="d-flex flex-column min-vh-100">
-    <div class="page-contents">
-      <div class="details">
-        <h1>{{ interface.name }} {% include '_manufacturerIcon.html' %}</h1>
+  <main class="page-contents interface-detail-page">
+    <section class="interface-hero card shadow-sm">
+      <div class="interface-hero-icon">
         {% include '_interfaceImage.html' %}
-        <ul>
-        {% if interface.interface_type in ['Wireless', 'Wired'] %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
-              <li>Netmask: {{ addr.netmask }}</li>
-              <li>Broadcast: {{ addr.broadcast }}</li>
-              <li>PTP: {{ addr.ptp }}</li>
-            {% endfor %}
-            {% if interface.interface_type == 'Wireless' %}
-              <div class="col-md-8 flex-grow-1">
-                <button id="wlan-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Networks</button>
-              </div>
-              <script src="/static/js/wireless-adapters.js"></script>
-            {% endif %}
-        {% elif interface.interface_type == 'Loopback' %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
-              <li>Netmask: {{ addr.netmask }}</li>
-              <li>Broadcast: {{ addr.broadcast }}</li>
-              <li>PTP: {{ addr.ptp }}</li>
-            {% endfor %}
-        {% elif interface.interface_type == 'Bluetooth' %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>{% if addr.family == 'AF_PACKET (MAC)' %} <a href="#" class="edit-mac" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC"><i class="fa-solid fa-pencil"></i></a>{% endif %}</li>
-              <li>Netmask: {{ addr.netmask }}</li>
-              <li>Broadcast: {{ addr.broadcast }}</li>
-              <li>PTP: {{ addr.ptp }}</li>
-            {% endfor %}
-            <div class="col-md-8 flex-grow-1">
-              <button id="bluetooth-scan" class="btn btn-primary mb-2" value="{{ interface.name }}">Scan for Devices</button>
-            </div>
-            <script src="/static/js/bluetooth-scan.js"></script>
-        {% elif interface.interface_type == 'Bridge' %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
-            {% endfor %}
-            <li>Ports:
-              {% if interface.extra_info.ports %}
-                {{ interface.extra_info.ports | join(', ') }}
-              {% else %}None{% endif %}
-            </li>
-        {% elif interface.interface_type == 'Bond' %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
-            {% endfor %}
-            <li>Slaves:
-              {% if interface.extra_info.slaves %}
-                {{ interface.extra_info.slaves | join(', ') }}
-              {% else %}None{% endif %}
-            </li>
-        {% elif interface.interface_type == 'Station' %}
-            <li>Interface Name: {{ interface.name }}</li>
-            {% for addr in interface.addresses %}
-              <li>Family: {{ addr.family }}</li>
-              <li>Address: {{ addr.address }}</li>
-            {% endfor %}
-            {% if interface.extra_info.link %}
-              <li>Connection Info:</li>
-              <pre>{{ interface.extra_info.link }}</pre>
-            {% else %}
-              <li>No connection information</li>
-            {% endif %}
-        {% endif %}
-        </ul>
       </div>
-      <div id="wlans-{{ interface.name }}" class="wlans"></div>
-      <div id="bluetooth-devices"></div>
-    </div>
-    {% include '_footer.html' %}
+      <div class="interface-hero-copy">
+        <p class="interface-kicker mb-1">{{ interface.interface_type }} Interface</p>
+        <h1 class="interface-detail-title mb-2">{{ interface.name }} {% include '_manufacturerIcon.html' %}</h1>
+        <div class="interface-badges">
+          <span class="badge badge-primary">{{ interface.interface_type }}</span>
+          {% if interface.state %}
+            <span class="badge {{ 'badge-success' if interface.state == 'UP' else 'badge-secondary' }}">{{ interface.state }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="interface-actions">
+        {% if interface.interface_type == 'Wireless' %}
+          <div id="wlan-modes-{{ interface.name }}" class="adapter-mode-switches" data-interface="{{ interface.name }}">
+            <p class="adapter-mode-loading mb-2">Loading adapter modes...</p>
+          </div>
+          <button id="wlan-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Networks</button>
+        {% elif interface.interface_type == 'Bluetooth' %}
+          <button id="bluetooth-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Devices</button>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="interface-detail-grid">
+      <article class="card shadow-sm interface-summary-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Overview</h2>
+          <dl class="interface-definition-list">
+            <div>
+              <dt>Interface Name</dt>
+              <dd>{{ interface.name }}</dd>
+            </div>
+            <div>
+              <dt>Category</dt>
+              <dd>{{ interface.interface_type }}</dd>
+            </div>
+            {% if interface.state %}
+              <div>
+                <dt>Status</dt>
+                <dd>{{ interface.state }}</dd>
+              </div>
+            {% endif %}
+          </dl>
+        </div>
+      </article>
+
+
+      <article class="card shadow-sm interface-readiness-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Action Readiness</h2>
+          <ul class="readiness-list">
+            <li><span class="badge badge-success">Ready</span> Interface inventory and address details</li>
+            {% if interface.interface_type == 'Wireless' %}
+              <li><span class="badge badge-primary">Available</span> Wireless network scan and adapter mode checks</li>
+              <li><span class="badge badge-info">Optional</span> pywifi/scapy may unlock deeper Wi-Fi actions</li>
+            {% elif interface.interface_type == 'Bluetooth' %}
+              <li><span class="badge badge-primary">Available</span> Bluetooth device scan</li>
+              <li><span class="badge badge-info">Host tools</span> Actions require BlueZ bluetoothctl or busctl support</li>
+            {% else %}
+              <li><span class="badge badge-primary">Available</span> Active/passive network scans from the Scan page</li>
+              <li><span class="badge badge-info">Available</span> Port scan and traceroute workflows</li>
+            {% endif %}
+            {% if not interface.addresses %}
+              <li><span class="badge badge-warning">Attention</span> No interface addresses were reported</li>
+            {% endif %}
+          </ul>
+          <a class="btn btn-sm btn-outline-primary" href="/capabilities">View capability details</a>
+        </div>
+      </article>
+
+      <article class="card shadow-sm interface-address-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Addresses</h2>
+          {% if interface.addresses %}
+            <div class="address-card-grid">
+              {% for addr in interface.addresses %}
+                <section class="address-card">
+                  <div class="address-card-header">
+                    <span class="address-family">{{ addr.family }}</span>
+                  </div>
+                  <dl class="interface-definition-list compact">
+                    <div>
+                      <dt>Address</dt>
+                      <dd>
+                        <span id="mac-{{ interface.name }}-{{ loop.index }}">{{ addr.address }}</span>
+                        {% if addr.family == 'AF_PACKET (MAC)' %}
+                          <a href="#" class="edit-mac ml-1" data-interface="{{ interface.name }}" data-current="{{ addr.address }}" title="Edit MAC">
+                            <i class="fa-solid fa-pencil"></i>
+                          </a>
+                        {% endif %}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Netmask</dt>
+                      <dd>{{ addr.netmask or 'None' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Broadcast</dt>
+                      <dd>{{ addr.broadcast or 'None' }}</dd>
+                    </div>
+                    <div>
+                      <dt>PTP</dt>
+                      <dd>{{ addr.ptp or 'None' }}</dd>
+                    </div>
+                  </dl>
+                </section>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No addresses are available for this interface.</p>
+          {% endif %}
+        </div>
+      </article>
+
+      {% if interface.interface_type == 'Bridge' or interface.interface_type == 'Bond' or interface.interface_type == 'Station' %}
+        <article class="card shadow-sm interface-extra-card">
+          <div class="card-body">
+            <h2 class="interface-section-title">Additional Details</h2>
+            {% if interface.interface_type == 'Bridge' %}
+              <p class="mb-0"><strong>Ports:</strong> {{ interface.extra_info.ports | join(', ') if interface.extra_info.ports else 'None' }}</p>
+            {% elif interface.interface_type == 'Bond' %}
+              <p class="mb-0"><strong>Slaves:</strong> {{ interface.extra_info.slaves | join(', ') if interface.extra_info.slaves else 'None' }}</p>
+            {% elif interface.interface_type == 'Station' %}
+              {% if interface.extra_info.link %}
+                <pre class="interface-pre mb-0">{{ interface.extra_info.link }}</pre>
+              {% else %}
+                <p class="text-muted mb-0">No connection information.</p>
+              {% endif %}
+            {% endif %}
+          </div>
+        </article>
+      {% endif %}
+    </section>
+
+    <div id="wlans-{{ interface.name }}" class="wlans" data-interface="{{ interface.name }}"></div>
+    <div id="bluetooth-devices"></div>
+  </main>
+
+  {% if interface.interface_type == 'Wireless' %}
+    <script src="/static/js/wireless-adapters.js"></script>
+  {% elif interface.interface_type == 'Bluetooth' %}
+    <script src="/static/js/bluetooth-scan.js"></script>
+  {% endif %}
+
+  {% include '_footer.html' %}
 </body>
 </html>

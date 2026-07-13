@@ -1,3 +1,38 @@
 .input-error::placeholder {
   color: red;
 }
+
+.red-team-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.red-team-grid .card {
+  border: 0;
+  border-radius: 1rem;
+  box-shadow: 0 0.25rem 1rem rgba(30, 55, 90, 0.08);
+  margin: 0 !important;
+  padding: 1.25rem;
+  width: auto !important;
+}
+
+.red-team-grid .card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.red-team-grid .card-text {
+  color: #6c757d;
+}
+
+.red-team-grid form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.red-team-grid .form-control,
+.red-team-grid .form-select,
+.red-team-grid button {
+  margin-bottom: 0 !important;
+}

@@ -1,13 +1,301 @@
+:root {
+    --theme-bg: #f7faff;
+    --theme-surface: #ffffff;
+    --theme-surface-soft: #fbfdff;
+    --theme-border: #e6edf7;
+    --theme-text: #212529;
+    --theme-muted: #6c757d;
+    --theme-primary: #007bff;
+    --theme-primary-soft: #eaf3ff;
+    --theme-radius: 1rem;
+    --theme-shadow: 0 0.25rem 1rem rgba(30, 55, 90, 0.08);
+}
+
 body {
+    background: var(--theme-bg);
+    color: var(--theme-text);
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
 }
 
-.content {
-    padding: 20px;
+.content,
+.page-shell {
+    width: min(1180px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+}
+
+.page-hero,
+.theme-card {
+    background: var(--theme-surface);
+    border: 0;
+    border-radius: var(--theme-radius);
+    box-shadow: var(--theme-shadow);
+}
+
+.page-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: 1.25rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
+}
+
+.page-hero-copy {
+    min-width: 0;
+}
+
+.page-kicker {
+    color: var(--theme-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+}
+
+.page-title {
+    font-size: clamp(2rem, 4vw, 3.25rem);
+    font-weight: 700;
+    line-height: 1.05;
+    margin: 0;
+}
+
+.page-subtitle {
+    color: var(--theme-muted);
+    font-size: 1.05rem;
+    margin: 0.75rem 0 0;
+    max-width: 48rem;
+}
+
+.theme-card {
+    margin-bottom: 1.25rem;
+}
+
+.theme-card .card-body,
+.theme-card-body {
+    padding: 1.5rem;
+}
+
+.theme-section-title {
+    color: var(--theme-text);
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+.theme-grid {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.theme-list {
+    display: grid;
+    gap: 0.85rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.theme-list li {
+    background: var(--theme-surface-soft);
+    border: 1px solid var(--theme-border);
+    border-radius: 0.85rem;
+    padding: 1rem;
+}
+
+.theme-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.theme-form label,
+.theme-label {
+    color: var(--theme-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.theme-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.theme-results {
+    margin-top: 1.25rem;
+}
+
+.table.theme-table {
+    margin-bottom: 0;
+}
+
+.table.theme-table th {
+    color: var(--theme-muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
 footer {
     padding: 20px 0;
+}
+
+@media (max-width: 767.98px) {
+    .page-hero {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
+
+.feature-info-icon {
+    color: var(--theme-primary);
+    cursor: help;
+    margin-left: 0.35rem;
+}
+
+.feature-info-icon:focus {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: 2px;
+}
+
+html[data-theme="dark"] {
+    --theme-bg: #0f172a;
+    --theme-surface: #172033;
+    --theme-surface-soft: #111827;
+    --theme-border: #334155;
+    --theme-text: #e5edf7;
+    --theme-muted: #a8b3c7;
+    --theme-primary: #60a5fa;
+    --theme-primary-soft: #1e3a5f;
+    --theme-shadow: 0 0.35rem 1.25rem rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] .table {
+    background-color: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .page-hero,
+html[data-theme="dark"] .interface-hero {
+    background: linear-gradient(135deg, #172033 0%, #101827 100%);
+}
+
+html[data-theme="dark"] .theme-card,
+html[data-theme="dark"] .theme-list li,
+html[data-theme="dark"] .address-card,
+html[data-theme="dark"] .wireless-network-card,
+html[data-theme="dark"] .adapter-mode-panel,
+html[data-theme="dark"] .bluetooth-action-output,
+html[data-theme="dark"] .interface-pre {
+    background: var(--theme-surface-soft);
+    border-color: var(--theme-border);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .text-muted,
+html[data-theme="dark"] .page-subtitle,
+html[data-theme="dark"] .interface-kicker,
+html[data-theme="dark"] .interface-definition-list dt,
+html[data-theme="dark"] .wireless-network-meta,
+html[data-theme="dark"] .wireless-network-stats,
+html[data-theme="dark"] .table.theme-table th {
+    color: var(--theme-muted) !important;
+}
+
+html[data-theme="dark"] .theme-section-title,
+html[data-theme="dark"] .interface-section-title,
+html[data-theme="dark"] .interface-detail-title,
+html[data-theme="dark"] .page-title,
+html[data-theme="dark"] .interface-definition-list dd {
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] code,
+html[data-theme="dark"] pre {
+    border-color: var(--theme-border);
+    background-color: #0b1220;
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .dropdown-item,
+html[data-theme="dark"] .no-link-design {
+    color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .dropdown-item:hover,
+html[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--theme-primary-soft);
+}
+
+html[data-theme="dark"] .badge-light,
+html[data-theme="dark"] .address-family {
+    background-color: var(--theme-primary-soft);
+    color: var(--theme-text);
+    border-color: var(--theme-border) !important;
+}
+
+.nav-tools {
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.auto-update-status {
+    color: rgba(255, 255, 255, 0.78) !important;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.theme-toggle {
+    white-space: nowrap;
+}
+
+.roadmap-grid {
+    align-items: start;
+}
+
+.roadmap-card {
+    height: 100%;
+}
+
+.roadmap-list li {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.roadmap-item-header {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+}
+
+.roadmap-item-title {
+    font-weight: 700;
+}
+
+.page-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.adapter-health-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
 }

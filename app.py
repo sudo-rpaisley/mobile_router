@@ -4,8 +4,11 @@ import os
 import json
 import time
 import threading
+import uuid
 import asyncio
 import re
+import shutil
+import subprocess
 
 from routes import register_blueprints
 from scripts.interfaceTools import (
@@ -30,7 +33,190 @@ socketio = SocketIO(app)
 # Fetch network interfaces at the start
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
+scan_jobs = {}
+scan_jobs_lock = threading.Lock()
 
+
+ROADMAP_SECTIONS = [
+    {
+        'title': 'High-impact UX',
+        'items': [
+            {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
+            {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
+            {'title': 'Better empty and error states', 'priority': 'High', 'priority_class': 'danger', 'description': 'Replace generic scan failures with actionable install/setup guidance and links to capabilities.'},
+            {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
+        ],
+    },
+    {
+        'title': 'Network visibility',
+        'items': [
+            {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
+            {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
+            {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
+            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+        ],
+    },
+    {
+        'title': 'Wireless and Bluetooth',
+        'items': [
+            {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
+            {'title': 'Wireless network timelines', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track signal, channel, security, AP count, and seen timestamps per SSID/BSSID.'},
+            {'title': 'Known network labels', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users mark SSIDs as trusted, lab, suspicious, or ignored.'},
+            {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
+        ],
+    },
+    {
+        'title': 'Safety and architecture',
+        'items': [
+            {'title': 'Authorization guardrails', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require explicit authorization confirmation and add clearer logs before noisy red-team actions.'},
+            {'title': 'Demo/simulation mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Provide fake adapters, devices, networks, and scan results for demos and UI testing without hardware.'},
+            {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
+            {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
+            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
+        ],
+    },
+]
+
+
+BLUETOOTHCTL_ACTIONS = {
+    'info': 'info',
+    'connect': 'connect',
+    'disconnect': 'disconnect',
+    'pair': 'pair',
+    'trust': 'trust',
+    'untrust': 'untrust',
+    'block': 'block',
+    'unblock': 'unblock',
+    'remove': 'remove',
+}
+BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+
+
+class BluetoothToolUnavailable(RuntimeError):
+    """Raised when host-local Bluetooth actions cannot be executed."""
+
+
+def _busctl_bluez_available(busctl):
+    try:
+        result = subprocess.run(
+            [busctl, 'tree', 'org.bluez'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def bluetooth_action_capability():
+    bluetoothctl = shutil.which('bluetoothctl')
+    if bluetoothctl:
+        return {
+            'available': True,
+            'tool': 'bluetoothctl',
+            'path': bluetoothctl,
+            'message': 'Bluetooth actions are available through bluetoothctl.',
+        }
+    busctl = shutil.which('busctl')
+    if busctl and _busctl_bluez_available(busctl):
+        return {
+            'available': True,
+            'tool': 'busctl',
+            'path': busctl,
+            'message': 'Bluetooth actions are available through BlueZ D-Bus via busctl.',
+        }
+    return {
+        'available': False,
+        'tool': None,
+        'path': None,
+        'message': 'Bluetooth actions require BlueZ bluetoothctl, or busctl with a running BlueZ D-Bus service on this host.',
+    }
+
+
+def _bluetooth_device_path_from_busctl(busctl, address, timeout=10):
+    device_token = 'dev_' + address.upper().replace(':', '_')
+    result = subprocess.run(
+        [busctl, 'tree', 'org.bluez'],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or 'BlueZ D-Bus tree lookup failed').strip())
+
+    for line in result.stdout.splitlines():
+        if device_token in line:
+            match = re.search(r'(/org/bluez/[^\s]+)', line)
+            if match:
+                return match.group(1)
+    raise RuntimeError(f'Bluetooth device {address} was not found in BlueZ D-Bus. Scan or pair the device first.')
+
+
+def _run_busctl_bluetooth_action(busctl, action, address, timeout=15):
+    path = _bluetooth_device_path_from_busctl(busctl, address, timeout=timeout)
+
+    if action in {'connect', 'disconnect', 'pair'}:
+        method = {'connect': 'Connect', 'disconnect': 'Disconnect', 'pair': 'Pair'}[action]
+        command = [busctl, 'call', 'org.bluez', path, 'org.bluez.Device1', method]
+    elif action in {'trust', 'untrust', 'block', 'unblock'}:
+        property_name = 'Trusted' if action in {'trust', 'untrust'} else 'Blocked'
+        value = 'true' if action in {'trust', 'block'} else 'false'
+        command = [busctl, 'set-property', 'org.bluez', path, 'org.bluez.Device1', property_name, 'b', value]
+    elif action == 'remove':
+        adapter_path = path.rsplit('/dev_', 1)[0]
+        command = [busctl, 'call', 'org.bluez', adapter_path, 'org.bluez.Adapter1', 'RemoveDevice', 'o', path]
+    elif action == 'info':
+        outputs = []
+        for property_name in ['Address', 'Name', 'Alias', 'Paired', 'Connected', 'Trusted', 'Blocked']:
+            result = subprocess.run(
+                [busctl, 'get-property', 'org.bluez', path, 'org.bluez.Device1', property_name],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            if result.returncode == 0:
+                outputs.append(f'{property_name}: {(result.stdout or '').strip()}')
+        return '\n'.join(outputs) or f'BlueZ D-Bus info completed for {address}'
+    else:
+        raise ValueError('Unsupported Bluetooth action')
+
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    if result.returncode != 0:
+        raise RuntimeError(output or f'busctl Bluetooth {action} failed')
+    return output or f'busctl Bluetooth {action} completed for {address}'
+
+
+def run_bluetoothctl_action(action, address, timeout=15):
+    """Run a safe local bluetoothctl action against a device visible to this host."""
+    command = BLUETOOTHCTL_ACTIONS.get(action)
+    if not command:
+        raise ValueError('Unsupported Bluetooth action')
+    if not BLUETOOTH_MAC_RE.match(address or ''):
+        raise ValueError('A valid Bluetooth device address is required')
+
+    capability = bluetooth_action_capability()
+    tool = capability['path']
+    if not tool:
+        raise BluetoothToolUnavailable(capability['message'])
+    if capability['tool'] == 'busctl':
+        return _run_busctl_bluetooth_action(tool, action, address, timeout=timeout)
+
+    result = subprocess.run(
+        [tool, command, address],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    output = (result.stdout or result.stderr or '').strip()
+    if result.returncode != 0:
+        raise RuntimeError(output or f'bluetoothctl {command} failed')
+    return output or f'bluetoothctl {command} completed'
 
 def json_error(message, status=400):
     """Return a consistently shaped JSON error response."""
@@ -53,6 +239,52 @@ def parse_int(value, error_message):
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(error_message) from exc
+
+
+def _set_scan_job(job_id, **updates):
+    with scan_jobs_lock:
+        scan_jobs[job_id].update(updates)
+
+
+def _run_scan_job(job_id, scan_type, selected_interface):
+    _set_scan_job(job_id, status='running', started_at=time.time())
+    try:
+        if scan_type == 'wlan':
+            from scripts.wifi import utils as wifi_utils
+            wifi_utils.scan_networks(selected_interface)
+            result = {'wlans': wifi_utils.get_networks_summary()}
+        elif scan_type == 'bluetooth':
+            devices = asyncio.run(get_bluetooth_devices())
+            result = {
+                'devices': [
+                    {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
+                    for dev in devices
+                ],
+                'action_capability': bluetooth_action_capability(),
+            }
+        else:
+            raise ValueError('Unsupported scan type')
+        _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
+    except Exception as exc:
+        _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
+
+
+def create_scan_job(scan_type, selected_interface):
+    if scan_type not in {'wlan', 'bluetooth'}:
+        raise ValueError('Unsupported scan type')
+    if not selected_interface:
+        raise ValueError('Missing selected interface')
+    job_id = uuid.uuid4().hex
+    with scan_jobs_lock:
+        scan_jobs[job_id] = {
+            'id': job_id,
+            'scan_type': scan_type,
+            'selected_interface': selected_interface,
+            'status': 'queued',
+            'created_at': time.time(),
+        }
+    threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
+    return scan_jobs[job_id]
 
 
 def current_context():
@@ -120,6 +352,11 @@ def red_team():
     return render_template('red-team.html', title='Red Team', **current_context())
 
 
+@app.route('/roadmap')
+def roadmap_page():
+    return render_template('roadmap.html', title='Roadmap', roadmap_sections=ROADMAP_SECTIONS, **current_context())
+
+
 register_blueprints(app, current_context)
 
 
@@ -128,6 +365,25 @@ register_blueprints(app, current_context)
 def adapters():
     """Return the available network interfaces as JSON."""
     return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
+
+
+
+
+@app.route('/export/interfaces.json')
+def export_interfaces_json():
+    return jsonify({
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'exported_at': time.time(),
+    })
+
+
+@app.route('/export/capabilities.json')
+def export_capabilities_json():
+    from scripts.capabilities import build_capabilities
+    return jsonify({
+        'capabilities': build_capabilities(),
+        'exported_at': time.time(),
+    })
 
 
 @app.route('/network-scan')
@@ -224,12 +480,34 @@ def traceroute_route():
     return jsonify({'hops': hops})
 
 
+@app.route('/wireless/network')
+def wireless_network_detail():
+    ssid = request.args.get('ssid')
+    bssid = request.args.get('bssid')
+    selected_interface = request.args.get('interface')
+
+    if not ssid and not bssid:
+        return "Wireless network not specified", 400
+
+    from scripts.wifi import utils as wifi_utils
+    network = wifi_utils.get_network_detail(ssid=ssid, bssid=bssid, interface_name=selected_interface)
+    back_url = f"/wireless/{selected_interface}" if selected_interface else "/wireless"
+    return render_template(
+        'wireless_network_detail.html',
+        title=f"{network['ssid']} Details",
+        network=network,
+        back_url=back_url,
+        **current_context(),
+    )
+
+
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
-    interface_type = interface_type.capitalize()
-    filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == interface_type.lower()]
+    requested_type = interface_type.lower()
+    filtered_interfaces = [iface for iface in network_interfaces if iface.interface_type.lower() == requested_type]
     if filtered_interfaces:
-        return render_template('interface_type.html', title=f'{interface_type}', filtered_interfaces=filtered_interfaces, technology=interface_type, **current_context())
+        display_type = filtered_interfaces[0].interface_type
+        return render_template('interface_type.html', title=display_type, filtered_interfaces=filtered_interfaces, technology=display_type, **current_context())
     else:
         return "No interfaces found for this type", 404
 
@@ -279,6 +557,57 @@ def syn_flood_broadcast():
         return json_error(f'Broadcast DoS error: {str(e)}', 500)
 
 
+@app.route('/wlan-modes', methods=['GET'])
+def wlan_modes():
+    selected_interface = request.args.get('selectedInterface')
+
+    if not selected_interface:
+        return json_error('Missing selected interface')
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        return json_success(**wifi_utils.get_adapter_modes(selected_interface))
+    except Exception as e:
+        return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
+@app.route('/wlan-mode', methods=['POST'])
+def wlan_mode():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    mode = data.get('mode')
+
+    if not selected_interface or not mode:
+        return json_error('Missing required parameters')
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        return json_success(**wifi_utils.set_adapter_mode(selected_interface, mode))
+    except ValueError as e:
+        return json_error(str(e))
+    except Exception as e:
+        return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
+@app.route('/scan-jobs', methods=['POST'])
+def start_scan_job():
+    data = request.form
+    try:
+        job = create_scan_job(data.get('scanType'), data.get('selectedInterface'))
+        return json_success(job=job)
+    except ValueError as e:
+        return json_error(str(e))
+
+
+@app.route('/scan-jobs/<job_id>')
+def scan_job_status(job_id):
+    with scan_jobs_lock:
+        job = scan_jobs.get(job_id)
+        if not job:
+            return json_error('Scan job not found', 404)
+        return json_success(job=dict(job))
+
+
 @app.route('/wlan-scan', methods=['POST'])
 def wlan_scan():
     data = request.form
@@ -289,7 +618,7 @@ def wlan_scan():
 
     try:
         from scripts.wifi import utils as wifi_utils
-        wifi_utils.scan_networks()
+        wifi_utils.scan_networks(selected_interface)
         wlans = wifi_utils.get_networks_summary()
         return json_success(message=f'Got wlans for {selected_interface}', wlans=wlans)
     except Exception as e:
@@ -327,10 +656,30 @@ def bluetooth_scan():
 
     try:
         devices = asyncio.run(get_bluetooth_devices())
-        devices_summary = [{'address': dev.address, 'name': dev.name} for dev in devices]
-        return json_success(devices=devices_summary)
+        devices_summary = [
+            {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
+            for dev in devices
+        ]
+        return json_success(devices=devices_summary, action_capability=bluetooth_action_capability())
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)
+
+
+@app.route('/bluetooth-action', methods=['POST'])
+def bluetooth_action():
+    data = request.form
+    action = data.get('action')
+    address = data.get('address')
+
+    try:
+        output = run_bluetoothctl_action(action, address)
+        return json_success(message='Bluetooth action completed', output=output)
+    except ValueError as e:
+        return json_error(str(e))
+    except BluetoothToolUnavailable as e:
+        return json_error(str(e), 501)
+    except Exception as e:
+        return json_error(f'Bluetooth action error: {str(e)}', 500)
 
 
 @app.route('/spoof-mac', methods=['POST'])

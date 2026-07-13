@@ -3,13 +3,29 @@
 {% block title %}Network Scan{% endblock %}
 
 {% block content %}
-<h2>Network Scan</h2>
-<form id="scan-form">
-  {% set selectId = 'Scan' %}
-  {% include '_adapters-list.html' %}
-  <button id="active-scan-btn" class="btn btn-primary mt-2">Active Scan</button>
-  <button id="passive-scan-btn" class="btn btn-secondary mt-2">Passive Scan</button>
-</form>
-<div id="scan-results" class="mt-3"></div>
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Discovery</p>
+    <h1 class="page-title">Network Scan</h1>
+    <p class="page-subtitle">Choose an adapter and run active or passive discovery against the local network.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <form id="scan-form" class="theme-form">
+      <div>
+        <label class="theme-label" for="interface-select-Scan">Interface</label>
+        {% set selectId = 'Scan' %}
+        {% include '_adapters-list.html' %}
+      </div>
+      <div class="theme-actions">
+        <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
+        <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
+      </div>
+    </form>
+    <div id="scan-results" class="theme-results"></div>
+  </div>
+</section>
 <script src="/static/js/network_scan.js"></script>
 {% endblock %}

@@ -1,0 +1,155 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+
+<body class="d-flex flex-column min-vh-100">
+  <main class="page-contents interface-detail-page network-detail-page">
+    <section class="interface-hero card shadow-sm network-detail-hero">
+      <div class="interface-hero-icon">
+        <div class="col-md-3 text-center">
+          <i class="fa-solid fa-wifi fa-3x text-primary"></i>
+        </div>
+      </div>
+      <div class="interface-hero-copy">
+        <p class="interface-kicker mb-1">Wireless Network</p>
+        <h1 class="interface-detail-title mb-2">{{ network.ssid }}</h1>
+        <div class="interface-badges">
+          <span class="badge {{ 'badge-success' if network.security == 'Open' else 'badge-secondary' }}">{{ network.security }}</span>
+          <span class="badge badge-primary">{{ network.access_points | length }} {{ 'AP' if network.access_points | length == 1 else 'APs' }}</span>
+          {% if network.interface %}<span class="badge badge-light border">{{ network.interface }}</span>{% endif %}
+          {% for band in network.bands | default([]) %}<span class="badge badge-info">{{ band }}</span>{% endfor %}
+        </div>
+      </div>
+      <div class="interface-actions">
+        <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>
+      </div>
+    </section>
+
+    {% if not network.discovered %}
+      <div class="alert alert-warning mt-3" role="alert">
+        This network was opened from card data, but it is not currently in the in-memory scan cache. Re-scan from the adapter page for live AP/client details.
+      </div>
+    {% endif %}
+
+    <section class="interface-detail-grid network-detail-grid">
+      <article class="card shadow-sm interface-summary-card">
+        {% set gateway = network.gateway | default({}) %}
+        <div class="card-body">
+          <h2 class="interface-section-title">Overview</h2>
+          <dl class="interface-definition-list">
+            <div><dt>SSID</dt><dd>{{ network.ssid }}</dd></div>
+            <div><dt>Primary BSSID</dt><dd>{{ network.bssid or 'Unknown' }}</dd></div>
+            <div><dt>Security</dt><dd>{{ network.security }}</dd></div>
+            <div><dt>Signal</dt><dd>{{ network.signal_label }}</dd></div>
+            <div><dt>Channel</dt><dd>{{ network.channel or 'Unknown' }}</dd></div>
+            <div><dt>Radio Bands</dt><dd>{{ (network.bands | default([])) | join(', ') or 'Unknown' }}</dd></div>
+            <div><dt>Default Gateway</dt><dd>{{ gateway.ip | default('Not detected', true) }}</dd></div>
+            <div><dt>Gateway MAC</dt><dd>{{ gateway.mac | default('Not detected', true) }}</dd></div>
+            <div><dt>Gateway Manufacturer</dt><dd>{{ gateway.manufacturer | default('Unknown', true) }}</dd></div>
+          </dl>
+        </div>
+      </article>
+
+      <article class="card shadow-sm interface-address-card">
+        <div class="card-body">
+          <h2 class="interface-section-title">Discovered Devices</h2>
+          {% if network.clients %}
+            <div class="address-card-grid">
+              {% for client in network.clients %}
+                <section class="address-card">
+                  <div class="address-card-header"><span class="address-family">Client</span></div>
+                  <dl class="interface-definition-list compact">
+                    <div><dt>MAC</dt><dd>{{ client.mac }}</dd></div>
+                    <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
+                    <div><dt>Signal</dt><dd>{{ client.signal_label }}</dd></div>
+                    <div><dt>Seen On</dt><dd>{{ client.bssid or 'Unknown AP' }}</dd></div>
+                  </dl>
+                </section>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No client devices have been discovered for this SSID yet. Packet/monitor scans can populate this section when client traffic is observed.</p>
+          {% endif %}
+        </div>
+      </article>
+    </section>
+
+
+    <section class="card shadow-sm interface-extra-card mt-3">
+      <div class="card-body">
+        <h2 class="interface-section-title">AP Identity Hints</h2>
+        <p class="text-muted">These groupings are inferred from BSSID patterns for this SSID. They are useful hints, not proof; confirm with controller data, labels, vendor tools, or physical inspection when accuracy matters.</p>
+        {% if network.ap_groups %}
+          <div class="wireless-network-grid">
+            {% for group in network.ap_groups %}
+              <article class="wireless-network-card">
+                <div class="wireless-network-main">
+                  <div>
+                    <h3 class="wireless-network-ssid mb-1">{{ group.label }}</h3>
+                    <div class="wireless-network-meta">
+                      <span><i class="fa-solid fa-fingerprint"></i> {{ group.bssids | join(', ') }}</span>
+                      {% if group.bands %}<span><i class="fa-solid fa-tower-broadcast"></i> {{ group.bands | join(', ') }}</span>{% endif %}
+                      {% if group.channels %}<span><i class="fa-solid fa-wave-square"></i> Ch {{ group.channels | join(', ') }}</span>{% endif %}
+                    </div>
+                    {% if group.reasons %}
+                      <div class="wireless-network-notes mt-2">
+                        {% for reason in group.reasons %}<span class="badge badge-light border">{{ reason }}</span>{% endfor %}
+                      </div>
+                    {% else %}
+                      <p class="text-muted mb-0 mt-2">No strong BSSID relationship found for this AP.</p>
+                    {% endif %}
+                  </div>
+                  <div class="wireless-network-badges">
+                    <span class="badge {{ 'badge-success' if group.likely_same_physical_ap else 'badge-secondary' }}">{{ 'Likely same AP' if group.likely_same_physical_ap else 'Unique/unknown' }}</span>
+                    <span class="badge badge-light border">{{ group.confidence }} confidence</span>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No AP identity hints are available yet.</p>
+        {% endif %}
+      </div>
+    </section>
+    <section class="card shadow-sm interface-extra-card mt-3">
+      <div class="card-body">
+        <h2 class="interface-section-title">Access Points</h2>
+        {% if network.access_points %}
+          <div class="wireless-network-grid">
+            {% for ap in network.access_points %}
+              <article class="wireless-network-card">
+                <div class="wireless-network-main">
+                  <div>
+                    <h3 class="wireless-network-ssid mb-1">{{ ap.bssid or 'Unknown BSSID' }}</h3>
+                    <div class="wireless-network-meta">
+                      <span><i class="fa-solid fa-wave-square"></i> Ch {{ ap.channel or 'Unknown' }}</span>
+                      <span><i class="fa-solid fa-industry"></i> {{ ap.manufacturer or 'Unknown manufacturer' }}</span>
+                      <span><i class="fa-solid fa-tower-broadcast"></i> {{ ap.band or 'Unknown band' }}</span>
+                      {% if ap.frequency %}<span><i class="fa-solid fa-gauge-high"></i> {{ ap.frequency }} MHz</span>{% endif %}
+                      <span><i class="fa-solid fa-signal"></i> {{ ap.signal_label }} ({{ ap.signal_quality }})</span>
+                    </div>
+                    {% if ap.notes %}
+                      <div class="wireless-network-notes mt-2">
+                        {% for note in ap.notes %}<span class="badge badge-light border">{{ note }}</span>{% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="wireless-network-badges">
+                    <span class="badge badge-info">{{ ap.band or 'Unknown band' }}</span>
+                    {% if ap.physical_ap_group and ap.physical_ap_group != 'Unique AP' %}<span class="badge badge-primary">{{ ap.physical_ap_group }}</span>{% endif %}
+                    <span class="badge badge-light border">{{ ap.clients | length }} {{ 'client' if ap.clients | length == 1 else 'clients' }}</span>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No access point details are available yet.</p>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  {% include '_footer.html' %}
+</body>
+</html>

@@ -4,14 +4,38 @@
 
 
 {% block content %}
-  <h1>Network Interfaces</h1>
-  <div class="container-fluid">
-    <div class="row flex-nowrap overflow-auto">
-      {% for interface in interfaces %}
-        <div class="m-2 p-2">
-          {% include '_adapters-card.html' %}
-        </div>
-      {% endfor %}
+  <section class="page-hero">
+    <div class="page-hero-copy">
+      <h1 class="page-title">Network Interfaces</h1>
+      <p class="page-subtitle">Browse adapters grouped by category, then open a card for details, scanning, and mode controls.</p>
     </div>
+    <div class="page-hero-actions">
+      <a class="btn btn-outline-primary" href="/export/interfaces.json">Export interfaces</a>
+      <a class="btn btn-outline-secondary" href="/export/capabilities.json">Export capabilities</a>
+    </div>
+  </section>
+  <div class="container-fluid interface-category-page">
+    {% for interface_type, category_interfaces in interfaces | groupby('interface_type') %}
+      <section class="interface-category mb-4" aria-labelledby="interface-category-{{ loop.index }}">
+        <div class="interface-category-header d-flex align-items-center justify-content-between">
+          <h2 id="interface-category-{{ loop.index }}" class="interface-category-title mb-0">
+            {{ interface_type }}
+          </h2>
+          <span class="interface-category-count">
+            {{ category_interfaces | length }} {{ 'interface' if category_interfaces | length == 1 else 'interfaces' }}
+          </span>
+        </div>
+
+        <div class="interface-category-list d-flex flex-nowrap overflow-auto" tabindex="0" aria-label="{{ interface_type }} interfaces">
+          {% for interface in category_interfaces %}
+            <div class="interface-category-card">
+              {% include '_adapters-card.html' %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <p class="text-muted">No network interfaces found.</p>
+    {% endfor %}
   </div>
 {% endblock %}

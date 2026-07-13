@@ -1,14 +1,24 @@
 {% include '_header.html' %}
 <link rel="stylesheet" href="/static/css/red-team.css">
 <body class="d-flex flex-column min-vh-100">
-  {% include 'attacks/_DOSAttack.html' %}
-  {% include 'attacks/_broadcastAttack.html' %}
-  {% include 'attacks/_beaconAdvertise.html' %}
-  {% include 'attacks/_deauth.html' %}
-  {% include 'attacks/_aireplayDeauth.html' %}
-</div>
+  <main class="page-shell">
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Authorized Testing</p>
+        <h1 class="page-title">Red Team</h1>
+        <p class="page-subtitle">Run bounded wireless and network demos against systems you are authorized to test.</p>
+      </div>
+    </section>
 
+    <section class="red-team-grid">
+      {% include 'attacks/_DOSAttack.html' %}
+      {% include 'attacks/_broadcastAttack.html' %}
+      {% include 'attacks/_beaconAdvertise.html' %}
+      {% include 'attacks/_deauth.html' %}
+      {% include 'attacks/_aireplayDeauth.html' %}
+    </section>
+  </main>
 </body>
-  {% include '_footer.html' %}
+{% include '_footer.html' %}
 <script src="/static/js/red-team-scripts.js"></script>
 </html>

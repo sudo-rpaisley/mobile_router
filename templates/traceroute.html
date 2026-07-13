@@ -3,14 +3,27 @@
 {% block title %}Traceroute{% endblock %}
 
 {% block content %}
-<h2>Traceroute</h2>
-<form id="traceroute-form">
-  <div class="form-group">
-    <label for="traceroute-host">Host</label>
-    <input type="text" class="form-control" id="traceroute-host" placeholder="8.8.8.8">
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Path Analysis</p>
+    <h1 class="page-title">Traceroute</h1>
+    <p class="page-subtitle">Trace the route from this device to a target host.</p>
   </div>
-  <button id="traceroute-btn" class="btn btn-primary mt-2">Run</button>
-</form>
-<div id="traceroute-results" class="mt-3"></div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <form id="traceroute-form" class="theme-form">
+      <div class="form-group mb-0">
+        <label for="traceroute-host">Host</label>
+        <input type="text" class="form-control" id="traceroute-host" placeholder="8.8.8.8">
+      </div>
+      <div class="theme-actions">
+        <button id="traceroute-btn" class="btn btn-primary">Run</button>
+      </div>
+    </form>
+    <div id="traceroute-results" class="theme-results"></div>
+  </div>
+</section>
 <script src="/static/js/traceroute.js"></script>
 {% endblock %}

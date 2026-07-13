@@ -8,7 +8,7 @@
   </button>
 
   <div class="collapse navbar-collapse" id="navbarCollapse">
-    <div class="navbar-nav">
+    <div id="primary-nav-links" class="navbar-nav">
       {% for technology in networkTechnologies %}
         {% if technology != 'Loopback' %}
           <div class="nav-item dropdown">
@@ -29,13 +29,13 @@
       <a href="/red-team" class="nav-link {% if title == 'Red Team' %}active{% endif %}">Red Team</a>
       <a href="/minecraft-attack" class="nav-link {% if title == 'Minecraft Attack' %}active{% endif %}">Minecraft Attack</a>
       <a href="/capabilities" class="nav-link {% if title == 'Capabilities' %}active{% endif %}">Capabilities</a>
+      <a href="/roadmap" class="nav-link {% if title == 'Roadmap' %}active{% endif %}">Roadmap</a>
     </div>
-    <div class="d-flex d-md-none text-left">
-      <button id="listAdapters1" type="button" class="fa-solid fa-rotate btn" data-toggle="tooltip" data-placement="bottom" title="Refresh Network Adapters" style="background-color:transparent; color: white;"></button>
-    </div>
-    <div class="ml-auto d-none d-md-flex">
-      <button id="listAdapters2" type="button" class="fa-solid fa-rotate btn" data-toggle="tooltip" data-placement="bottom" title="Refresh Network Adapters" style="background-color:transparent; color: white;"></button>
+    <div class="navbar-nav ml-auto nav-tools">
+      <span id="adapter-auto-update-status" class="navbar-text auto-update-status">Auto updating</span>
+      <button id="theme-toggle" type="button" class="btn btn-sm btn-outline-light theme-toggle" aria-pressed="false" title="Switch theme">
+        <i class="fa-solid fa-moon"></i> Dark
+      </button>
     </div>
   </div>
-  <script src="/static/js/wireless-scripts.js"></script>
 </nav>
