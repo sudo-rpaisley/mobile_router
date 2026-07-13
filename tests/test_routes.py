@@ -14,6 +14,9 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Runtime Capabilities', response.data)
+        self.assertIn(b'id="theme-toggle"', response.data)
+        self.assertIn(b'id="adapter-auto-update-status"', response.data)
+        self.assertNotIn(b'id="listAdapters', response.data)
 
 
     def test_interface_type_preserves_uppercase_vpn(self):

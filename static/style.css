@@ -164,3 +164,103 @@ footer {
     outline: 2px solid var(--theme-primary);
     outline-offset: 2px;
 }
+
+html[data-theme="dark"] {
+    --theme-bg: #0f172a;
+    --theme-surface: #172033;
+    --theme-surface-soft: #111827;
+    --theme-border: #334155;
+    --theme-text: #e5edf7;
+    --theme-muted: #a8b3c7;
+    --theme-primary: #60a5fa;
+    --theme-primary-soft: #1e3a5f;
+    --theme-shadow: 0 0.35rem 1.25rem rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] .table {
+    background-color: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .page-hero,
+html[data-theme="dark"] .interface-hero {
+    background: linear-gradient(135deg, #172033 0%, #101827 100%);
+}
+
+html[data-theme="dark"] .theme-card,
+html[data-theme="dark"] .theme-list li,
+html[data-theme="dark"] .address-card,
+html[data-theme="dark"] .wireless-network-card,
+html[data-theme="dark"] .adapter-mode-panel,
+html[data-theme="dark"] .bluetooth-action-output,
+html[data-theme="dark"] .interface-pre {
+    background: var(--theme-surface-soft);
+    border-color: var(--theme-border);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .text-muted,
+html[data-theme="dark"] .page-subtitle,
+html[data-theme="dark"] .interface-kicker,
+html[data-theme="dark"] .interface-definition-list dt,
+html[data-theme="dark"] .wireless-network-meta,
+html[data-theme="dark"] .wireless-network-stats,
+html[data-theme="dark"] .table.theme-table th {
+    color: var(--theme-muted) !important;
+}
+
+html[data-theme="dark"] .theme-section-title,
+html[data-theme="dark"] .interface-section-title,
+html[data-theme="dark"] .interface-detail-title,
+html[data-theme="dark"] .page-title,
+html[data-theme="dark"] .interface-definition-list dd {
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] code,
+html[data-theme="dark"] pre {
+    border-color: var(--theme-border);
+    background-color: #0b1220;
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .dropdown-item,
+html[data-theme="dark"] .no-link-design,
+html[data-theme="dark"] .adapter-card-link {
+    color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .dropdown-item:hover,
+html[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--theme-primary-soft);
+}
+
+html[data-theme="dark"] .badge-light,
+html[data-theme="dark"] .address-family {
+    background-color: var(--theme-primary-soft);
+    color: var(--theme-text);
+    border-color: var(--theme-border) !important;
+}
+
+.nav-tools {
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.auto-update-status {
+    color: rgba(255, 255, 255, 0.78) !important;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.theme-toggle {
+    white-space: nowrap;
+}

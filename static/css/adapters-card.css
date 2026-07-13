@@ -172,3 +172,10 @@
   flex: 0 0 auto;
   min-width: 0;
 }
+
+html[data-theme="dark"] .adapter-card.card,
+html[data-theme="dark"] .adapters-card {
+  background: var(--theme-surface-soft);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
