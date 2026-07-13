@@ -1,3 +1,4 @@
+import importlib.util
 import platform
 import subprocess
 import time
@@ -145,6 +146,79 @@ def _parse_signal(signal):
         return signal or None
 
 
+
+def _parse_percent_signal(signal):
+    value = (signal or '').strip().removesuffix('%')
+    return _parse_signal(value)
+
+
+def _scan_windows_with_netsh():
+    result = _run_command(['netsh', 'wlan', 'show', 'networks', 'mode=bssid'])
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or 'netsh wireless scan failed')
+
+    current_ssid = None
+    current_security = None
+    current_bssid = None
+    current_signal = None
+    current_channel = None
+
+    def flush_bssid():
+        if current_bssid:
+            _add_network(current_ssid, current_bssid, current_channel, current_signal, current_security)
+
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or ':' not in stripped:
+            continue
+
+        key, value = [part.strip() for part in stripped.split(':', 1)]
+        key_lower = key.lower()
+
+        if key_lower.startswith('ssid ') and value:
+            flush_bssid()
+            current_ssid = value
+            current_security = None
+            current_bssid = None
+            current_signal = None
+            current_channel = None
+        elif key_lower == 'authentication':
+            current_security = value or 'Open'
+        elif key_lower.startswith('bssid '):
+            flush_bssid()
+            current_bssid = value
+            current_signal = None
+            current_channel = None
+        elif key_lower == 'signal':
+            current_signal = _parse_percent_signal(value)
+        elif key_lower == 'channel':
+            current_channel = _parse_signal(value)
+
+    flush_bssid()
+
+
+def _scan_windows_with_pywifi(interface_name):
+    if importlib.util.find_spec('pywifi') is None:
+        raise RuntimeError('Windows Wi-Fi scan requires netsh or the optional pywifi package')
+
+    import pywifi
+
+    wifi = pywifi.PyWiFi()
+    ifaces = wifi.interfaces()
+    if not ifaces:
+        raise RuntimeError('No wireless interfaces found')
+
+    iface = ifaces[0]
+    if interface_name:
+        iface = next((candidate for candidate in ifaces if candidate.name() == interface_name), iface)
+
+    iface.scan()
+    time.sleep(5)  # Wait for the scan to complete
+    scan_results = iface.scan_results()
+
+    for network in scan_results:
+        _add_network(network.ssid, network.bssid, network.freq, network.signal)
+
 def scan_networks(interface_name=None, timeout=12):
     """Scan nearby wireless networks for the requested interface."""
     global networks
@@ -157,23 +231,10 @@ def scan_networks(interface_name=None, timeout=12):
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired):
             _scan_linux_with_scapy(interface_name, timeout)
     elif system == "Windows":
-        import pywifi
-
-        wifi = pywifi.PyWiFi()
-        ifaces = wifi.interfaces()
-        if not ifaces:
-            raise RuntimeError("No wireless interfaces found")
-
-        iface = ifaces[0]
-        if interface_name:
-            iface = next((candidate for candidate in ifaces if candidate.name() == interface_name), iface)
-
-        iface.scan()
-        time.sleep(5)  # Wait for the scan to complete
-        scan_results = iface.scan_results()
-
-        for network in scan_results:
-            _add_network(network.ssid, network.bssid, network.freq, network.signal)
+        try:
+            _scan_windows_with_netsh()
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired):
+            _scan_windows_with_pywifi(interface_name)
     else:
         raise RuntimeError("Wireless scanning is only supported on Linux and Windows")
 
@@ -210,6 +271,9 @@ def get_networks_summary():
 
 def connect_to_network(ssid, password=None, interface_name=None):
     """Attempt to connect to a wireless network using pywifi."""
+    if importlib.util.find_spec('pywifi') is None:
+        raise RuntimeError('Connecting to Wi-Fi networks requires the optional pywifi package')
+
     import pywifi
     from pywifi import const
 
