@@ -142,11 +142,16 @@ class RouteSmokeTest(unittest.TestCase):
         async def fake_get_bluetooth_devices():
             return [SimpleNamespace(address='b8:27:eb:11:22:33', name='Lab Speaker')]
 
-        with patch.object(app_module, 'get_bluetooth_devices', fake_get_bluetooth_devices):
+        with (
+            patch.object(app_module, 'get_bluetooth_devices', fake_get_bluetooth_devices),
+            patch.object(app_module.shutil, 'which', return_value=None),
+        ):
             response = self.client.post('/bluetooth-scan', data={'selectedInterface': 'hci0'})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['devices'][0]['manufacturer'], 'Raspberry Pi Foundation')
+        payload = response.get_json()
+        self.assertEqual(payload['devices'][0]['manufacturer'], 'Raspberry Pi Foundation')
+        self.assertFalse(payload['action_capability']['available'])
 
     @patch('app.run_bluetoothctl_action')
     def test_bluetooth_action_success(self, run_action):
@@ -160,6 +165,16 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['output'], 'Device disconnected')
         run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff')
+
+    @patch.object(app_module.shutil, 'which', return_value=None)
+    def test_bluetooth_action_reports_missing_bluetoothctl_as_unavailable(self, _which):
+        response = self.client.post('/bluetooth-action', data={
+            'action': 'disconnect',
+            'address': 'aa:bb:cc:dd:ee:ff',
+        })
+
+        self.assertEqual(response.status_code, 501)
+        self.assertIn('bluetoothctl', response.get_json()['message'])
 
     def test_bluetooth_action_rejects_invalid_action(self):
         response = self.client.post('/bluetooth-action', data={

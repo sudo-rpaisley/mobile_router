@@ -48,6 +48,27 @@ BLUETOOTHCTL_ACTIONS = {
 BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
 
+class BluetoothToolUnavailable(RuntimeError):
+    """Raised when host-local Bluetooth actions cannot be executed."""
+
+
+def bluetooth_action_capability():
+    bluetoothctl = shutil.which('bluetoothctl')
+    if bluetoothctl:
+        return {
+            'available': True,
+            'tool': 'bluetoothctl',
+            'path': bluetoothctl,
+            'message': 'Bluetooth actions are available through bluetoothctl.',
+        }
+    return {
+        'available': False,
+        'tool': 'bluetoothctl',
+        'path': None,
+        'message': 'Bluetooth actions require the bluez bluetoothctl command on this host.',
+    }
+
+
 def run_bluetoothctl_action(action, address, timeout=15):
     """Run a safe local bluetoothctl action against a device visible to this host."""
     command = BLUETOOTHCTL_ACTIONS.get(action)
@@ -56,9 +77,10 @@ def run_bluetoothctl_action(action, address, timeout=15):
     if not BLUETOOTH_MAC_RE.match(address or ''):
         raise ValueError('A valid Bluetooth device address is required')
 
-    bluetoothctl = shutil.which('bluetoothctl')
+    capability = bluetooth_action_capability()
+    bluetoothctl = capability['path']
     if not bluetoothctl:
-        raise RuntimeError('bluetoothctl is not installed on this host')
+        raise BluetoothToolUnavailable(capability['message'])
 
     result = subprocess.run(
         [bluetoothctl, command, address],
@@ -425,7 +447,7 @@ def bluetooth_scan():
             {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
             for dev in devices
         ]
-        return json_success(devices=devices_summary)
+        return json_success(devices=devices_summary, action_capability=bluetooth_action_capability())
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)
 
@@ -441,6 +463,8 @@ def bluetooth_action():
         return json_success(message='Bluetooth action completed', output=output)
     except ValueError as e:
         return json_error(str(e))
+    except BluetoothToolUnavailable as e:
+        return json_error(str(e), 501)
     except Exception as e:
         return json_error(f'Bluetooth action error: {str(e)}', 500)
 

@@ -20,12 +20,15 @@ $(document).ready(function () {
     { action: 'remove', label: 'Remove', style: 'outline-danger', icon: 'trash' }
   ];
 
-  function renderDevice(device) {
+  function renderDevice(device, actionCapability) {
     const name = device.name || 'Unknown';
     const address = device.address || '';
     const manufacturer = device.manufacturer || 'Unknown manufacturer';
+    const actionsAvailable = Boolean(actionCapability?.available);
+    const disabled = actionsAvailable ? '' : 'disabled';
+    const disabledTitle = actionsAvailable ? '' : `title="${escapeHtml(actionCapability?.message || 'Bluetooth actions are unavailable on this host.')}"`;
     const actionButtons = bluetoothActions.map(function (item) {
-      return `<button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}"><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button>`;
+      return `<button type="button" class="btn btn-${item.style} btn-sm bluetooth-action" data-action="${escapeHtml(item.action)}" data-address="${escapeHtml(address)}" ${disabled} ${disabledTitle}><i class="fa-solid fa-${item.icon}"></i> ${escapeHtml(item.label)}</button>`;
     }).join('');
 
     return `
@@ -58,11 +61,15 @@ $(document).ready(function () {
       },
       success: function (response) {
         const devices = Array.isArray(response.devices) ? response.devices : [];
+        const actionCapability = response.action_capability || { available: false, message: 'Bluetooth action capability is unknown.' };
         let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
+        if (!actionCapability.available) {
+          btDiv += `<div class="alert alert-warning small" role="alert"><strong>Bluetooth actions unavailable:</strong> ${escapeHtml(actionCapability.message || 'Install bluetoothctl to enable actions.')}</div>`;
+        }
         if (devices.length === 0) {
           btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;
         } else {
-          btDiv += `<div class="wireless-network-grid">${devices.map(renderDevice).join('')}</div>`;
+          btDiv += `<div class="wireless-network-grid">${devices.map(function (device) { return renderDevice(device, actionCapability); }).join('')}</div>`;
         }
         btDiv += `</div></section>`;
         result.html(btDiv);
