@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}Roadmap{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Next steps</p>
+    <h1 class="page-title">Project Roadmap</h1>
+    <p class="page-subtitle">A practical backlog for the adapter dashboard, grouped by UX, scanning, wireless, Bluetooth, safety, and platform reliability.</p>
+  </div>
+</section>
+
+<section class="theme-grid roadmap-grid">
+  {% for section in roadmap_sections %}
+    <article class="theme-card card roadmap-card">
+      <div class="card-body">
+        <h2 class="theme-section-title">{{ section.title }}</h2>
+        <ul class="theme-list roadmap-list">
+          {% for item in section['items'] %}
+            <li>
+              <div class="roadmap-item-header">
+                <span class="roadmap-item-title">{{ item.title }}</span>
+                <span class="badge badge-{{ item.priority_class }}">{{ item.priority }}</span>
+              </div>
+              <p class="mb-0 text-muted">{{ item.description }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </article>
+  {% endfor %}
+</section>
+{% endblock %}

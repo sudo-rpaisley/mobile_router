@@ -14,6 +14,16 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Runtime Capabilities', response.data)
+        self.assertIn(b'id="theme-toggle"', response.data)
+        self.assertIn(b'id="adapter-auto-update-status"', response.data)
+        self.assertNotIn(b'id="listAdapters', response.data)
+
+    def test_roadmap_page_renders_project_ideas(self):
+        response = self.client.get('/roadmap')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Project Roadmap', response.data)
+        self.assertIn(b'Device inventory page', response.data)
+        self.assertIn(b'Bluetooth action checklist', response.data)
 
 
     def test_interface_type_preserves_uppercase_vpn(self):
@@ -31,7 +41,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'VPN Interfaces', response.data)
         self.assertIn(b'VPN Adapter', response.data)
 
-    def test_wireless_type_page_links_to_detail_without_scan_controls(self):
+    def test_wireless_type_page_uses_standard_adapter_card_without_scan_controls(self):
         wireless_interface = SimpleNamespace(
             name='WiFi',
             interface_type='Wireless',
@@ -47,7 +57,10 @@ class RouteSmokeTest(unittest.TestCase):
             response = self.client.get('/wireless')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'View Adapter Details', response.data)
+        self.assertIn(b'adapter-card', response.data)
+        self.assertIn(b'interface-icon', response.data)
+        self.assertIn(b'adapter-health-badges', response.data)
+        self.assertNotIn(b'adapter-card-large', response.data)
         self.assertNotIn(b'Scan for Networks', response.data)
         self.assertNotIn(b'id="wlans-WiFi"', response.data)
 
@@ -69,7 +82,36 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Scan for Networks', response.data)
+        self.assertIn(b'Action Readiness', response.data)
         self.assertIn(b'id="wlans-WiFi"', response.data)
+        self.assertIn(b'data-interface="WiFi"', response.data)
+
+
+
+    @patch('app.threading.Thread')
+    def test_scan_job_routes_start_and_report_status(self, thread_cls):
+        thread_cls.return_value.start.return_value = None
+        response = self.client.post('/scan-jobs', data={'scanType': 'wlan', 'selectedInterface': 'WiFi'})
+        self.assertEqual(response.status_code, 200)
+        job = response.get_json()['job']
+        self.assertEqual(job['status'], 'queued')
+
+        response = self.client.get(f"/scan-jobs/{job['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['job']['scan_type'], 'wlan')
+
+    def test_scan_job_rejects_unknown_scan_type(self):
+        response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_export_routes_return_json(self):
+        response = self.client.get('/export/interfaces.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('interfaces', response.get_json())
+
+        response = self.client.get('/export/capabilities.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('capabilities', response.get_json())
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

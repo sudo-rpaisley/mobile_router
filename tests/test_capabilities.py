@@ -1,5 +1,7 @@
 import unittest
 
+from unittest.mock import patch
+
 from scripts.capabilities import build_capabilities, command_status, package_status
 
 
@@ -29,6 +31,16 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("display_commands", capabilities)
         self.assertIn("display_features", capabilities)
         self.assertIn("display_packages", capabilities)
+
+    @patch("scripts.capabilities.platform.system", return_value="Linux")
+    @patch("scripts.capabilities._busctl_bluez_available", return_value=False)
+    def test_linux_capabilities_include_bluez_host_dependency(self, _bluez_available, _system):
+        capabilities = build_capabilities()
+        dependencies = capabilities["display_host_dependencies"]
+        self.assertEqual(dependencies[0]["name"], "BlueZ Bluetooth actions")
+        self.assertIn("sudo apt install bluez", dependencies[0]["install_hint"])
+        self.assertIn("Bluetooth actions", capabilities["display_features"])
+        self.assertIn("busctl", capabilities["display_commands"])
 
 
 if __name__ == "__main__":

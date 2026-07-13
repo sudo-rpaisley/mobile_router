@@ -1,6 +1,6 @@
 <!-- /root/flaskapp/templates/_interfaceImage.html -->
 {% set active_color = 'text-primary' if interface.state == 'UP' else 'text-black' %}
-<div class="col-md-3 d-flex align-items-center justify-content-center p-3">
+<div class="interface-icon col-md-3 d-flex align-items-center justify-content-center p-3">
   {% if interface.interface_type == 'Wireless' %}
     <i class="fa-solid fa-wifi fa-3x {{ active_color }}"></i>
   {% elif interface.interface_type == 'Wired' %}
