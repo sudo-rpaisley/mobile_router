@@ -97,6 +97,7 @@ class RouteSmokeTest(unittest.TestCase):
             'signal_label': '82%',
             'interface': 'wlan0',
             'discovered': True,
+            'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55'},
             'access_points': [
                 {
                     'bssid': 'aa:bb:cc:dd:ee:ff',
@@ -114,6 +115,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'TrainingNet', response.data)
         self.assertIn(b'Discovered Devices', response.data)
+        self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
 
     @patch('app.run_bluetoothctl_action')

@@ -1,5 +1,6 @@
 import importlib.util
 import platform
+import re
 import subprocess
 import time
 from .network import Network
@@ -481,10 +482,92 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         'signal': signal,
         'signal_label': _format_signal(signal),
         'interface': interface_name,
+        'gateway': get_default_gateway(interface_name),
         'access_points': access_points,
         'clients': clients,
         'discovered': discovered,
     }
+
+
+def _parse_linux_default_gateway(output):
+    for line in output.splitlines():
+        parts = line.split()
+        if parts and parts[0] == 'default' and 'via' in parts:
+            return parts[parts.index('via') + 1]
+    return None
+
+
+def _parse_windows_default_gateway(output):
+    for line in output.splitlines():
+        if 'Default Gateway' not in line:
+            continue
+        _, _, value = line.partition(':')
+        gateway = value.strip()
+        if gateway:
+            return gateway
+    for line in output.splitlines():
+        match = re.match(r'\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)\s+', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _lookup_arp_mac(ip_address):
+    if not ip_address:
+        return None
+
+    commands = []
+    if platform.system() == 'Windows':
+        commands.append(['arp', '-a', ip_address])
+    else:
+        commands.extend([
+            ['ip', 'neigh', 'show', ip_address],
+            ['arp', '-n', ip_address],
+        ])
+
+    for command in commands:
+        try:
+            result = _run_command(command, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        output = result.stdout or ''
+        mac_match = re.search(r'([0-9a-fA-F]{2}(?:[:-][0-9a-fA-F]{2}){5})', output)
+        if mac_match:
+            return mac_match.group(1).replace('-', ':').lower()
+    return None
+
+
+def get_default_gateway(interface_name=None):
+    """Return the default gateway IP/MAC when the host OS exposes it."""
+    system = platform.system()
+    commands = []
+    parser = None
+
+    if system == 'Linux':
+        if interface_name:
+            commands.append(['ip', 'route', 'show', 'default', 'dev', interface_name])
+        commands.append(['ip', 'route', 'show', 'default'])
+        parser = _parse_linux_default_gateway
+    elif system == 'Windows':
+        if interface_name:
+            commands.append(['netsh', 'interface', 'ip', 'show', 'config', f'name={interface_name}'])
+        commands.append(['route', 'print', '-4', '0.0.0.0'])
+        parser = _parse_windows_default_gateway
+    else:
+        return {'ip': None, 'mac': None}
+
+    for command in commands:
+        try:
+            result = _run_command(command, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode != 0:
+            continue
+        gateway_ip = parser(result.stdout or '')
+        if gateway_ip:
+            return {'ip': gateway_ip, 'mac': _lookup_arp_mac(gateway_ip)}
+
+    return {'ip': None, 'mac': None}
 
 def connect_to_network(ssid, password=None, interface_name=None):
     """Attempt to connect to a wireless network using pywifi."""

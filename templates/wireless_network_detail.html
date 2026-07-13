@@ -31,6 +31,7 @@
 
     <section class="interface-detail-grid network-detail-grid">
       <article class="card shadow-sm interface-summary-card">
+        {% set gateway = network.gateway | default({}) %}
         <div class="card-body">
           <h2 class="interface-section-title">Overview</h2>
           <dl class="interface-definition-list">
@@ -39,6 +40,8 @@
             <div><dt>Security</dt><dd>{{ network.security }}</dd></div>
             <div><dt>Signal</dt><dd>{{ network.signal_label }}</dd></div>
             <div><dt>Channel</dt><dd>{{ network.channel or 'Unknown' }}</dd></div>
+            <div><dt>Default Gateway</dt><dd>{{ gateway.ip | default('Not detected', true) }}</dd></div>
+            <div><dt>Gateway MAC</dt><dd>{{ gateway.mac | default('Not detected', true) }}</dd></div>
           </dl>
         </div>
       </article>

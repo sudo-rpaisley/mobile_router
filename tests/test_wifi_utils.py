@@ -177,3 +177,33 @@ def test_linux_scan_listens_for_devices_after_active_scan(monkeypatch):
     detail = utils.get_network_detail(ssid='Office')
 
     assert detail['clients'][0]['mac'] == '10:22:33:44:55:66'
+
+
+def test_parse_linux_default_gateway_from_ip_route():
+    output = 'default via 192.168.20.1 dev wlan0 proto dhcp src 192.168.20.45 metric 600\n'
+
+    assert utils._parse_linux_default_gateway(output) == '192.168.20.1'
+
+
+def test_parse_windows_default_gateway_from_netsh():
+    output = '''
+Configuration for interface "Wi-Fi"
+    DHCP enabled:                         Yes
+    Default Gateway:                      192.168.20.1
+'''
+
+    assert utils._parse_windows_default_gateway(output) == '192.168.20.1'
+
+
+def test_network_detail_includes_default_gateway(monkeypatch):
+    utils.networks = {}
+    utils._add_network('Office', 'aa:bb:cc:dd:ee:ff', 6, -42, 'WPA2')
+    monkeypatch.setattr(
+        utils,
+        'get_default_gateway',
+        lambda interface_name=None: {'ip': '192.168.20.1', 'mac': '00:11:22:33:44:55'},
+    )
+
+    detail = utils.get_network_detail(ssid='Office', interface_name='wlan0')
+
+    assert detail['gateway'] == {'ip': '192.168.20.1', 'mac': '00:11:22:33:44:55'}
