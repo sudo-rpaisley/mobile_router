@@ -153,3 +153,14 @@ footer {
         flex-direction: column;
     }
 }
+
+.feature-info-icon {
+    color: var(--theme-primary);
+    cursor: help;
+    margin-left: 0.35rem;
+}
+
+.feature-info-icon:focus {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: 2px;
+}

@@ -37,7 +37,13 @@
               <td>
                 {{ feature }}
                 {% if capabilities.feature_notes.get(feature) %}
-                  <div class="text-muted small">{{ capabilities.feature_notes.get(feature) }}</div>
+                  <i
+                    class="fa-solid fa-circle-info feature-info-icon"
+                    data-toggle="tooltip"
+                    data-placement="right"
+                    title="{{ capabilities.feature_notes.get(feature) }}"
+                    aria-label="{{ capabilities.feature_notes.get(feature) }}"
+                    tabindex="0"></i>
                 {% endif %}
               </td>
               <td>{% if available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
