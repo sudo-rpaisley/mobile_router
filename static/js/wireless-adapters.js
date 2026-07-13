@@ -26,7 +26,46 @@ $(document).ready(function () {
     return `${signal}${Number(signal) > 0 ? '%' : ' dBm'}`;
   }
 
+  function scanCacheKey(interfaceName) {
+    return `mobile-router:wlan-scan:${interfaceName}`;
+  }
 
+  function scanResultContainer(interfaceName) {
+    return $('.wlans').filter(function () {
+      return $(this).data('interface') === interfaceName;
+    }).first();
+  }
+
+  function saveCachedNetworks(interfaceName, networks) {
+    try {
+      window.sessionStorage.setItem(scanCacheKey(interfaceName), JSON.stringify({
+        networks: networks,
+        scannedAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      // Some browsers disable storage; scans should still render for this page view.
+    }
+  }
+
+  function loadCachedNetworks(interfaceName) {
+    try {
+      const cached = JSON.parse(window.sessionStorage.getItem(scanCacheKey(interfaceName)) || 'null');
+      return Array.isArray(cached?.networks) ? cached.networks : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function restoreCachedScanResults() {
+    $('.wlans[data-interface]').each(function () {
+      const container = $(this);
+      const interfaceName = container.data('interface');
+      const networks = loadCachedNetworks(interfaceName);
+      if (networks.length > 0) {
+        container.html(renderNetworks(interfaceName, networks));
+      }
+    });
+  }
 
   function modeInputId(interfaceName, mode) {
     return `mode-${interfaceName}-${mode}`.replace(/[^A-Za-z0-9_-]/g, '-');
@@ -165,7 +204,7 @@ $(document).ready(function () {
   $(document).on('click', 'button#wlan-scan', function () {
     const button = $(this);
     const interfaceName = button.val();
-    const resultDiv = $(`#wlans-${interfaceName}`);
+    const resultDiv = scanResultContainer(interfaceName);
 
     $.ajax({
       url: '/wlan-scan',
@@ -195,6 +234,7 @@ $(document).ready(function () {
           `);
           return;
         }
+        saveCachedNetworks(interfaceName, networks);
         resultDiv.html(renderNetworks(interfaceName, networks));
       },
       error: function (xhr) {
@@ -236,6 +276,8 @@ $(document).ready(function () {
       }
     });
   });
+
+  restoreCachedScanResults();
 
   $('.adapter-mode-switches').each(function () {
     loadAdapterModes($(this));

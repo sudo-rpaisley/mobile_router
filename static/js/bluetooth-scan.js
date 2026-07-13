@@ -64,7 +64,7 @@ $(document).ready(function () {
         const actionCapability = response.action_capability || { available: false, message: 'Bluetooth action capability is unknown.' };
         let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
         if (!actionCapability.available) {
-          btDiv += `<div class="alert alert-warning small" role="alert"><strong>Bluetooth actions unavailable:</strong> ${escapeHtml(actionCapability.message || 'Install bluetoothctl to enable actions.')}</div>`;
+          btDiv += `<div class="alert alert-warning small" role="alert"><div><strong>Bluetooth actions unavailable:</strong> ${escapeHtml(actionCapability.message || 'Install bluetoothctl to enable actions.')}</div><a class="btn btn-sm btn-outline-primary mt-2" href="/capabilities#host-dependencies">View install help</a></div>`;
         }
         if (devices.length === 0) {
           btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;

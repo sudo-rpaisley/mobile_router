@@ -1,28 +1,104 @@
-.no-link-design, .no-link-design, .no-link-design, .no-link-design:active {
-  text-decoration: none !important; 
+.no-link-design,
+.no-link-design:active {
+  text-decoration: none !important;
   color: inherit !important;
 }
 
+.adapter-card.card,
 .adapters-card {
-  width: 250px;
-  height: 140px;
+  width: min(100%, 250px) !important;
+  height: 20rem;
+  min-height: 20rem;
   border: 1px solid #ddd;
-  border-radius: 5px;
+  border-radius: 0.5rem;
   overflow: hidden;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.2s ease;
   display: flex;
-  align-items: center;
+  align-items: stretch !important;
+  flex: 0 0 auto;
+  flex-direction: column;
 }
 
+.adapter-card-compact .adapter-card-row {
+  flex: 1 1 auto;
+}
+
+.adapter-card-large .adapter-card-link {
+  flex: 1 1 auto;
+}
+
+.adapter-card-large .adapter-card-row {
+  min-height: 100%;
+}
+
+.adapter-card.card:hover,
 .adapters-card:hover {
-  transform: scale(1.05);
+  transform: translateY(-2px);
+  box-shadow: 0 0.35rem 1rem rgba(30, 55, 90, 0.12);
 }
 
-.interfaceImage {
-  width: 30%;
+.adapter-card-row {
+  margin-left: 0;
+  margin-right: 0;
+  min-height: 100%;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.adapter-card-link {
+  color: inherit !important;
   display: flex;
+  text-decoration: none !important;
+  width: 100%;
+}
+
+.interface-icon,
+.interfaceImage {
+  align-self: stretch;
+  display: flex !important;
   align-items: center;
   justify-content: center;
+  flex: 0 0 5.25rem;
+  max-width: 5.25rem;
+  min-width: 5.25rem;
+  padding: 1rem !important;
+}
+
+.interface-icon i,
+.interfaceImage i {
+  display: block;
+  line-height: 1;
+  max-width: 100%;
+}
+
+.adapter-card .col-md-9 {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+}
+
+.adapter-card .card-body {
+  min-width: 0;
+  width: 100%;
+}
+
+.adapter-card .card-title,
+.adapter-card .card-text,
+.interfaceTitle,
+.interfaceHeading,
+.interfaceText {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.adapter-card-large .card-body {
+  padding-bottom: 0.75rem;
+}
+
+.adapter-detail-link {
+  display: block;
+  margin: 0 auto 0.75rem;
+  width: calc(100% - 2rem);
 }
 
 .interfaceBody {
@@ -36,7 +112,6 @@
   width: 100%;
   padding-top: 5%;
   margin: 0;
-
 }
 
 .interfaceTitle {
@@ -47,16 +122,12 @@
 
 .interfaceHeading {
   margin: 0;
-  font-size: 16px;}
+  font-size: 16px;
+}
 
 .interfaceText {
   margin: 0;
   font-size: 14px;
-}
-
-.no-link-design {
-  text-decoration: none;
-  color: inherit;
 }
 
 .interface-category-page {
@@ -86,6 +157,7 @@
 
 .interface-category-list {
   gap: 0.5rem;
+  align-items: stretch;
   padding: 0.75rem 0.25rem 0.5rem;
   scrollbar-color: #8c8c8c #f5f5f5;
 }
@@ -96,5 +168,7 @@
 }
 
 .interface-category-card {
+  display: flex;
   flex: 0 0 auto;
+  min-width: 0;
 }

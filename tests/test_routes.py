@@ -48,6 +48,8 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'View Adapter Details', response.data)
+        self.assertIn(b'adapter-card', response.data)
+        self.assertIn(b'interface-icon', response.data)
         self.assertNotIn(b'Scan for Networks', response.data)
         self.assertNotIn(b'id="wlans-WiFi"', response.data)
 
@@ -70,6 +72,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Scan for Networks', response.data)
         self.assertIn(b'id="wlans-WiFi"', response.data)
+        self.assertIn(b'data-interface="WiFi"', response.data)
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

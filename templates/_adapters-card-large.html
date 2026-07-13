@@ -1,6 +1,6 @@
-<div class="card m-1 d-flex align-items-center" style="width: 250px;">
-  <a href="/{{ interface.interface_type | replace('Wi-Fi', 'Wireless') | replace('Ethernet', 'Wired') }}/{{ interface.name }}" style="text-decoration: none !important; color: inherit !important;">
-    <div class="row no-gutters align-items-center">
+<div class="card adapter-card adapter-card-large m-1 d-flex align-items-center">
+  <a class="adapter-card-link" href="/{{ interface.interface_type | replace('Wi-Fi', 'Wireless') | replace('Ethernet', 'Wired') }}/{{ interface.name }}" style="text-decoration: none !important; color: inherit !important;">
+    <div class="row no-gutters align-items-center adapter-card-row">
       <!-- ------------------------ image ---------------------- -->
       {% include '_interfaceImage.html' %}
       <!-- ---------------- text ---------------- -->
@@ -23,6 +23,6 @@
     </div>
   </a>
   {% if interface.interface_type == 'Wireless' %}
-    <a class="btn btn-outline-primary mb-2 adapter-detail-link" style="width: 80%; display: block; margin: 0 auto;" href="/{{ interface.interface_type | replace('Wi-Fi', 'Wireless') | replace('Ethernet', 'Wired') }}/{{ interface.name }}">View Adapter Details</a>
+    <a class="btn btn-outline-primary mb-2 adapter-detail-link" href="/{{ interface.interface_type | replace('Wi-Fi', 'Wireless') | replace('Ethernet', 'Wired') }}/{{ interface.name }}">View Adapter Details</a>
   {% endif %}
 </div>
