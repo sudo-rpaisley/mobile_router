@@ -1,6 +1,6 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, jsonify, render_template, request
 
-from scripts.capabilities import build_capabilities
+from scripts.capabilities import build_capabilities, install_optional_package
 
 
 def create_capabilities_blueprint(context_provider):
@@ -15,5 +15,19 @@ def create_capabilities_blueprint(context_provider):
             capabilities=build_capabilities(),
             **context,
         )
+
+    @blueprint.route('/capabilities/install-package', methods=['POST'])
+    def install_package():
+        package = request.form.get('package')
+        if not package:
+            return jsonify({'status': 'error', 'message': 'Missing package'}), 400
+
+        try:
+            result = install_optional_package(package)
+            return jsonify({'status': 'success', **result})
+        except ValueError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     return blueprint

@@ -1,12 +1,18 @@
 import importlib.util
 import platform
 import shutil
+import subprocess
 import sys
 from typing import Dict, List
 
 CORE_COMMANDS = ["ip", "ifconfig", "ipconfig", "arp", "ping", "traceroute", "tracepath", "tracert"]
 OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "powershell", "pwsh"]
 OPTIONAL_PACKAGES = ["bleak", "scapy", "pywifi"]
+OPTIONAL_PACKAGE_SPECS = {
+    "bleak": "bleak==0.22.2",
+    "scapy": "scapy==2.5.0",
+    "pywifi": "pywifi==1.1.12",
+}
 
 
 def command_status(commands: List[str]) -> Dict[str, Dict[str, object]]:
@@ -33,6 +39,54 @@ def _display_command_names(system):
     if system == "Linux":
         return ["ip", "ifconfig", "arp", "ping", "traceroute", "tracepath", "nmcli", "iw", "bluetoothctl", "rfkill", "hciconfig", "aireplay-ng"]
     return ["ifconfig", "ping", "traceroute", "arp"]
+
+
+def _display_feature_names(system):
+    common = [
+        "Core web UI",
+        "Minecraft status lab",
+        "Minecraft mob toggles",
+        "Interface inventory",
+        "Passive ARP scan",
+        "Active ping scan",
+        "Traceroute",
+        "Bluetooth scan",
+        "Wi-Fi network scan",
+    ]
+    if system == "Windows":
+        return common + ["Windows Wi-Fi connect"]
+    if system == "Linux":
+        return common + ["Linux monitor packet scan", "Aireplay deauth"]
+    return common
+
+
+def _display_package_names(system):
+    if system == "Windows":
+        return ["bleak", "pywifi"]
+    if system == "Linux":
+        return ["bleak", "scapy"]
+    return ["bleak"]
+
+
+def install_optional_package(package):
+    """Install an approved optional package into the current Python environment."""
+    if package not in OPTIONAL_PACKAGE_SPECS:
+        raise ValueError(f"Unsupported optional package: {package}")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", OPTIONAL_PACKAGE_SPECS[package]],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or f"pip failed installing {package}"
+        raise RuntimeError(message)
+    return {
+        "package": package,
+        "installed": importlib.util.find_spec(package) is not None,
+        "output": result.stdout.strip(),
+    }
 
 
 def build_capabilities() -> Dict[str, object]:
@@ -75,7 +129,11 @@ def build_capabilities() -> Dict[str, object]:
     }
 
     display_command_names = _display_command_names(system)
+    display_feature_names = _display_feature_names(system)
+    display_package_names = _display_package_names(system)
     display_commands = {name: commands[name] for name in display_command_names if name in commands}
+    display_features = {name: features[name] for name in display_feature_names if name in features}
+    display_packages = {name: packages[name] for name in display_package_names if name in packages}
 
     return {
         "platform": {
@@ -87,6 +145,9 @@ def build_capabilities() -> Dict[str, object]:
         "commands": commands,
         "display_commands": display_commands,
         "packages": packages,
+        "display_packages": display_packages,
+        "optional_package_specs": OPTIONAL_PACKAGE_SPECS,
         "features": features,
+        "display_features": display_features,
         "feature_notes": feature_notes,
     }

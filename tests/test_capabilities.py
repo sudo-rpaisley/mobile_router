@@ -24,5 +24,12 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertTrue(capabilities["features"]["Minecraft status lab"])
 
 
+    def test_display_sections_are_platform_filtered(self):
+        capabilities = build_capabilities()
+        self.assertIn("display_commands", capabilities)
+        self.assertIn("display_features", capabilities)
+        self.assertIn("display_packages", capabilities)
+
+
 if __name__ == "__main__":
     unittest.main()

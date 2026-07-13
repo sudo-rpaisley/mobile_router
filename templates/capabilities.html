@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
 
-{% block title %}Capabilities{% endblock %}
+{% block title %}Capabilities<div id="package-install-response" class="theme-results"></div>
+<script src="/static/js/capabilities.js"></script>
+{% endblock %}
 
 {% block content %}
 <section class="page-hero">
@@ -32,7 +34,7 @@
       <table class="table table-sm theme-table">
         <thead><tr><th>Feature</th><th>Status</th></tr></thead>
         <tbody>
-          {% for feature, available in capabilities.features.items() %}
+          {% for feature, available in capabilities.display_features.items() %}
             <tr>
               <td>
                 {{ feature }}
@@ -79,14 +81,28 @@
     <table class="table table-sm theme-table">
       <thead><tr><th>Package</th><th>Status</th></tr></thead>
       <tbody>
-        {% for package, available in capabilities.packages.items() %}
+        {% for package, available in capabilities.display_packages.items() %}
           <tr>
-            <td>{{ package }}</td>
-            <td>{% if available %}<span class="badge badge-success">Installed</span>{% else %}<span class="badge badge-warning">Not installed</span>{% endif %}</td>
+            <td>
+              {{ package }}
+              {% if capabilities.optional_package_specs.get(package) %}
+                <div class="text-muted small">{{ capabilities.optional_package_specs.get(package) }}</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if available %}
+                <span class="badge badge-success">Installed</span>
+              {% else %}
+                <span class="badge badge-warning">Not installed</span>
+                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Install</button>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+<div id="package-install-response" class="theme-results"></div>
+<script src="/static/js/capabilities.js"></script>
 {% endblock %}
