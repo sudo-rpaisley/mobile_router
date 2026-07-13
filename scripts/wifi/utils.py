@@ -415,6 +415,89 @@ def get_networks_summary():
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
 
 
+def _mac_bytes(mac):
+    normalized = _normalize_mac(mac)
+    parts = normalized.split(':')
+    if len(parts) != 6:
+        return None
+    try:
+        return [int(part, 16) for part in parts]
+    except ValueError:
+        return None
+
+
+def _ap_identity_reasons(left_bssid, right_bssid):
+    left = _mac_bytes(left_bssid)
+    right = _mac_bytes(right_bssid)
+    if not left or not right:
+        return []
+
+    reasons = []
+    if left[:5] == right[:5]:
+        reasons.append('BSSIDs share the first five octets and differ only by radio/BSSID index')
+    if left[1:5] == right[1:5] and abs(left[5] - right[5]) <= 16:
+        reasons.append('BSSIDs share the same device-specific suffix with nearby radio indexes')
+    if left[:3] == right[:3] and abs(left[5] - right[5]) <= 16:
+        reasons.append('BSSIDs share an OUI and nearby last-octet values')
+    return reasons
+
+
+def _group_access_points(access_points):
+    """Infer likely physical AP groupings from BSSID patterns for one SSID."""
+    if not access_points:
+        return [], []
+
+    parents = list(range(len(access_points)))
+    group_reasons = {}
+
+    def find(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left, right, reasons):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+        root = find(left_root)
+        group_reasons.setdefault(root, set()).update(reasons)
+
+    for left_index, left_ap in enumerate(access_points):
+        for right_index in range(left_index + 1, len(access_points)):
+            right_ap = access_points[right_index]
+            reasons = _ap_identity_reasons(left_ap.get('bssid'), right_ap.get('bssid'))
+            if reasons:
+                union(left_index, right_index, reasons)
+
+    grouped = {}
+    for index, ap in enumerate(access_points):
+        root = find(index)
+        grouped.setdefault(root, []).append(ap)
+
+    ap_groups = []
+    for group_number, (root, members) in enumerate(grouped.items(), start=1):
+        reasons = sorted(group_reasons.get(root, []))
+        strong_reason = any('first five octets' in reason or 'device-specific suffix' in reason for reason in reasons)
+        confidence = 'High' if len(members) > 1 and strong_reason else 'Medium'
+        label = f'AP group {group_number}' if len(members) > 1 else 'Unique AP'
+        for member in members:
+            member['physical_ap_group'] = label
+            member['identity_confidence'] = confidence if len(members) > 1 else 'Low'
+            member['identity_reasons'] = reasons
+        ap_groups.append({
+            'label': label,
+            'bssids': [member.get('bssid') for member in members],
+            'bands': sorted({member.get('band') for member in members if member.get('band') and member.get('band') != 'Unknown band'}),
+            'channels': [member.get('channel') for member in members if member.get('channel')],
+            'confidence': confidence if len(members) > 1 else 'Low',
+            'reasons': reasons,
+            'likely_same_physical_ap': len(members) > 1,
+        })
+
+    return access_points, ap_groups
+
 def _coerce_int(value):
     try:
         return int(value)
@@ -574,6 +657,7 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
                 'clients': ap_clients,
             })
             clients.extend(ap_clients)
+        access_points, ap_groups = _group_access_points(access_points)
         strongest_ap = max(matched.access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
         detail_ssid = matched.ssid
         security = getattr(matched, 'security', 'Unknown')
@@ -586,6 +670,7 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         primary_bssid = bssid or None
         channel = None
         signal = None
+        ap_groups = []
 
     return {
         'ssid': detail_ssid,
@@ -597,6 +682,7 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         'interface': interface_name,
         'gateway': get_default_gateway(interface_name),
         'bands': sorted({ap['band'] for ap in access_points if ap.get('band') and ap.get('band') != 'Unknown band'}),
+        'ap_groups': ap_groups,
         'access_points': access_points,
         'clients': clients,
         'discovered': discovered,

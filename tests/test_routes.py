@@ -99,6 +99,17 @@ class RouteSmokeTest(unittest.TestCase):
             'discovered': True,
             'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55'},
             'bands': ['5 GHz'],
+            'ap_groups': [
+                {
+                    'label': 'AP group 1',
+                    'bssids': ['aa:bb:cc:dd:ee:ff'],
+                    'bands': ['5 GHz'],
+                    'channels': ['6'],
+                    'confidence': 'Low',
+                    'reasons': [],
+                    'likely_same_physical_ap': False,
+                }
+            ],
             'access_points': [
                 {
                     'bssid': 'aa:bb:cc:dd:ee:ff',
@@ -122,6 +133,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Discovered Devices', response.data)
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
+        self.assertIn(b'AP Identity Hints', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
 
     @patch('app.run_bluetoothctl_action')

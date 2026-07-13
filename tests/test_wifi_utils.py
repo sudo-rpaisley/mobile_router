@@ -242,3 +242,22 @@ def test_network_detail_includes_ap_radio_details(monkeypatch):
     assert detail['access_points'][0]['band'] == '5 GHz'
     assert detail['access_points'][0]['frequency'] == 5180
     assert detail['access_points'][0]['signal_quality'] == 'Excellent'
+
+
+def test_group_access_points_marks_related_bssids_as_same_physical_ap(monkeypatch):
+    utils.networks = {}
+    utils._add_network('Office', 'd0:21:f9:d9:c9:49', 161, 90, 'WPA2')
+    utils._add_network('Office', 'd6:21:f9:d9:c9:48', 1, 91, 'WPA2')
+    monkeypatch.setattr(
+        utils,
+        'get_default_gateway',
+        lambda interface_name=None: {'ip': None, 'mac': None},
+    )
+
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert detail['ap_groups'][0]['likely_same_physical_ap'] is True
+    assert detail['ap_groups'][0]['confidence'] == 'High'
+    assert len(detail['ap_groups'][0]['bssids']) == 2
+    assert all(ap['physical_ap_group'] == 'AP group 1' for ap in detail['access_points'])
+    assert detail['ap_groups'][0]['reasons']

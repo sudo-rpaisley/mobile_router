@@ -71,6 +71,44 @@
       </article>
     </section>
 
+
+    <section class="card shadow-sm interface-extra-card mt-3">
+      <div class="card-body">
+        <h2 class="interface-section-title">AP Identity Hints</h2>
+        <p class="text-muted">These groupings are inferred from BSSID patterns for this SSID. They are useful hints, not proof; confirm with controller data, labels, vendor tools, or physical inspection when accuracy matters.</p>
+        {% if network.ap_groups %}
+          <div class="wireless-network-grid">
+            {% for group in network.ap_groups %}
+              <article class="wireless-network-card">
+                <div class="wireless-network-main">
+                  <div>
+                    <h3 class="wireless-network-ssid mb-1">{{ group.label }}</h3>
+                    <div class="wireless-network-meta">
+                      <span><i class="fa-solid fa-fingerprint"></i> {{ group.bssids | join(', ') }}</span>
+                      {% if group.bands %}<span><i class="fa-solid fa-tower-broadcast"></i> {{ group.bands | join(', ') }}</span>{% endif %}
+                      {% if group.channels %}<span><i class="fa-solid fa-wave-square"></i> Ch {{ group.channels | join(', ') }}</span>{% endif %}
+                    </div>
+                    {% if group.reasons %}
+                      <div class="wireless-network-notes mt-2">
+                        {% for reason in group.reasons %}<span class="badge badge-light border">{{ reason }}</span>{% endfor %}
+                      </div>
+                    {% else %}
+                      <p class="text-muted mb-0 mt-2">No strong BSSID relationship found for this AP.</p>
+                    {% endif %}
+                  </div>
+                  <div class="wireless-network-badges">
+                    <span class="badge {{ 'badge-success' if group.likely_same_physical_ap else 'badge-secondary' }}">{{ 'Likely same AP' if group.likely_same_physical_ap else 'Unique/unknown' }}</span>
+                    <span class="badge badge-light border">{{ group.confidence }} confidence</span>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No AP identity hints are available yet.</p>
+        {% endif %}
+      </div>
+    </section>
     <section class="card shadow-sm interface-extra-card mt-3">
       <div class="card-body">
         <h2 class="interface-section-title">Access Points</h2>
@@ -95,6 +133,7 @@
                   </div>
                   <div class="wireless-network-badges">
                     <span class="badge badge-info">{{ ap.band or 'Unknown band' }}</span>
+                    {% if ap.physical_ap_group and ap.physical_ap_group != 'Unique AP' %}<span class="badge badge-primary">{{ ap.physical_ap_group }}</span>{% endif %}
                     <span class="badge badge-light border">{{ ap.clients | length }} {{ 'client' if ap.clients | length == 1 else 'clients' }}</span>
                   </div>
                 </div>
