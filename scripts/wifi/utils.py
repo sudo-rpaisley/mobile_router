@@ -249,3 +249,103 @@ def connect_to_network(ssid, password=None, interface_name=None):
         return True
     iface.disconnect()
     return False
+
+MODE_LABELS = {
+    'managed': 'Managed',
+    'monitor': 'Monitor',
+    'ap': 'Access Point',
+    'ibss': 'Ad-hoc',
+    'mesh point': 'Mesh Point',
+    'p2p-client': 'P2P Client',
+    'p2p-go': 'P2P Group Owner',
+}
+
+
+def _normalize_mode(mode):
+    return (mode or '').strip().lower().replace('__', ' ')
+
+
+def _parse_supported_modes(output):
+    modes = []
+    in_modes = False
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == 'Supported interface modes:':
+            in_modes = True
+            continue
+        if in_modes and stripped.startswith('* '):
+            modes.append(_normalize_mode(stripped[2:]))
+            continue
+        if in_modes and stripped and not stripped.startswith('* '):
+            break
+    return modes
+
+
+def _parse_current_mode(output):
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('type '):
+            return _normalize_mode(stripped.removeprefix('type '))
+    return None
+
+
+def _get_interface_phy(interface_name):
+    phy_name_path = f'/sys/class/net/{interface_name}/phy80211/name'
+    try:
+        with open(phy_name_path) as phy_name_file:
+            return phy_name_file.read().strip()
+    except FileNotFoundError:
+        return None
+
+
+def get_adapter_modes(interface_name):
+    """Return supported wireless modes and the interface's current mode."""
+    if platform.system() != 'Linux':
+        return {'current_mode': None, 'supported_modes': []}
+
+    phy_name = _get_interface_phy(interface_name)
+    if not phy_name:
+        return {'current_mode': None, 'supported_modes': []}
+
+    phy_result = _run_command(['iw', 'phy', phy_name, 'info'])
+    if phy_result.returncode != 0:
+        raise RuntimeError(phy_result.stderr.strip() or f'Unable to read modes for {interface_name}')
+
+    dev_result = _run_command(['iw', 'dev', interface_name, 'info'])
+    if dev_result.returncode != 0:
+        raise RuntimeError(dev_result.stderr.strip() or f'Unable to read current mode for {interface_name}')
+
+    supported_modes = _parse_supported_modes(phy_result.stdout)
+    current_mode = _parse_current_mode(dev_result.stdout)
+    return {
+        'current_mode': current_mode,
+        'supported_modes': [
+            {'value': mode, 'label': MODE_LABELS.get(mode, mode.title())}
+            for mode in supported_modes
+        ],
+    }
+
+
+def set_adapter_mode(interface_name, mode):
+    """Set a wireless adapter mode and return the refreshed mode state."""
+    requested_mode = _normalize_mode(mode)
+    mode_state = get_adapter_modes(interface_name)
+    supported_values = {item['value'] for item in mode_state['supported_modes']}
+
+    if requested_mode not in supported_values:
+        raise ValueError(f'{MODE_LABELS.get(requested_mode, requested_mode)} mode is not supported by {interface_name}')
+
+    if mode_state['current_mode'] == requested_mode:
+        return mode_state
+
+    commands = [
+        ['ip', 'link', 'set', interface_name, 'down'],
+        ['iw', 'dev', interface_name, 'set', 'type', requested_mode],
+        ['ip', 'link', 'set', interface_name, 'up'],
+    ]
+    for command in commands:
+        result = _run_command(command)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or f'Failed to run {" ".join(command)}')
+
+    return get_adapter_modes(interface_name)

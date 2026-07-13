@@ -231,3 +231,33 @@
   gap: 0.85rem;
   margin-top: 0.85rem;
 }
+
+.adapter-mode-switches {
+  min-width: 14rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.adapter-mode-panel {
+  border: 1px solid #e6edf7;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.85rem;
+}
+
+.adapter-mode-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.adapter-mode-switch .custom-control-label {
+  font-weight: 600;
+}
+
+.adapter-mode-current,
+.adapter-mode-empty,
+.adapter-mode-loading,
+.adapter-mode-status {
+  font-size: 0.85rem;
+}

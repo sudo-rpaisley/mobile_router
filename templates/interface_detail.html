@@ -19,6 +19,9 @@
       </div>
       <div class="interface-actions">
         {% if interface.interface_type == 'Wireless' %}
+          <div id="wlan-modes-{{ interface.name }}" class="adapter-mode-switches" data-interface="{{ interface.name }}">
+            <p class="adapter-mode-loading mb-2">Loading adapter modes...</p>
+          </div>
           <button id="wlan-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Networks</button>
         {% elif interface.interface_type == 'Bluetooth' %}
           <button id="bluetooth-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Devices</button>

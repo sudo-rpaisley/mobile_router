@@ -23,3 +23,28 @@ def test_parse_signal_handles_numbers_and_unknown_values():
     assert utils._parse_signal('-45') == -45
     assert utils._parse_signal('') is None
     assert utils._parse_signal('unknown') == 'unknown'
+
+
+def test_parse_supported_modes_from_iw_output():
+    output = '''
+Wiphy phy0
+\tSupported interface modes:
+\t\t * IBSS
+\t\t * managed
+\t\t * AP
+\t\t * monitor
+\tBand 1:
+'''
+
+    assert utils._parse_supported_modes(output) == ['ibss', 'managed', 'ap', 'monitor']
+
+
+def test_parse_current_mode_from_iw_dev_output():
+    output = '''
+Interface wlan0
+\tifindex 3
+\ttype monitor
+\twiphy 0
+'''
+
+    assert utils._parse_current_mode(output) == 'monitor'

@@ -279,6 +279,38 @@ def syn_flood_broadcast():
         return json_error(f'Broadcast DoS error: {str(e)}', 500)
 
 
+@app.route('/wlan-modes', methods=['GET'])
+def wlan_modes():
+    selected_interface = request.args.get('selectedInterface')
+
+    if not selected_interface:
+        return json_error('Missing selected interface')
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        return json_success(**wifi_utils.get_adapter_modes(selected_interface))
+    except Exception as e:
+        return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
+@app.route('/wlan-mode', methods=['POST'])
+def wlan_mode():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    mode = data.get('mode')
+
+    if not selected_interface or not mode:
+        return json_error('Missing required parameters')
+
+    try:
+        from scripts.wifi import utils as wifi_utils
+        return json_success(**wifi_utils.set_adapter_mode(selected_interface, mode))
+    except ValueError as e:
+        return json_error(str(e))
+    except Exception as e:
+        return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
 @app.route('/wlan-scan', methods=['POST'])
 def wlan_scan():
     data = request.form

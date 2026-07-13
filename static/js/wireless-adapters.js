@@ -26,6 +26,56 @@ $(document).ready(function () {
     return `${signal}${Number(signal) > 0 ? '%' : ' dBm'}`;
   }
 
+
+
+  function modeInputId(interfaceName, mode) {
+    return `mode-${interfaceName}-${mode}`.replace(/[^A-Za-z0-9_-]/g, '-');
+  }
+
+  function renderAdapterModes(container, modes, currentMode) {
+    if (!Array.isArray(modes) || modes.length === 0) {
+      container.html('<p class="adapter-mode-empty mb-2">No switchable modes detected.</p>');
+      return;
+    }
+
+    const interfaceName = container.data('interface');
+    container.data('currentMode', currentMode);
+    const switches = modes.map(function (mode) {
+      const inputId = modeInputId(interfaceName, mode.value);
+      const checked = mode.value === currentMode ? 'checked' : '';
+      return `
+        <div class="custom-control custom-switch adapter-mode-switch">
+          <input type="radio" class="custom-control-input adapter-mode-input" name="mode-${escapeHtml(interfaceName)}" id="${escapeHtml(inputId)}" value="${escapeHtml(mode.value)}" ${checked}>
+          <label class="custom-control-label" for="${escapeHtml(inputId)}">${escapeHtml(mode.label)}</label>
+        </div>
+      `;
+    }).join('');
+
+    container.html(`
+      <div class="adapter-mode-panel">
+        <p class="interface-kicker mb-1">Adapter Mode</p>
+        <div class="adapter-mode-list">${switches}</div>
+        <p class="adapter-mode-current mb-0">Current: <strong>${escapeHtml(currentMode || 'Unknown')}</strong></p>
+      </div>
+    `);
+  }
+
+  function loadAdapterModes(container) {
+    const interfaceName = container.data('interface');
+    $.ajax({
+      url: '/wlan-modes',
+      type: 'GET',
+      data: { selectedInterface: interfaceName },
+      success: function (response) {
+        renderAdapterModes(container, response.supported_modes, response.current_mode);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Unable to load adapter modes';
+        container.html(`<div class="adapter-mode-error text-danger small mb-2">${escapeHtml(message)}</div>`);
+      }
+    });
+  }
+
   function renderNetworks(interfaceName, networks) {
     const count = networks.length;
     const rows = networks.map(function (network) {
@@ -151,4 +201,41 @@ $(document).ready(function () {
       }
     });
   });
+
+  $('.adapter-mode-switches').each(function () {
+    loadAdapterModes($(this));
+  });
+
+  $(document).on('change', '.adapter-mode-input', function () {
+    const input = $(this);
+    const container = input.closest('.adapter-mode-switches');
+    const interfaceName = container.data('interface');
+    const requestedMode = input.val();
+    const previousMode = container.data('currentMode');
+
+    container.find('.adapter-mode-input').prop('disabled', true);
+    container.find('.adapter-mode-status').remove();
+    container.find('.adapter-mode-panel').append('<p class="adapter-mode-status text-muted mb-0">Updating mode...</p>');
+
+    $.ajax({
+      url: '/wlan-mode',
+      type: 'POST',
+      data: { selectedInterface: interfaceName, mode: requestedMode },
+      success: function (response) {
+        renderAdapterModes(container, response.supported_modes, response.current_mode);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Unable to update adapter mode';
+        if (previousMode) {
+          container.find(`.adapter-mode-input[value="${previousMode}"]`).prop('checked', true);
+        }
+        container.find('.adapter-mode-status').remove();
+        container.find('.adapter-mode-panel').append(`<p class="adapter-mode-status text-danger mb-0">${escapeHtml(message)}</p>`);
+      },
+      complete: function () {
+        container.find('.adapter-mode-input').prop('disabled', false);
+      }
+    });
+  });
+
 });
