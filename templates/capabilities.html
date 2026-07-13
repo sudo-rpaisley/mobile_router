@@ -103,6 +103,30 @@
     </table>
   </div>
 </section>
+{% if capabilities.display_host_dependencies %}
+<section id="host-dependencies" class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Host Dependencies</h2>
+    <p class="text-muted small mb-3">These are operating-system packages or services, so the web app shows install guidance instead of running a package manager automatically.</p>
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Dependency</th><th>Status</th><th>Install guidance</th></tr></thead>
+      <tbody>
+        {% for dependency in capabilities.display_host_dependencies %}
+          <tr>
+            <td>
+              {{ dependency.name }}
+              <div class="text-muted small">{{ dependency.details }}</div>
+            </td>
+            <td>{% if dependency.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
+            <td><code>{{ dependency.install_hint }}</code></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <div id="package-install-response" class="theme-results"></div>
 <script src="/static/js/capabilities.js"></script>
 {% endblock %}

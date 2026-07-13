@@ -9,12 +9,26 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 
+<script>
+  (function () {
+    try {
+      var storedTheme = window.localStorage.getItem('theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', storedTheme || (prefersDark ? 'dark' : 'light'));
+    } catch (error) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }());
+</script>
+
 <script src="{{ url_for('static', filename='jquery-3.6.3.js') }}"></script>
 <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
 
+<script src="/static/js/device-alerts.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
 <script src="/static/js/socket-io-updates.js"></script>
 <script src="/static/js/mac-spoof.js"></script>
+<script src="/static/js/theme-toggle.js"></script>
 
 <title>{{ title }}</title>
 

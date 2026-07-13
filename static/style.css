@@ -164,3 +164,195 @@ footer {
     outline: 2px solid var(--theme-primary);
     outline-offset: 2px;
 }
+
+html[data-theme="dark"] {
+    --theme-bg: #0f172a;
+    --theme-surface: #172033;
+    --theme-surface-soft: #111827;
+    --theme-border: #334155;
+    --theme-text: #e5edf7;
+    --theme-muted: #a8b3c7;
+    --theme-primary: #60a5fa;
+    --theme-primary-soft: #1e3a5f;
+    --theme-shadow: 0 0.35rem 1.25rem rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] .table {
+    background-color: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .page-hero,
+html[data-theme="dark"] .interface-hero {
+    background: linear-gradient(135deg, #172033 0%, #101827 100%);
+}
+
+html[data-theme="dark"] .theme-card,
+html[data-theme="dark"] .theme-list li,
+html[data-theme="dark"] .address-card,
+html[data-theme="dark"] .wireless-network-card,
+html[data-theme="dark"] .adapter-mode-panel,
+html[data-theme="dark"] .bluetooth-action-output,
+html[data-theme="dark"] .interface-pre {
+    background: var(--theme-surface-soft);
+    border-color: var(--theme-border);
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .text-muted,
+html[data-theme="dark"] .page-subtitle,
+html[data-theme="dark"] .interface-kicker,
+html[data-theme="dark"] .interface-definition-list dt,
+html[data-theme="dark"] .wireless-network-meta,
+html[data-theme="dark"] .wireless-network-stats,
+html[data-theme="dark"] .table.theme-table th {
+    color: var(--theme-muted) !important;
+}
+
+html[data-theme="dark"] .theme-section-title,
+html[data-theme="dark"] .interface-section-title,
+html[data-theme="dark"] .interface-detail-title,
+html[data-theme="dark"] .page-title,
+html[data-theme="dark"] .interface-definition-list dd {
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .custom-select,
+html[data-theme="dark"] code,
+html[data-theme="dark"] pre {
+    border-color: var(--theme-border);
+    background-color: #0b1220;
+    color: var(--theme-text);
+}
+
+html[data-theme="dark"] .dropdown-item,
+html[data-theme="dark"] .no-link-design {
+    color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .dropdown-item:hover,
+html[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--theme-primary-soft);
+}
+
+html[data-theme="dark"] .badge-light,
+html[data-theme="dark"] .address-family {
+    background-color: var(--theme-primary-soft);
+    color: var(--theme-text);
+    border-color: var(--theme-border) !important;
+}
+
+.nav-tools {
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.auto-update-status {
+    color: rgba(255, 255, 255, 0.78) !important;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.theme-toggle {
+    white-space: nowrap;
+}
+
+.roadmap-grid {
+    align-items: start;
+}
+
+.roadmap-card {
+    height: 100%;
+}
+
+.roadmap-list li {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.roadmap-item-header {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+}
+
+.roadmap-item-title {
+    font-weight: 700;
+}
+
+.page-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.adapter-health-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.device-alert-container {
+    display: grid;
+    gap: 0.75rem;
+    position: fixed;
+    right: 1rem;
+    top: 5rem;
+    width: min(22rem, calc(100vw - 2rem));
+    z-index: 1080;
+}
+
+.device-alert {
+    border: 1px solid var(--theme-border);
+    opacity: 0;
+    padding: 0.85rem 1rem;
+    transform: translateY(-0.5rem);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.device-alert.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.network-map-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.network-map-card {
+    background: var(--theme-surface-soft);
+    border: 1px solid var(--theme-border);
+    border-radius: 0.85rem;
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem;
+}
+
+.network-map-card-header {
+    align-items: center;
+    display: flex;
+    gap: 0.6rem;
+}
+
+.network-map-addresses {
+    display: grid;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.network-map-addresses li {
+    display: grid;
+    gap: 0.2rem;
+}

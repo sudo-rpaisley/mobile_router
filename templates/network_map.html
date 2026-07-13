@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Network Map{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Topology</p>
+    <h1 class="page-title">Network Map</h1>
+    <p class="page-subtitle">A live, lightweight view of adapters and their reported addresses. Run scans to enrich device and wireless context over time.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Adapters and Addresses</h2>
+    <div class="network-map-grid">
+      {% for node in map_data.adapters %}
+        <article class="network-map-card">
+          <div class="network-map-card-header">
+            <span class="badge badge-info">{{ node.type }}</span>
+            <strong>{{ node.name }}</strong>
+          </div>
+          {% if node.addresses %}
+            <ul class="network-map-addresses">
+              {% for address in node.addresses %}
+                <li><span>{{ address.family }}</span><code>{{ address.address }}</code></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">No addresses reported.</p>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

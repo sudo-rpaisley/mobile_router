@@ -20,6 +20,57 @@ $(document).ready(function () {
     { action: 'remove', label: 'Remove', style: 'outline-danger', icon: 'trash', description: 'Remove the device from this host adapter pairing cache.' }
   ];
 
+
+
+  function bluetoothCacheKey(interfaceName) {
+    return `mobile-router:bluetooth-scan:${interfaceName}`;
+  }
+
+  function announceNewBluetoothDevices(interfaceName, devices) {
+    if (!window.deviceAlerts) {
+      return;
+    }
+    let previous = [];
+    try {
+      previous = JSON.parse(window.sessionStorage.getItem(bluetoothCacheKey(interfaceName)) || '[]');
+    } catch (error) {
+      previous = [];
+    }
+    const known = new Set(previous.map(function (device) { return device.address; }));
+    devices.forEach(function (device) {
+      if (device.address && !known.has(device.address)) {
+        window.deviceAlerts.notify('New Bluetooth device', `${device.name || 'Unknown device'} (${device.address})`);
+      }
+    });
+    try {
+      window.sessionStorage.setItem(bluetoothCacheKey(interfaceName), JSON.stringify(devices));
+    } catch (error) {
+      // Ignore storage failures; alerts are best-effort.
+    }
+  }
+
+  function pollScanJob(jobId, onComplete, onError) {
+    window.setTimeout(function checkJob() {
+      $.ajax({
+        url: `/scan-jobs/${encodeURIComponent(jobId)}`,
+        type: 'GET',
+        success: function (response) {
+          const job = response.job || {};
+          if (job.status === 'completed') {
+            onComplete(job.result || {});
+          } else if (job.status === 'failed') {
+            onError(job.error || 'Scan job failed');
+          } else {
+            window.setTimeout(checkJob, 1000);
+          }
+        },
+        error: function (xhr) {
+          onError(xhr.responseJSON?.message || 'Unable to check scan job');
+        }
+      });
+    }, 1000);
+  }
+
   function renderDevice(device, actionCapability) {
     const name = device.name || 'Unknown';
     const address = device.address || '';
@@ -51,36 +102,44 @@ $(document).ready(function () {
     const button = $(this);
     const interfaceName = button.val();
     const result = $("#bluetooth-devices");
+    button.prop('disabled', true).text('Scanning...');
+    result.html(`<div class="wireless-scan-state card shadow-sm"><div class="card-body d-flex align-items-center"><div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div><div><strong>Scanning ${escapeHtml(interfaceName)}</strong><p class="text-muted mb-0">Running this Bluetooth scan in the background.</p></div></div></div>`);
+
+    function renderScanResult(response) {
+      const devices = Array.isArray(response.devices) ? response.devices : [];
+      announceNewBluetoothDevices(interfaceName, devices);
+      const actionCapability = response.action_capability || { available: false, message: 'Bluetooth action capability is unknown.' };
+      let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
+      if (!actionCapability.available) {
+        btDiv += `<div class="alert alert-warning small" role="alert"><div><strong>Bluetooth actions unavailable:</strong> ${escapeHtml(actionCapability.message || 'Install bluetoothctl to enable actions.')}</div><a class="btn btn-sm btn-outline-primary mt-2" href="/capabilities#host-dependencies">View install help</a></div>`;
+      }
+      if (devices.length === 0) {
+        btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;
+      } else {
+        btDiv += `<div class="wireless-network-grid">${devices.map(function (device) { return renderDevice(device, actionCapability); }).join('')}</div>`;
+      }
+      btDiv += `</div></section>`;
+      result.html(btDiv);
+      result.find('[data-toggle="tooltip"]').tooltip({ container: 'body' });
+    }
+
     $.ajax({
-      url: "/bluetooth-scan",
+      url: "/scan-jobs",
       type: "POST",
-      data: { 'selectedInterface': interfaceName },
-      beforeSend: function () {
-        button.prop('disabled', true).text('Scanning...');
-        result.html(`<div class="wireless-scan-state card shadow-sm"><div class="card-body d-flex align-items-center"><div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div><div><strong>Scanning ${escapeHtml(interfaceName)}</strong><p class="text-muted mb-0">Looking for nearby Bluetooth devices.</p></div></div></div>`);
-      },
+      data: { scanType: 'bluetooth', selectedInterface: interfaceName },
       success: function (response) {
-        const devices = Array.isArray(response.devices) ? response.devices : [];
-        const actionCapability = response.action_capability || { available: false, message: 'Bluetooth action capability is unknown.' };
-        let btDiv = `<section class="wireless-results card shadow-sm"><div class="card-body"><div class="wireless-results-header"><div><p class="interface-kicker mb-1">Bluetooth Scan</p><h2 class="interface-section-title mb-0">Bluetooth Devices</h2></div><span class="badge badge-primary">${devices.length} found</span></div><div class="alert alert-secondary small" role="alert"><strong>Training note:</strong> actions operate through this adapter against devices you own or are authorized to test. Bluetooth does not provide a legitimate generic way to force a third-party device to disconnect from another third-party device.</div>`;
-        if (!actionCapability.available) {
-          btDiv += `<div class="alert alert-warning small" role="alert"><strong>Bluetooth actions unavailable:</strong> ${escapeHtml(actionCapability.message || 'Install bluetoothctl to enable actions.')}</div>`;
-        }
-        if (devices.length === 0) {
-          btDiv += `<div class="alert alert-info mb-0" role="alert">No Bluetooth devices found. Make sure nearby devices are discoverable; paired classic devices may appear even when not actively advertising.</div>`;
-        } else {
-          btDiv += `<div class="wireless-network-grid">${devices.map(function (device) { return renderDevice(device, actionCapability); }).join('')}</div>`;
-        }
-        btDiv += `</div></section>`;
-        result.html(btDiv);
-        result.find('[data-toggle="tooltip"]').tooltip({ container: 'body' });
+        pollScanJob(response.job.id, function (scanResult) {
+          button.prop('disabled', false).text('Scan for Devices');
+          renderScanResult(scanResult);
+        }, function (message) {
+          button.prop('disabled', false).text('Scan for Devices');
+          result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);
+        });
       },
       error: function (xhr) {
-        const message = xhr.responseJSON?.message || 'Error occurred during Bluetooth scan';
-        result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)}</div>`);
-      },
-      complete: function () {
         button.prop('disabled', false).text('Scan for Devices');
+        const message = xhr.responseJSON?.message || 'Unable to start Bluetooth scan';
+        result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);
       }
     });
   });

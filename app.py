@@ -4,6 +4,7 @@ import os
 import json
 import time
 import threading
+import uuid
 import asyncio
 import re
 import shutil
@@ -32,6 +33,49 @@ socketio = SocketIO(app)
 # Fetch network interfaces at the start
 network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
+scan_jobs = {}
+scan_jobs_lock = threading.Lock()
+
+
+ROADMAP_SECTIONS = [
+    {
+        'title': 'High-impact UX',
+        'items': [
+            {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
+            {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
+            {'title': 'Better empty and error states', 'priority': 'High', 'priority_class': 'danger', 'description': 'Replace generic scan failures with actionable install/setup guidance and links to capabilities.'},
+            {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
+        ],
+    },
+    {
+        'title': 'Network visibility',
+        'items': [
+            {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
+            {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
+            {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
+            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+        ],
+    },
+    {
+        'title': 'Wireless and Bluetooth',
+        'items': [
+            {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
+            {'title': 'Wireless network timelines', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track signal, channel, security, AP count, and seen timestamps per SSID/BSSID.'},
+            {'title': 'Known network labels', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users mark SSIDs as trusted, lab, suspicious, or ignored.'},
+            {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
+        ],
+    },
+    {
+        'title': 'Safety and architecture',
+        'items': [
+            {'title': 'Authorization guardrails', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require explicit authorization confirmation and add clearer logs before noisy red-team actions.'},
+            {'title': 'Demo/simulation mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Provide fake adapters, devices, networks, and scan results for demos and UI testing without hardware.'},
+            {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
+            {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
+            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
+        ],
+    },
+]
 
 
 BLUETOOTHCTL_ACTIONS = {
@@ -197,6 +241,72 @@ def parse_int(value, error_message):
         raise ValueError(error_message) from exc
 
 
+def _set_scan_job(job_id, **updates):
+    with scan_jobs_lock:
+        scan_jobs[job_id].update(updates)
+
+
+def _run_scan_job(job_id, scan_type, selected_interface):
+    _set_scan_job(job_id, status='running', started_at=time.time())
+    try:
+        if scan_type == 'wlan':
+            from scripts.wifi import utils as wifi_utils
+            wifi_utils.scan_networks(selected_interface)
+            result = {'wlans': wifi_utils.get_networks_summary()}
+        elif scan_type == 'bluetooth':
+            devices = asyncio.run(get_bluetooth_devices())
+            result = {
+                'devices': [
+                    {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
+                    for dev in devices
+                ],
+                'action_capability': bluetooth_action_capability(),
+            }
+        else:
+            raise ValueError('Unsupported scan type')
+        _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
+    except Exception as exc:
+        _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
+
+
+def create_scan_job(scan_type, selected_interface):
+    if scan_type not in {'wlan', 'bluetooth'}:
+        raise ValueError('Unsupported scan type')
+    if not selected_interface:
+        raise ValueError('Missing selected interface')
+    job_id = uuid.uuid4().hex
+    with scan_jobs_lock:
+        scan_jobs[job_id] = {
+            'id': job_id,
+            'scan_type': scan_type,
+            'selected_interface': selected_interface,
+            'status': 'queued',
+            'created_at': time.time(),
+        }
+    threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
+    return scan_jobs[job_id]
+
+
+def build_network_map():
+    return {
+        'adapters': [
+            {
+                'name': iface.name,
+                'type': iface.interface_type,
+                'state': getattr(iface, 'state', None),
+                'addresses': [
+                    {
+                        'family': addr.get('family') if isinstance(addr, dict) else addr.family,
+                        'address': addr.get('address') if isinstance(addr, dict) else addr.address,
+                    }
+                    for addr in getattr(iface, 'addresses', [])
+                ],
+            }
+            for iface in network_interfaces
+        ]
+    }
+
+
 def current_context():
     return {
         'networkTechnologies': networkTechnologies,
@@ -262,6 +372,16 @@ def red_team():
     return render_template('red-team.html', title='Red Team', **current_context())
 
 
+@app.route('/roadmap')
+def roadmap_page():
+    return render_template('roadmap.html', title='Roadmap', roadmap_sections=ROADMAP_SECTIONS, **current_context())
+
+
+@app.route('/network-map')
+def network_map_page():
+    return render_template('network_map.html', title='Network Map', map_data=build_network_map(), **current_context())
+
+
 register_blueprints(app, current_context)
 
 
@@ -270,6 +390,25 @@ register_blueprints(app, current_context)
 def adapters():
     """Return the available network interfaces as JSON."""
     return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
+
+
+
+
+@app.route('/export/interfaces.json')
+def export_interfaces_json():
+    return jsonify({
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'exported_at': time.time(),
+    })
+
+
+@app.route('/export/capabilities.json')
+def export_capabilities_json():
+    from scripts.capabilities import build_capabilities
+    return jsonify({
+        'capabilities': build_capabilities(),
+        'exported_at': time.time(),
+    })
 
 
 @app.route('/network-scan')
@@ -473,6 +612,25 @@ def wlan_mode():
         return json_error(str(e))
     except Exception as e:
         return json_error(f'WLAN mode error: {str(e)}', 500)
+
+
+@app.route('/scan-jobs', methods=['POST'])
+def start_scan_job():
+    data = request.form
+    try:
+        job = create_scan_job(data.get('scanType'), data.get('selectedInterface'))
+        return json_success(job=job)
+    except ValueError as e:
+        return json_error(str(e))
+
+
+@app.route('/scan-jobs/<job_id>')
+def scan_job_status(job_id):
+    with scan_jobs_lock:
+        job = scan_jobs.get(job_id)
+        if not job:
+            return json_error('Scan job not found', 404)
+        return json_success(job=dict(job))
 
 
 @app.route('/wlan-scan', methods=['POST'])
