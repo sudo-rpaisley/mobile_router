@@ -207,3 +207,38 @@ def test_network_detail_includes_default_gateway(monkeypatch):
     detail = utils.get_network_detail(ssid='Office', interface_name='wlan0')
 
     assert detail['gateway'] == {'ip': '192.168.20.1', 'mac': '00:11:22:33:44:55'}
+
+
+def test_ap_radio_details_labels_24ghz_and_channel_notes():
+    details = utils._ap_radio_details(11, 26)
+
+    assert details['band'] == '2.4 GHz'
+    assert details['frequency'] == 2462
+    assert details['signal_quality'] == 'Weak'
+    assert details['notes'] == ['Preferred non-overlapping 2.4 GHz channel']
+
+
+def test_ap_radio_details_labels_5ghz_dfs_channel():
+    details = utils._ap_radio_details(100, -61)
+
+    assert details['band'] == '5 GHz'
+    assert details['frequency'] == 5500
+    assert details['signal_quality'] == 'Good'
+    assert details['notes'] == ['DFS channel; may be affected by radar events']
+
+
+def test_network_detail_includes_ap_radio_details(monkeypatch):
+    utils.networks = {}
+    utils._add_network('Office', 'aa:bb:cc:dd:ee:ff', 36, -51, 'WPA2')
+    monkeypatch.setattr(
+        utils,
+        'get_default_gateway',
+        lambda interface_name=None: {'ip': None, 'mac': None},
+    )
+
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert detail['bands'] == ['5 GHz']
+    assert detail['access_points'][0]['band'] == '5 GHz'
+    assert detail['access_points'][0]['frequency'] == 5180
+    assert detail['access_points'][0]['signal_quality'] == 'Excellent'

@@ -98,12 +98,17 @@ class RouteSmokeTest(unittest.TestCase):
             'interface': 'wlan0',
             'discovered': True,
             'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55'},
+            'bands': ['5 GHz'],
             'access_points': [
                 {
                     'bssid': 'aa:bb:cc:dd:ee:ff',
                     'channel': '6',
                     'signal': 82,
                     'signal_label': '82%',
+                    'frequency': 5180,
+                    'band': '5 GHz',
+                    'signal_quality': 'Strong',
+                    'notes': ['DFS channel; may be affected by radar events'],
                     'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff'}],
                 }
             ],
@@ -116,6 +121,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'TrainingNet', response.data)
         self.assertIn(b'Discovered Devices', response.data)
         self.assertIn(b'192.168.1.1', response.data)
+        self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
 
     @patch('app.run_bluetoothctl_action')

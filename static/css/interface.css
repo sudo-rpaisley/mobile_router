@@ -361,3 +361,9 @@
 .network-detail-grid {
   margin-top: 1.25rem;
 }
+
+.wireless-network-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}

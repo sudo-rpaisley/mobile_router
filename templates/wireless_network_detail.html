@@ -16,6 +16,7 @@
           <span class="badge {{ 'badge-success' if network.security == 'Open' else 'badge-secondary' }}">{{ network.security }}</span>
           <span class="badge badge-primary">{{ network.access_points | length }} {{ 'AP' if network.access_points | length == 1 else 'APs' }}</span>
           {% if network.interface %}<span class="badge badge-light border">{{ network.interface }}</span>{% endif %}
+          {% for band in network.bands | default([]) %}<span class="badge badge-info">{{ band }}</span>{% endfor %}
         </div>
       </div>
       <div class="interface-actions">
@@ -40,6 +41,7 @@
             <div><dt>Security</dt><dd>{{ network.security }}</dd></div>
             <div><dt>Signal</dt><dd>{{ network.signal_label }}</dd></div>
             <div><dt>Channel</dt><dd>{{ network.channel or 'Unknown' }}</dd></div>
+            <div><dt>Radio Bands</dt><dd>{{ (network.bands | default([])) | join(', ') or 'Unknown' }}</dd></div>
             <div><dt>Default Gateway</dt><dd>{{ gateway.ip | default('Not detected', true) }}</dd></div>
             <div><dt>Gateway MAC</dt><dd>{{ gateway.mac | default('Not detected', true) }}</dd></div>
           </dl>
@@ -81,10 +83,20 @@
                     <h3 class="wireless-network-ssid mb-1">{{ ap.bssid or 'Unknown BSSID' }}</h3>
                     <div class="wireless-network-meta">
                       <span><i class="fa-solid fa-wave-square"></i> Ch {{ ap.channel or 'Unknown' }}</span>
-                      <span><i class="fa-solid fa-signal"></i> {{ ap.signal_label }}</span>
+                      <span><i class="fa-solid fa-tower-broadcast"></i> {{ ap.band or 'Unknown band' }}</span>
+                      {% if ap.frequency %}<span><i class="fa-solid fa-gauge-high"></i> {{ ap.frequency }} MHz</span>{% endif %}
+                      <span><i class="fa-solid fa-signal"></i> {{ ap.signal_label }} ({{ ap.signal_quality }})</span>
                     </div>
+                    {% if ap.notes %}
+                      <div class="wireless-network-notes mt-2">
+                        {% for note in ap.notes %}<span class="badge badge-light border">{{ note }}</span>{% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
-                  <span class="badge badge-light border">{{ ap.clients | length }} {{ 'client' if ap.clients | length == 1 else 'clients' }}</span>
+                  <div class="wireless-network-badges">
+                    <span class="badge badge-info">{{ ap.band or 'Unknown band' }}</span>
+                    <span class="badge badge-light border">{{ ap.clients | length }} {{ 'client' if ap.clients | length == 1 else 'clients' }}</span>
+                  </div>
                 </div>
               </article>
             {% endfor %}

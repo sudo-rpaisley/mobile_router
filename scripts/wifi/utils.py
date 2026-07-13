@@ -415,6 +415,113 @@ def get_networks_summary():
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
 
 
+def _coerce_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _channel_from_frequency(frequency):
+    freq = _coerce_int(frequency)
+    if freq is None:
+        return None
+    if freq == 2484:
+        return 14
+    if 2412 <= freq <= 2472:
+        return int((freq - 2407) / 5)
+    if 5000 <= freq <= 5900:
+        return int((freq - 5000) / 5)
+    if 5955 <= freq <= 7115:
+        return int((freq - 5950) / 5)
+    return None
+
+
+def _frequency_from_channel(channel):
+    channel_number = _coerce_int(channel)
+    if channel_number is None:
+        return None
+    if channel_number == 14:
+        return 2484
+    if 1 <= channel_number <= 13:
+        return 2407 + (channel_number * 5)
+    if 32 <= channel_number <= 177:
+        return 5000 + (channel_number * 5)
+    return None
+
+
+def _frequency_band(channel=None, frequency=None):
+    freq = _coerce_int(frequency)
+    if freq:
+        if 2400 <= freq < 2500:
+            return '2.4 GHz'
+        if 4900 <= freq < 5925:
+            return '5 GHz'
+        if 5925 <= freq <= 7125:
+            return '6 GHz'
+
+    channel_number = _coerce_int(channel)
+    if channel_number is None:
+        return 'Unknown band'
+    if 1 <= channel_number <= 14:
+        return '2.4 GHz'
+    if 32 <= channel_number <= 177:
+        return '5 GHz'
+    if 1 <= channel_number <= 233:
+        return '6 GHz'
+    return 'Unknown band'
+
+
+def _signal_quality(signal):
+    value = _coerce_int(signal)
+    if value is None:
+        return 'Unknown signal'
+    if value >= 0:
+        if value >= 70:
+            return 'Strong'
+        if value >= 40:
+            return 'Usable'
+        return 'Weak'
+    if value >= -55:
+        return 'Excellent'
+    if value >= -67:
+        return 'Good'
+    if value >= -75:
+        return 'Fair'
+    return 'Weak'
+
+
+def _channel_notes(channel=None, frequency=None):
+    notes = []
+    channel_number = _coerce_int(channel) or _channel_from_frequency(frequency)
+    band = _frequency_band(channel_number, frequency)
+
+    if band == '2.4 GHz':
+        if channel_number in {1, 6, 11}:
+            notes.append('Preferred non-overlapping 2.4 GHz channel')
+        elif channel_number:
+            notes.append('Overlaps with nearby 2.4 GHz channels')
+    elif band == '5 GHz' and channel_number in range(52, 145):
+        notes.append('DFS channel; may be affected by radar events')
+    elif band == '6 GHz':
+        notes.append('6 GHz requires Wi-Fi 6E/7 client support')
+
+    return notes
+
+
+def _ap_radio_details(channel=None, signal=None):
+    channel_number = _coerce_int(channel)
+    frequency = channel_number if channel_number and channel_number > 1000 else _frequency_from_channel(channel_number)
+    display_channel = _channel_from_frequency(channel_number) if channel_number and channel_number > 1000 else channel_number
+
+    return {
+        'channel': display_channel if display_channel is not None else channel,
+        'frequency': frequency,
+        'band': _frequency_band(display_channel, frequency),
+        'signal_quality': _signal_quality(signal),
+        'notes': _channel_notes(display_channel, frequency),
+    }
+
 def _format_signal(signal):
     if signal in (None, ''):
         return 'Unknown signal'
@@ -453,11 +560,17 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
                 }
                 for client in ap.clients
             ]
+            radio = _ap_radio_details(ap.channel, ap.signal)
             access_points.append({
                 'bssid': ap.bssid,
-                'channel': ap.channel,
+                'channel': radio['channel'],
+                'raw_channel': ap.channel,
+                'frequency': radio['frequency'],
+                'band': radio['band'],
                 'signal': ap.signal,
                 'signal_label': _format_signal(ap.signal),
+                'signal_quality': radio['signal_quality'],
+                'notes': radio['notes'],
                 'clients': ap_clients,
             })
             clients.extend(ap_clients)
@@ -483,6 +596,7 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         'signal_label': _format_signal(signal),
         'interface': interface_name,
         'gateway': get_default_gateway(interface_name),
+        'bands': sorted({ap['band'] for ap in access_points if ap.get('band') and ap.get('band') != 'Unknown band'}),
         'access_points': access_points,
         'clients': clients,
         'discovered': discovered,
