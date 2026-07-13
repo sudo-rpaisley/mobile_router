@@ -166,6 +166,35 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.get_json()['output'], 'Device disconnected')
         run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff')
 
+    @patch.object(app_module.shutil, 'which')
+    @patch.object(app_module.subprocess, 'run')
+    def test_bluetooth_action_capability_uses_busctl_fallback(self, run, which):
+        which.side_effect = lambda command: '/usr/bin/busctl' if command == 'busctl' else None
+        run.return_value = SimpleNamespace(returncode=0, stdout='/org/bluez/hci0\n', stderr='')
+
+        capability = app_module.bluetooth_action_capability()
+
+        self.assertTrue(capability['available'])
+        self.assertEqual(capability['tool'], 'busctl')
+
+    @patch.object(app_module.shutil, 'which')
+    @patch.object(app_module.subprocess, 'run')
+    def test_bluetooth_action_uses_busctl_when_bluetoothctl_missing(self, run, which):
+        which.side_effect = lambda command: '/usr/bin/busctl' if command == 'busctl' else None
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stdout='/org/bluez/hci0\n', stderr=''),
+            SimpleNamespace(returncode=0, stdout='└─/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF\n', stderr=''),
+            SimpleNamespace(returncode=0, stdout='', stderr=''),
+        ]
+
+        output = app_module.run_bluetoothctl_action('disconnect', 'aa:bb:cc:dd:ee:ff')
+
+        self.assertIn('busctl Bluetooth disconnect completed', output)
+        self.assertEqual(
+            run.call_args_list[2].args[0][:5],
+            ['/usr/bin/busctl', 'call', 'org.bluez', '/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF', 'org.bluez.Device1'],
+        )
+
     @patch.object(app_module.shutil, 'which', return_value=None)
     def test_bluetooth_action_reports_missing_bluetoothctl_as_unavailable(self, _which):
         response = self.client.post('/bluetooth-action', data={

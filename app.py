@@ -52,6 +52,20 @@ class BluetoothToolUnavailable(RuntimeError):
     """Raised when host-local Bluetooth actions cannot be executed."""
 
 
+def _busctl_bluez_available(busctl):
+    try:
+        result = subprocess.run(
+            [busctl, 'tree', 'org.bluez'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 def bluetooth_action_capability():
     bluetoothctl = shutil.which('bluetoothctl')
     if bluetoothctl:
@@ -61,12 +75,76 @@ def bluetooth_action_capability():
             'path': bluetoothctl,
             'message': 'Bluetooth actions are available through bluetoothctl.',
         }
+    busctl = shutil.which('busctl')
+    if busctl and _busctl_bluez_available(busctl):
+        return {
+            'available': True,
+            'tool': 'busctl',
+            'path': busctl,
+            'message': 'Bluetooth actions are available through BlueZ D-Bus via busctl.',
+        }
     return {
         'available': False,
-        'tool': 'bluetoothctl',
+        'tool': None,
         'path': None,
-        'message': 'Bluetooth actions require the bluez bluetoothctl command on this host.',
+        'message': 'Bluetooth actions require BlueZ bluetoothctl, or busctl with a running BlueZ D-Bus service on this host.',
     }
+
+
+def _bluetooth_device_path_from_busctl(busctl, address, timeout=10):
+    device_token = 'dev_' + address.upper().replace(':', '_')
+    result = subprocess.run(
+        [busctl, 'tree', 'org.bluez'],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or 'BlueZ D-Bus tree lookup failed').strip())
+
+    for line in result.stdout.splitlines():
+        if device_token in line:
+            match = re.search(r'(/org/bluez/[^\s]+)', line)
+            if match:
+                return match.group(1)
+    raise RuntimeError(f'Bluetooth device {address} was not found in BlueZ D-Bus. Scan or pair the device first.')
+
+
+def _run_busctl_bluetooth_action(busctl, action, address, timeout=15):
+    path = _bluetooth_device_path_from_busctl(busctl, address, timeout=timeout)
+
+    if action in {'connect', 'disconnect', 'pair'}:
+        method = {'connect': 'Connect', 'disconnect': 'Disconnect', 'pair': 'Pair'}[action]
+        command = [busctl, 'call', 'org.bluez', path, 'org.bluez.Device1', method]
+    elif action in {'trust', 'untrust', 'block', 'unblock'}:
+        property_name = 'Trusted' if action in {'trust', 'untrust'} else 'Blocked'
+        value = 'true' if action in {'trust', 'block'} else 'false'
+        command = [busctl, 'set-property', 'org.bluez', path, 'org.bluez.Device1', property_name, 'b', value]
+    elif action == 'remove':
+        adapter_path = path.rsplit('/dev_', 1)[0]
+        command = [busctl, 'call', 'org.bluez', adapter_path, 'org.bluez.Adapter1', 'RemoveDevice', 'o', path]
+    elif action == 'info':
+        outputs = []
+        for property_name in ['Address', 'Name', 'Alias', 'Paired', 'Connected', 'Trusted', 'Blocked']:
+            result = subprocess.run(
+                [busctl, 'get-property', 'org.bluez', path, 'org.bluez.Device1', property_name],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            if result.returncode == 0:
+                outputs.append(f'{property_name}: {(result.stdout or '').strip()}')
+        return '\n'.join(outputs) or f'BlueZ D-Bus info completed for {address}'
+    else:
+        raise ValueError('Unsupported Bluetooth action')
+
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    if result.returncode != 0:
+        raise RuntimeError(output or f'busctl Bluetooth {action} failed')
+    return output or f'busctl Bluetooth {action} completed for {address}'
 
 
 def run_bluetoothctl_action(action, address, timeout=15):
@@ -78,12 +156,14 @@ def run_bluetoothctl_action(action, address, timeout=15):
         raise ValueError('A valid Bluetooth device address is required')
 
     capability = bluetooth_action_capability()
-    bluetoothctl = capability['path']
-    if not bluetoothctl:
+    tool = capability['path']
+    if not tool:
         raise BluetoothToolUnavailable(capability['message'])
+    if capability['tool'] == 'busctl':
+        return _run_busctl_bluetooth_action(tool, action, address, timeout=timeout)
 
     result = subprocess.run(
-        [bluetoothctl, command, address],
+        [tool, command, address],
         capture_output=True,
         text=True,
         timeout=timeout,
