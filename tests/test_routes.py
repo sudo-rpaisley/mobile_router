@@ -31,6 +31,46 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'VPN Interfaces', response.data)
         self.assertIn(b'VPN Adapter', response.data)
 
+    def test_wireless_type_page_links_to_detail_without_scan_controls(self):
+        wireless_interface = SimpleNamespace(
+            name='WiFi',
+            interface_type='Wireless',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+            get_mac_address=lambda: 'c4:3d:1a:f5:91:32',
+        )
+        with (
+            patch.object(app_module, 'network_interfaces', [wireless_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Wireless'}),
+        ):
+            response = self.client.get('/wireless')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'View Adapter Details', response.data)
+        self.assertNotIn(b'Scan for Networks', response.data)
+        self.assertNotIn(b'id="wlans-WiFi"', response.data)
+
+    def test_wireless_adapter_detail_keeps_scan_controls(self):
+        wireless_interface = SimpleNamespace(
+            name='WiFi',
+            interface_type='Wireless',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+            extra_info={},
+            get_mac_address=lambda: 'c4:3d:1a:f5:91:32',
+        )
+        with (
+            patch.object(app_module, 'network_interfaces', [wireless_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Wireless'}),
+        ):
+            response = self.client.get('/wireless/WiFi')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Scan for Networks', response.data)
+        self.assertIn(b'id="wlans-WiFi"', response.data)
+
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')
         self.assertEqual(response.status_code, 200)
