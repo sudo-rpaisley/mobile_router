@@ -44,3 +44,32 @@
   animation: inherit;
   animation-direction: reverse;
 }
+
+.new-device-alert-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.new-device-alert-indicator.has-alerts {
+  color: #ffc107;
+}
+
+.new-device-alert-indicator span {
+  min-width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-device-alert-indicator.has-alerts span {
+  background: #ffc107;
+  color: #1f2933;
+}

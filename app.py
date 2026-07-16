@@ -40,6 +40,8 @@ port_scan_jobs = {}
 port_scan_jobs_lock = threading.Lock()
 device_inventory = {}
 device_inventory_lock = threading.Lock()
+new_device_alerts = []
+new_device_alerts_lock = threading.Lock()
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -60,7 +62,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
-            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
         ],
     },
     {
@@ -314,6 +316,41 @@ def inventory_key(device):
     return None
 
 
+
+def create_new_device_alert(device, source, interface=None):
+    """Record an unread alert for a newly observed inventory device."""
+    display_name = device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device'
+    alert = {
+        'id': uuid.uuid4().hex,
+        'device_id': device.get('id'),
+        'display_name': display_name,
+        'ip': device.get('ip'),
+        'mac': device.get('mac') or device.get('bssid'),
+        'manufacturer': device.get('manufacturer') or 'Unknown',
+        'source': source,
+        'interface': interface,
+        'created_at': time.time(),
+        'read': False,
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
+def alert_records():
+    """Return alert records with display labels."""
+    with new_device_alerts_lock:
+        records = [dict(alert) for alert in new_device_alerts]
+    for alert in records:
+        alert['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert.get('created_at', 0)))
+    return records
+
+
+def unread_alert_count():
+    with new_device_alerts_lock:
+        return len([alert for alert in new_device_alerts if not alert.get('read')])
+
 def record_inventory_devices(devices, source, interface=None):
     """Merge discovered devices into the in-memory inventory with OUI metadata."""
     now = time.time()
@@ -343,7 +380,10 @@ def record_inventory_devices(devices, source, interface=None):
                 'sources': sources,
                 'interfaces': interfaces_seen,
             }
+            is_new_device = not existing
             device_inventory[key] = merged
+            if is_new_device and not merged.get('is_control_traffic'):
+                create_new_device_alert(merged, source, interface)
             changed_devices.append(dict(merged))
     return changed_devices
 
@@ -747,6 +787,36 @@ def inventory_page():
         insights=manufacturer_insights(records),
         **current_context(),
     )
+
+
+@app.route('/alerts')
+def alerts_page():
+    return render_template('alerts.html', title='Alerts', alerts=alert_records(), **current_context())
+
+
+@app.route('/alerts/status')
+def alerts_status():
+    alerts = alert_records()
+    return json_success(alerts=alerts, unread_count=len([alert for alert in alerts if not alert.get('read')]))
+
+
+@app.route('/alerts/<alert_id>/read', methods=['POST'])
+def mark_alert_read(alert_id):
+    with new_device_alerts_lock:
+        for alert in new_device_alerts:
+            if alert['id'] == alert_id:
+                alert['read'] = True
+                unread_count = len([item for item in new_device_alerts if not item.get('read')])
+                return json_success(alert=dict(alert), unread_count=unread_count)
+    return json_error('Alert not found', 404)
+
+
+@app.route('/alerts/read-all', methods=['POST'])
+def mark_all_alerts_read():
+    with new_device_alerts_lock:
+        for alert in new_device_alerts:
+            alert['read'] = True
+    return json_success(unread_count=0)
 
 
 @app.route('/port-scan')

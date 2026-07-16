@@ -407,3 +407,11 @@ html[data-theme="dark"] .roadmap-completed-note {
   margin: 0;
   color: var(--muted-text, #6c757d);
 }
+
+
+.device-alert-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}

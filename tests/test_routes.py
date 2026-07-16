@@ -296,6 +296,45 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertEqual(response.data.count(b'Check ports'), 1)
 
+    def test_new_device_alerts_are_created_and_can_be_read(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb', 'is_control_traffic': True},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/alerts/status')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['unread_count'], 1)
+        self.assertEqual(payload['alerts'][0]['ip'], '192.168.20.10')
+
+        alert_id = payload['alerts'][0]['id']
+        response = self.client.post(f'/alerts/{alert_id}/read')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['unread_count'], 0)
+
+    def test_alerts_page_and_nav_indicator_render(self):
+        app_module.new_device_alerts.clear()
+        app_module.create_new_device_alert({
+            'id': 'mac:48:b0:2d:ef:ec:f2',
+            'ip': '192.168.20.10',
+            'mac': '48:b0:2d:ef:ec:f2',
+            'manufacturer': 'Unknown',
+        }, 'test-scan', 'eth0')
+
+        response = self.client.get('/alerts')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'New Device Alerts', response.data)
+        self.assertIn(b'192.168.20.10', response.data)
+        self.assertIn(b'alerts.js', response.data)
+
+        response = self.client.get('/capabilities')
+        self.assertIn(b'id="new-device-alert-indicator"', response.data)
+
     @patch('app.threading.Thread')
     def test_port_scan_job_routes_start_and_report_status(self, thread_cls):
         app_module.port_scan_jobs.clear()
