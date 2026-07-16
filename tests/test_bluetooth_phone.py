@@ -154,7 +154,24 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
         self.assertTrue(capability["available"])
         self.assertEqual(capability["tool"], "native-helper")
 
-    def test_pairing_mode_capability_requires_helper_on_windows(self):
+    @patch("scripts.bluetooth_phone.shutil.which")
+    def test_pairing_mode_capability_discovers_windows_helper_on_path(self, which):
+        which.side_effect = lambda command: (
+            "C:/MobileRouter/mobile-router-bluetooth-helper.exe"
+            if command == "mobile-router-bluetooth-helper"
+            else None
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            capability = bluetooth_pairing_mode_capability(system="Windows")
+
+        self.assertTrue(capability["available"])
+        self.assertEqual(
+            capability["path"],
+            "C:/MobileRouter/mobile-router-bluetooth-helper.exe",
+        )
+
+    @patch("scripts.bluetooth_phone.shutil.which", return_value=None)
+    def test_pairing_mode_capability_requires_helper_on_windows(self, _which):
         with patch.dict("os.environ", {}, clear=True):
             self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
 
@@ -536,6 +553,29 @@ class BluetoothPhoneRuntimeTest(unittest.TestCase):
             runtime["features"]["call_controls"]["status"],
             "host_integration_required",
         )
+
+    @patch("scripts.bluetooth_phone_runtime.shutil.which")
+    def test_runtime_discovers_native_helper_on_path(self, which):
+        which.side_effect = lambda command: (
+            "C:/MobileRouter/mobile-router-bluetooth-helper.exe"
+            if command == "mobile-router-bluetooth-helper"
+            else None
+        )
+        settings = build_settings("Mobile Router", ["messages"])
+        with patch.dict("os.environ", {}, clear=True):
+            runtime = build_bluetooth_phone_runtime(
+                settings,
+                system="Windows",
+                openwrt=False,
+                command_lookup=lambda _command: None,
+            )
+
+        self.assertTrue(runtime["helper"]["available"])
+        self.assertEqual(
+            runtime["helper"]["path"],
+            "C:/MobileRouter/mobile-router-bluetooth-helper.exe",
+        )
+        self.assertEqual(runtime["features"]["messages"]["status"], "ready")
 
     def test_helper_backend_marks_messages_ready(self):
         settings = build_settings("Mobile Router", ["messages"])

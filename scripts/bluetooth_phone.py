@@ -197,10 +197,13 @@ def _bluez_dbus_available(busctl_path):
 
 def _configured_bluetooth_helper():
     configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
-    if not configured_helper:
-        return None
-    helper_path = Path(configured_helper)
-    return str(helper_path) if helper_path.is_file() else None
+    if configured_helper:
+        helper_path = Path(configured_helper)
+        return str(helper_path) if helper_path.is_file() else None
+    return (
+        shutil.which("mobile-router-bluetooth-helper")
+        or shutil.which("bluetooth-phone-helper")
+    )
 
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
@@ -240,7 +243,11 @@ def bluetooth_pairing_mode_capability(system=None):
             "available": False,
             "tool": None,
             "path": None,
-            "message": f"{platform_name} Bluetooth advertising requires MOBILE_ROUTER_BLUETOOTH_HELPER to point to the native Mobile Router helper.",
+            "message": (
+                f"{platform_name} Bluetooth advertising needs the Mobile Router native "
+                "Bluetooth helper installed, or MOBILE_ROUTER_BLUETOOTH_HELPER set "
+                "to the helper executable."
+            ),
         }
     return {
         "available": False,

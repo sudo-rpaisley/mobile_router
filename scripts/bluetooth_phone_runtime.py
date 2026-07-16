@@ -94,10 +94,14 @@ def _command_details(command_lookup=None):
 
 def _helper_status(environment):
     configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
-    if not configured_helper:
-        return {"available": False, "path": None}
-    helper_path = Path(configured_helper)
-    return {"available": helper_path.is_file(), "path": str(helper_path)}
+    if configured_helper:
+        helper_path = Path(configured_helper)
+        return {"available": helper_path.is_file(), "path": str(helper_path)}
+    helper_path = (
+        shutil.which("mobile-router-bluetooth-helper")
+        or shutil.which("bluetooth-phone-helper")
+    )
+    return {"available": helper_path is not None, "path": helper_path}
 
 
 def _bluez_obex_status(commands, runner=None):
