@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file
 from flask_socketio import SocketIO
 import os
 import json
@@ -9,6 +9,10 @@ import asyncio
 import re
 import shutil
 import subprocess
+import csv
+import io
+from urllib.parse import quote
+from werkzeug.utils import secure_filename
 
 from routes import register_blueprints
 from scripts.interfaceTools import (
@@ -21,6 +25,7 @@ from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
     passive_scan,
+    classify_scan_results,
     get_mac_by_ip,
     get_ip_by_mac,
 )
@@ -35,8 +40,15 @@ network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
 scan_jobs = {}
 scan_jobs_lock = threading.Lock()
+port_scan_jobs = {}
+port_scan_jobs_lock = threading.Lock()
 device_inventory = {}
 device_inventory_lock = threading.Lock()
+new_device_alerts = []
+new_device_alerts_lock = threading.Lock()
+evidence_vault = []
+evidence_vault_lock = threading.Lock()
+EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -48,7 +60,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Shows Ready/state, No address, and adapter type directly on adapter cards.', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
             {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Interface detail pages include an Action Readiness panel with available actions and dependency guidance.', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
             {'title': 'Better empty and error states', 'priority': 'High', 'priority_class': 'danger', 'description': 'Replace generic scan failures with actionable install/setup guidance and links to capabilities.'},
-            {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
+            {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Reports page exports inventory, interfaces, capabilities, jobs, alerts, and evidence as JSON, CSV, Markdown, or HTML.', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
         ],
     },
     {
@@ -57,13 +69,13 @@ ROADMAP_SECTIONS = [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
-            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
         ],
     },
     {
         'title': 'Wireless and Bluetooth',
         'items': [
-            {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
+            {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results include channel and band occupancy charts.', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
             {'title': 'Wireless network timelines', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track signal, channel, security, AP count, and seen timestamps per SSID/BSSID.'},
             {'title': 'Known network labels', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users mark SSIDs as trusted, lab, suspicious, or ignored.'},
             {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Bluetooth scans report action capability and show host-tool guidance for bluetoothctl or BlueZ D-Bus support.', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
@@ -94,7 +106,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Cloud C2-style operations controller', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Coordinate approved jobs, progress, artifacts, and remote workers across local and remote lab devices from one dashboard.'},
             {'title': 'Payload/module marketplace', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add a curated module library with prerequisites, expected outputs, configuration, cleanup steps, and professional operator notes.'},
             {'title': 'Quick wired recon profile', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add Shark Jack-style rapid wired-network assessment views for host discovery, service summaries, and risk scoring.'},
-            {'title': 'Evidence and loot vault', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Collect scan outputs, captures, screenshots, and notes into a time-stamped class report with export controls.'},
+            {'title': 'Evidence and loot vault', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Evidence Vault stores timestamped notes, scan output, captures, screenshots, and file metadata with JSON/CSV/Markdown export controls.', 'description': 'Collect scan outputs, captures, screenshots, and notes into a time-stamped class report with export controls.'},
             {'title': 'HID and USB training module', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide Rubber Ducky/Bash Bunny-inspired HID and composite-USB workflows for managed lab machines with logging and cleanup.'},
             {'title': 'Screen capture risk module', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Model Screen Crab-style HDMI observation risk with explicit lab device selection, consent state, and detection/reporting guidance.'},
         ],
@@ -104,9 +116,9 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'Authorization guardrails', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require explicit authorization confirmation and add clearer logs before noisy red-team actions.'},
             {'title': 'Demo/simulation mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Provide fake adapters, devices, networks, and scan results for demos and UI testing without hardware.'},
-            {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
-            {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
-            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
+            {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Capabilities now come from a central registry with required commands, packages, platforms, runtime checks, install hints, UI rendering, and JSON export.', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
+            {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless, Bluetooth, and port scans now use tracked background jobs with live status polling and cancellation controls.', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
+            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Adapter polling now returns targeted navbar/card fragments for DOM replacement without a full-page reload.', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
         ],
     },
 ]
@@ -134,6 +146,30 @@ BLUETOOTHCTL_ACTIONS = {
     'remove': 'remove',
 }
 BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+
+DEAUTH_FRAME_LIMIT = 5
+BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff'
+
+
+def normalize_mac(value):
+    """Return a lowercase colon-separated MAC address or raise ValueError."""
+    if not value or not MAC_RE.match(value):
+        raise ValueError('Enter a valid MAC address in the form aa:bb:cc:dd:ee:ff')
+    return value.lower().replace('-', ':')
+
+
+def validate_lab_deauth_request(data):
+    """Validate bounded deauth lab inputs for an authorized classroom exercise."""
+    ap_mac = normalize_mac(data.get('ap'))
+    target_mac = normalize_mac(data.get('target') or BROADCAST_MAC)
+    if ap_mac == BROADCAST_MAC:
+        raise ValueError('AP MAC must be a specific lab access point, not broadcast')
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab network before running deauth')
+    frames = parse_int(data.get('frames'), 'Frames must be an integer')
+    if frames < 1 or frames > DEAUTH_FRAME_LIMIT:
+        raise ValueError(f'Frames must be between 1 and {DEAUTH_FRAME_LIMIT} for first-year labs')
+    return ap_mac, target_mac, frames
 
 
 class BluetoothToolUnavailable(RuntimeError):
@@ -287,6 +323,138 @@ def inventory_key(device):
     return None
 
 
+
+def create_new_device_alert(device, source, interface=None):
+    """Record an unread alert for a newly observed inventory device."""
+    display_name = device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device'
+    device_identifier = device.get('mac') or device.get('bssid') or device.get('ip')
+    device_url = f"/clients/{quote(str(device_identifier))}" if device_identifier else None
+    alert = {
+        'id': uuid.uuid4().hex,
+        'device_id': device.get('id'),
+        'display_name': display_name,
+        'ip': device.get('ip'),
+        'mac': device.get('mac') or device.get('bssid'),
+        'manufacturer': device.get('manufacturer') or 'Unknown',
+        'device_url': device_url,
+        'source': source,
+        'interface': interface,
+        'created_at': time.time(),
+        'read': False,
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
+
+def evidence_records():
+    """Return evidence vault records with display labels."""
+    with evidence_vault_lock:
+        records = [dict(item) for item in evidence_vault]
+    for item in records:
+        item['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('created_at', 0)))
+    return records
+
+
+def create_evidence_record(title, category='note', source=None, device=None, notes=None, content=None, uploaded_file=None):
+    """Store a timestamped evidence record and optional uploaded file metadata."""
+    title = (title or '').strip()
+    if not title:
+        raise ValueError('Evidence title is required')
+    category = (category or 'note').strip().lower()
+    if category not in {'note', 'scan-output', 'capture', 'screenshot', 'artifact'}:
+        raise ValueError('Unsupported evidence category')
+
+    now = time.time()
+    record = {
+        'id': uuid.uuid4().hex,
+        'title': title,
+        'category': category,
+        'source': (source or '').strip(),
+        'device': (device or '').strip(),
+        'notes': (notes or '').strip(),
+        'content': (content or '').strip(),
+        'created_at': now,
+        'file_name': None,
+        'file_size': None,
+        'download_url': None,
+    }
+
+    if uploaded_file and uploaded_file.filename:
+        os.makedirs(EVIDENCE_DIR, exist_ok=True)
+        safe_name = secure_filename(uploaded_file.filename)
+        if not safe_name:
+            raise ValueError('Uploaded file name is not valid')
+        stored_name = f"{record['id']}-{safe_name}"
+        path = os.path.join(EVIDENCE_DIR, stored_name)
+        uploaded_file.save(path)
+        record.update({
+            'file_name': safe_name,
+            'stored_name': stored_name,
+            'file_size': os.path.getsize(path),
+            'download_url': f"/evidence/{record['id']}/download",
+        })
+
+    with evidence_vault_lock:
+        evidence_vault.insert(0, record)
+        del evidence_vault[500:]
+    return dict(record)
+
+
+def evidence_as_csv(records):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Title', 'Category', 'Source', 'Device', 'File', 'Created', 'Notes', 'Content'])
+    for item in records:
+        writer.writerow([
+            item.get('title'),
+            item.get('category'),
+            item.get('source'),
+            item.get('device'),
+            item.get('file_name'),
+            item.get('created_at_label'),
+            item.get('notes'),
+            item.get('content'),
+        ])
+    return output.getvalue()
+
+
+def evidence_as_markdown(records):
+    lines = ['# Evidence Vault', '']
+    if not records:
+        lines.append('_No evidence records captured yet._')
+    for item in records:
+        lines.extend([
+            f"## {item.get('title', 'Untitled')}",
+            f"- Category: {item.get('category') or 'note'}",
+            f"- Source: {item.get('source') or '—'}",
+            f"- Device: {item.get('device') or '—'}",
+            f"- Created: {item.get('created_at_label')}",
+        ])
+        if item.get('file_name'):
+            lines.append(f"- File: {item.get('file_name')} ({item.get('file_size') or 0} bytes)")
+        if item.get('notes'):
+            lines.extend(['', item.get('notes')])
+        if item.get('content'):
+            lines.extend(['', '```', item.get('content'), '```'])
+        lines.append('')
+    return '\n'.join(lines)
+
+def alert_records():
+    """Return alert records with display labels."""
+    with new_device_alerts_lock:
+        records = [dict(alert) for alert in new_device_alerts]
+    for alert in records:
+        alert['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert.get('created_at', 0)))
+    return records
+
+
+def unread_alert_count():
+    with new_device_alerts_lock:
+        return len([alert for alert in new_device_alerts if not alert.get('read')])
+
 def record_inventory_devices(devices, source, interface=None):
     """Merge discovered devices into the in-memory inventory with OUI metadata."""
     now = time.time()
@@ -316,7 +484,10 @@ def record_inventory_devices(devices, source, interface=None):
                 'sources': sources,
                 'interfaces': interfaces_seen,
             }
+            is_new_device = not existing
             device_inventory[key] = merged
+            if is_new_device and not merged.get('is_control_traffic'):
+                create_new_device_alert(merged, source, interface)
             changed_devices.append(dict(merged))
     return changed_devices
 
@@ -394,11 +565,17 @@ def parse_int(value, error_message):
 
 def _set_scan_job(job_id, **updates):
     with scan_jobs_lock:
-        scan_jobs[job_id].update(updates)
+        job = scan_jobs.get(job_id)
+        if not job:
+            return
+        if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
+            return
+        job.update(updates)
+        job['updated_at'] = time.time()
 
 
 def _run_scan_job(job_id, scan_type, selected_interface):
-    _set_scan_job(job_id, status='running', started_at=time.time())
+    _set_scan_job(job_id, status='running', started_at=time.time(), updated_at=time.time())
     try:
         if scan_type == 'wlan':
             from scripts.wifi import utils as wifi_utils
@@ -415,12 +592,163 @@ def _run_scan_job(job_id, scan_type, selected_interface):
             }
         else:
             raise ValueError('Unsupported scan type')
+        with scan_jobs_lock:
+            cancelled = scan_jobs.get(job_id, {}).get('cancel_requested')
+        if cancelled:
+            _set_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Job cancelled.')
+            return
         if scan_type == 'bluetooth':
             record_inventory_devices(result.get('devices', []), 'bluetooth-scan', selected_interface)
         _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
     except Exception as exc:
         _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
 
+
+
+def _port_scan_job_snapshot(job):
+    return {
+        **job,
+        'kind': 'port-scan',
+        'open_ports': list(job.get('open_ports', [])),
+        'open_port_details': list(job.get('open_port_details', [])),
+        'cancelable': job.get('status') in {'queued', 'running'},
+    }
+
+
+def _scan_job_snapshot(job):
+    return {
+        **job,
+        'kind': 'scan',
+        'label': f"{job.get('scan_type', 'scan')} scan",
+        'total_ports': None,
+        'scanned_ports': None,
+        'progress': 100 if job.get('status') in {'completed', 'failed', 'cancelled'} else 0,
+        'cancelable': job.get('status') in {'queued', 'running'},
+    }
+
+
+def all_job_snapshots():
+    jobs = []
+    with scan_jobs_lock:
+        jobs.extend(_scan_job_snapshot(job) for job in scan_jobs.values())
+    with port_scan_jobs_lock:
+        jobs.extend(_port_scan_job_snapshot(job) for job in port_scan_jobs.values())
+    return sorted(jobs, key=lambda item: item.get('updated_at') or item.get('created_at') or 0, reverse=True)
+
+
+def running_job_count():
+    return len([job for job in all_job_snapshots() if job.get('status') in {'queued', 'running'}])
+
+
+def update_port_scan_job(job_id, **updates):
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return None
+        job.update(updates)
+        job['updated_at'] = time.time()
+        return _port_scan_job_snapshot(job)
+
+
+def run_port_scan_job(job_id):
+    from scripts.portScanner import PortScanError, describe_open_ports, identify_port_service, scan_ports
+
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return
+        host = job['host']
+        start = job['start']
+        end = job['end']
+        total = job['total_ports']
+        job['status'] = 'running'
+        job['started_at'] = time.time()
+        job['updated_at'] = job['started_at']
+
+    scanned = 0
+
+    def on_open(port):
+        service_detail = identify_port_service(port)
+        with port_scan_jobs_lock:
+            current = port_scan_jobs.get(job_id)
+            if not current:
+                return
+            if port not in current['open_ports']:
+                current['open_ports'].append(port)
+                current['open_ports'].sort()
+                current.setdefault('open_port_details', []).append(service_detail)
+                current['open_port_details'] = sorted(current['open_port_details'], key=lambda item: item['port'])
+            current['message'] = f"Open port found: {port} ({service_detail['service']})"
+            current['updated_at'] = time.time()
+
+    def should_cancel():
+        with port_scan_jobs_lock:
+            return bool(port_scan_jobs.get(job_id, {}).get('cancel_requested'))
+
+    def on_progress(port):
+        nonlocal scanned
+        scanned += 1
+        with port_scan_jobs_lock:
+            current = port_scan_jobs.get(job_id)
+            if not current:
+                return
+            current['scanned_ports'] = scanned
+            current['current_port'] = port
+            current['progress'] = round((scanned / total) * 100, 1) if total else 100
+            current['updated_at'] = time.time()
+
+    try:
+        ports = scan_ports(host, start, end, on_open=on_open, on_progress=on_progress, should_cancel=should_cancel, max_ports=None)
+        if should_cancel():
+            update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
+            return
+        update_port_scan_job(
+            job_id,
+            status='complete',
+            open_ports=ports,
+            open_port_details=describe_open_ports(ports),
+            scanned_ports=total,
+            current_port=end,
+            progress=100,
+            completed_at=time.time(),
+            message=f'Port scan complete: {len(ports)} open port(s) found.',
+        )
+    except PortScanError as e:
+        update_port_scan_job(job_id, status='failed', error=str(e), message=str(e), completed_at=time.time())
+    except Exception as e:
+        update_port_scan_job(job_id, status='failed', error=str(e), message=f'Port scan failed: {e}', completed_at=time.time())
+
+
+def create_port_scan_job(host, start, end, label=None):
+    from scripts.portScanner import validate_port_range
+
+    if not host or not str(host).strip():
+        raise ValueError('Host is required')
+    start, end = validate_port_range(start, end, max_ports=None)
+    job_id = str(uuid.uuid4())
+    now = time.time()
+    job = {
+        'id': job_id,
+        'host': str(host).strip(),
+        'start': start,
+        'end': end,
+        'label': label or f'{start}-{end}',
+        'status': 'queued',
+        'open_ports': [],
+        'open_port_details': [],
+        'scanned_ports': 0,
+        'total_ports': end - start + 1,
+        'current_port': None,
+        'progress': 0,
+        'message': 'Port scan queued.',
+        'cancel_requested': False,
+        'created_at': now,
+        'updated_at': now,
+    }
+    with port_scan_jobs_lock:
+        port_scan_jobs[job_id] = job
+    threading.Thread(target=run_port_scan_job, args=(job_id,), daemon=True).start()
+    return _port_scan_job_snapshot(job)
 
 def create_scan_job(scan_type, selected_interface):
     if scan_type not in {'wlan', 'bluetooth'}:
@@ -431,14 +759,133 @@ def create_scan_job(scan_type, selected_interface):
     with scan_jobs_lock:
         scan_jobs[job_id] = {
             'id': job_id,
+            'kind': 'scan',
             'scan_type': scan_type,
             'selected_interface': selected_interface,
             'status': 'queued',
+            'cancel_requested': False,
             'created_at': time.time(),
+            'updated_at': time.time(),
         }
     threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
     return scan_jobs[job_id]
 
+
+
+def build_report_data():
+    """Collect the current application state for report exports."""
+    from scripts.capabilities import build_capabilities
+
+    devices = inventory_records()
+    exported_at = time.time()
+    return {
+        'exported_at': exported_at,
+        'exported_at_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(exported_at)),
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'devices': devices,
+        'insights': manufacturer_insights(devices),
+        'jobs': all_job_snapshots(),
+        'alerts': alert_records(),
+        'evidence': evidence_records(),
+        'capabilities': build_capabilities(),
+    }
+
+
+def report_as_csv(report):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Mobile Router Report'])
+    writer.writerow(['Exported at', report['exported_at_label']])
+    writer.writerow([])
+    writer.writerow(['Devices'])
+    writer.writerow(['Name', 'IP', 'MAC', 'Manufacturer', 'Sources', 'Interfaces', 'First seen', 'Last seen'])
+    for device in report['devices']:
+        writer.writerow([
+            device.get('display_name'),
+            device.get('ip'),
+            device.get('mac') or device.get('bssid'),
+            device.get('manufacturer'),
+            ', '.join(device.get('sources', [])),
+            ', '.join(device.get('interfaces', [])),
+            device.get('first_seen_label'),
+            device.get('last_seen_label'),
+        ])
+    writer.writerow([])
+    writer.writerow(['Interfaces'])
+    writer.writerow(['Name', 'Type', 'State', 'Manufacturer'])
+    for iface in report['interfaces']:
+        writer.writerow([iface.get('name'), iface.get('interface_type'), iface.get('state'), iface.get('manufacturer')])
+    writer.writerow([])
+    writer.writerow(['Jobs'])
+    writer.writerow(['ID', 'Kind', 'Label', 'Status', 'Progress'])
+    for job in report['jobs']:
+        writer.writerow([job.get('id'), job.get('kind'), job.get('label') or job.get('scan_type'), job.get('status'), job.get('progress')])
+    writer.writerow([])
+    writer.writerow(['Evidence'])
+    writer.writerow(['Title', 'Category', 'Source', 'Device', 'File', 'Created'])
+    for item in report['evidence']:
+        writer.writerow([item.get('title'), item.get('category'), item.get('source'), item.get('device'), item.get('file_name'), item.get('created_at_label')])
+    writer.writerow([])
+    writer.writerow(['Alerts'])
+    writer.writerow(['Device', 'IP', 'MAC', 'Manufacturer', 'Source', 'Read', 'Created'])
+    for alert in report['alerts']:
+        writer.writerow([alert.get('display_name'), alert.get('ip'), alert.get('mac'), alert.get('manufacturer'), alert.get('source'), alert.get('read'), alert.get('created_at_label')])
+    return output.getvalue()
+
+
+def report_as_markdown(report):
+    lines = [
+        '# Mobile Router Report',
+        '',
+        f"Exported at: {report['exported_at_label']}",
+        '',
+        '## Summary',
+        f"- Devices: {report['insights']['total_devices']}",
+        f"- Known manufacturers: {report['insights']['known_manufacturers']}",
+        f"- Unknown manufacturers: {report['insights']['unknown_manufacturers']}",
+        f"- Interfaces: {len(report['interfaces'])}",
+        f"- Jobs: {len(report['jobs'])}",
+        f"- Alerts: {len(report['alerts'])}",
+        f"- Evidence records: {len(report['evidence'])}",
+        '',
+        '## Devices',
+        '| Name | IP | MAC/BSSID | Manufacturer | Sources |',
+        '| --- | --- | --- | --- | --- |',
+    ]
+    for device in report['devices']:
+        lines.append(f"| {device.get('display_name', '')} | {device.get('ip') or ''} | {device.get('mac') or device.get('bssid') or ''} | {device.get('manufacturer') or ''} | {', '.join(device.get('sources', []))} |")
+    lines.extend(['', '## Interfaces', '| Name | Type | State | Manufacturer |', '| --- | --- | --- | --- |'])
+    for iface in report['interfaces']:
+        lines.append(f"| {iface.get('name', '')} | {iface.get('interface_type', '')} | {iface.get('state', '')} | {iface.get('manufacturer', '')} |")
+    lines.extend(['', '## Evidence', '| Title | Category | Source | Device | File | Created |', '| --- | --- | --- | --- | --- | --- |'])
+    for item in report['evidence']:
+        lines.append(f"| {item.get('title', '')} | {item.get('category', '')} | {item.get('source') or ''} | {item.get('device') or ''} | {item.get('file_name') or ''} | {item.get('created_at_label') or ''} |")
+    lines.extend(['', '## Alerts', '| Device | IP | MAC | Source | Read |', '| --- | --- | --- | --- | --- |'])
+    for alert in report['alerts']:
+        lines.append(f"| {alert.get('display_name', '')} | {alert.get('ip') or ''} | {alert.get('mac') or ''} | {alert.get('source') or ''} | {alert.get('read')} |")
+    return '\n'.join(lines) + '\n'
+
+
+def adapter_snapshot(interfaces=None):
+    """Return a stable snapshot for adapter partial-update comparisons."""
+    return json.dumps([
+        {
+            'name': iface.name,
+            'interface_type': iface.interface_type,
+            'state': getattr(iface, 'state', None),
+            'addresses': getattr(iface, 'addresses', []),
+            'manufacturer': getattr(iface, 'manufacturer', None),
+        }
+        for iface in (interfaces or network_interfaces)
+    ], sort_keys=True)
+
+
+def adapter_update_fragments(title='Home'):
+    context = current_context()
+    return {
+        'primary_nav_links': render_template('_primary-nav-links.html', title=title, **context),
+        'interface_categories': render_template('_interface-categories.html', title=title, **context),
+    }
 
 def current_context():
     return {
@@ -526,6 +973,20 @@ def adapters():
     return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
 
 
+@app.route('/adapters/updates', methods=['POST'])
+def adapter_updates():
+    """Return adapter data plus replaceable page fragments when adapters changed."""
+    data = request.get_json(silent=True) or {}
+    current_snapshot = adapter_snapshot()
+    changed = data.get('snapshot') != current_snapshot
+    return jsonify({
+        'changed': changed,
+        'snapshot': current_snapshot,
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'fragments': adapter_update_fragments(data.get('title') or 'Home') if changed else {},
+    })
+
+
 
 
 @app.route('/export/interfaces.json')
@@ -545,6 +1006,74 @@ def export_capabilities_json():
     })
 
 
+
+@app.route('/evidence')
+def evidence_page():
+    return render_template('evidence.html', title='Evidence Vault', evidence=evidence_records(), **current_context())
+
+
+@app.route('/evidence', methods=['POST'])
+def create_evidence_route():
+    try:
+        record = create_evidence_record(
+            request.form.get('title'),
+            request.form.get('category'),
+            request.form.get('source'),
+            request.form.get('device'),
+            request.form.get('notes'),
+            request.form.get('content'),
+            request.files.get('artifact'),
+        )
+    except ValueError as e:
+        return json_error(str(e))
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_success(evidence=record)
+    return render_template('evidence.html', title='Evidence Vault', evidence=evidence_records(), created=record, **current_context())
+
+
+@app.route('/evidence.<fmt>')
+def export_evidence(fmt):
+    records = evidence_records()
+    if fmt == 'json':
+        return jsonify({'evidence': records, 'exported_at': time.time()})
+    if fmt == 'csv':
+        return Response(evidence_as_csv(records), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=evidence-vault.csv'})
+    if fmt in {'md', 'markdown'}:
+        return Response(evidence_as_markdown(records), mimetype='text/markdown', headers={'Content-Disposition': 'attachment; filename=evidence-vault.md'})
+    return json_error('Unsupported evidence export format', 404)
+
+
+@app.route('/evidence/<evidence_id>/download')
+def download_evidence_file(evidence_id):
+    with evidence_vault_lock:
+        record = next((item for item in evidence_vault if item.get('id') == evidence_id), None)
+    if not record or not record.get('stored_name'):
+        return json_error('Evidence file not found', 404)
+    path = os.path.join(EVIDENCE_DIR, record['stored_name'])
+    if not os.path.isfile(path):
+        return json_error('Evidence file not found', 404)
+    return send_file(path, as_attachment=True, download_name=record.get('file_name') or record['stored_name'])
+
+
+@app.route('/reports')
+def reports_page():
+    return render_template('reports.html', title='Reports', report=build_report_data(), **current_context())
+
+
+@app.route('/reports.<fmt>')
+def export_report(fmt):
+    report = build_report_data()
+    if fmt == 'json':
+        return jsonify(report)
+    if fmt == 'csv':
+        return Response(report_as_csv(report), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=mobile-router-report.csv'})
+    if fmt in {'md', 'markdown'}:
+        return Response(report_as_markdown(report), mimetype='text/markdown', headers={'Content-Disposition': 'attachment; filename=mobile-router-report.md'})
+    if fmt == 'html':
+        return render_template('report_export.html', title='Report Export', report=report)
+    return json_error('Unsupported report format', 404)
+
+
 @app.route('/network-scan')
 def network_scan():
     return render_template('network_scan.html', title='Network Scan', **current_context())
@@ -562,9 +1091,44 @@ def inventory_page():
     )
 
 
+@app.route('/alerts')
+def alerts_page():
+    return render_template('alerts.html', title='Alerts', alerts=alert_records(), **current_context())
+
+
+@app.route('/alerts/status')
+def alerts_status():
+    alerts = alert_records()
+    return json_success(alerts=alerts, unread_count=len([alert for alert in alerts if not alert.get('read')]))
+
+
+@app.route('/alerts/<alert_id>/read', methods=['POST'])
+def mark_alert_read(alert_id):
+    with new_device_alerts_lock:
+        for alert in new_device_alerts:
+            if alert['id'] == alert_id:
+                alert['read'] = True
+                unread_count = len([item for item in new_device_alerts if not item.get('read')])
+                return json_success(alert=dict(alert), unread_count=unread_count)
+    return json_error('Alert not found', 404)
+
+
+@app.route('/alerts/read-all', methods=['POST'])
+def mark_all_alerts_read():
+    with new_device_alerts_lock:
+        for alert in new_device_alerts:
+            alert['read'] = True
+    return json_success(unread_count=0)
+
+
 @app.route('/port-scan')
 def port_scan_page():
     return render_template('port_scan.html', title='Port Scan', **current_context())
+
+
+@app.route('/jobs')
+def jobs_page():
+    return render_template('jobs.html', title='Jobs', **current_context())
 
 
 @app.route('/traceroute')
@@ -606,7 +1170,7 @@ def active_scan_route():
     iface = request.form.get('selectedInterface')
     if not iface:
         return json_error('Missing interface')
-    hosts = active_scan(iface)
+    hosts = classify_scan_results(active_scan(iface), iface)
     enriched_hosts = record_inventory_devices(hosts, 'active-scan', iface)
     return jsonify({'hosts': enriched_hosts})
 
@@ -616,7 +1180,7 @@ def passive_scan_route():
     iface = request.form.get('selectedInterface')
     if not iface:
         return json_error('Missing interface')
-    devices = passive_scan(iface)
+    devices = classify_scan_results(passive_scan(iface), iface)
     enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
     return jsonify({'devices': enriched_devices})
 
@@ -633,14 +1197,66 @@ def port_scan_route():
     except ValueError as e:
         return json_error(str(e))
 
-    from scripts.portScanner import PortScanError, scan_ports
+    from scripts.portScanner import PortScanError, describe_open_ports, scan_ports
 
     try:
         ports = scan_ports(data.get('host'), start_port, end_port)
     except PortScanError as e:
         return json_error(str(e))
 
-    return jsonify({'ports': ports})
+    return jsonify({'ports': ports, 'port_details': describe_open_ports(ports)})
+
+
+@app.route('/port-scan-jobs', methods=['POST'])
+def start_port_scan_job():
+    data = request.form
+    if missing_fields(data, 'host', 'start', 'end'):
+        return json_error('Missing parameters')
+    try:
+        start_port = parse_int(data.get('start'), 'Ports must be integers')
+        end_port = parse_int(data.get('end'), 'Ports must be integers')
+        job = create_port_scan_job(data.get('host'), start_port, end_port, data.get('label'))
+        return json_success(job=job)
+    except ValueError as e:
+        return json_error(str(e))
+
+
+@app.route('/port-scan-jobs/<job_id>')
+def port_scan_job_status(job_id):
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return json_error('Port scan job not found', 404)
+        return json_success(job=_port_scan_job_snapshot(job))
+
+
+@app.route('/jobs/status')
+def jobs_status():
+    jobs = all_job_snapshots()
+    return json_success(jobs=jobs, running_count=len([job for job in jobs if job.get('status') in {'queued', 'running'}]))
+
+
+@app.route('/jobs/<job_id>/cancel', methods=['POST'])
+def cancel_job(job_id):
+    with port_scan_jobs_lock:
+        port_job = port_scan_jobs.get(job_id)
+        if port_job:
+            if port_job.get('status') in {'queued', 'running'}:
+                port_job['cancel_requested'] = True
+                port_job['status'] = 'cancelled' if port_job.get('status') == 'queued' else port_job.get('status')
+                port_job['message'] = 'Cancellation requested.'
+                port_job['updated_at'] = time.time()
+            return json_success(job=_port_scan_job_snapshot(port_job))
+    with scan_jobs_lock:
+        scan_job = scan_jobs.get(job_id)
+        if scan_job:
+            scan_job['cancel_requested'] = True
+            if scan_job.get('status') in {'queued', 'running'}:
+                scan_job['status'] = 'cancelled'
+                scan_job['message'] = 'Cancellation requested.'
+                scan_job['updated_at'] = time.time()
+            return json_success(job=_scan_job_snapshot(scan_job))
+    return json_error('Job not found', 404)
 
 
 @app.route('/traceroute', methods=['POST'])
@@ -897,21 +1513,19 @@ def beacon_advertise():
 def deauth_route():
     data = request.form
     selected_interface = data.get('selectedInterface')
-    ap_mac = data.get('ap')
-    target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'
 
     if missing_fields(data, 'selectedInterface', 'ap', 'frames'):
         return json_error('Missing required parameters')
 
     try:
-        frames = parse_int(data.get('frames'), 'Frames must be an integer')
+        ap_mac, target_mac, frames = validate_lab_deauth_request(data)
     except ValueError as e:
         return json_error(str(e))
 
     try:
         from scripts.wifi.deauth import deauth
         deauth(ap_mac, target_mac, selected_interface, frames)
-        return json_success(message=f'Sent {frames} deauth frames on {selected_interface}')
+        return json_success(message=f'Sent {frames} authorized lab deauth frames on {selected_interface}')
     except Exception as e:
         return json_error(f'Deauth error: {str(e)}', 500)
 

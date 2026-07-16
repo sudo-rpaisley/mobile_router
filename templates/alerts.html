@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Alerts{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Inventory monitoring</p>
+    <h1 class="page-title">New Device Alerts</h1>
+    <p class="page-subtitle">Review newly observed IPs, MACs, SSIDs, and Bluetooth devices as they appear.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="inventory-table-header">
+      <h2 class="theme-section-title">Alerts</h2>
+      <button id="mark-all-alerts-read" class="btn btn-outline-primary btn-sm">Mark all read</button>
+    </div>
+    <div id="alerts-list" class="theme-results">
+      {% if alerts %}
+        {% for alert in alerts %}
+          <div class="alert {% if alert.read %}alert-secondary{% else %}alert-warning{% endif %} device-alert-row" data-alert-id="{{ alert.id }}" {% if alert.device_url %}data-device-url="{{ alert.device_url }}" role="link" tabindex="0"{% endif %}>
+            <div>
+              <strong>{{ alert.display_name }}</strong>
+              <p class="mb-1">{{ alert.ip or 'No IP' }} · {{ alert.mac or 'No MAC' }} · {{ alert.manufacturer }}</p>
+              <small>Seen via {{ alert.source }}{% if alert.interface %} on {{ alert.interface }}{% endif %} at {{ alert.created_at_label }}</small>
+              {% if alert.device_url %}<div><a href="{{ alert.device_url }}" class="alert-device-link">View device</a></div>{% endif %}
+            </div>
+            {% if not alert.read %}
+              <button class="btn btn-sm btn-outline-dark" data-alert-read="{{ alert.id }}">Mark read</button>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-muted">No new device alerts yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+<script src="/static/js/alerts.js"></script>
+{% endblock %}

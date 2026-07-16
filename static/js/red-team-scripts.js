@@ -195,11 +195,13 @@ $(document).ready(function () {
         var ap = $apInput.val();
         var target = $targetInput.val() || "ff:ff:ff:ff:ff:ff";
         var frames = $framesInput.val();
+        var authorized = $("#Deauth-Authorized").is(":checked");
         var selectedInterface = $("#interface-select-Deauth").val();
 
-        if (!ap || !frames) {
+        if (!ap || !frames || !authorized) {
             if (!ap) { $apInput.addClass("input-error"); }
             if (!frames) { $framesInput.addClass("input-error"); }
+            if (!authorized) { $("#Deauth-Authorized").addClass("input-error"); }
             return;
         }
 
@@ -215,6 +217,7 @@ $(document).ready(function () {
                 ap: ap,
                 target: target,
                 frames: frames,
+                authorized: authorized ? "on" : "",
                 selectedInterface: selectedInterface
             },
             beforeSend: function() {
@@ -223,6 +226,7 @@ $(document).ready(function () {
                 $submitButton.text('');
                 $apInput.removeClass("input-error");
                 $framesInput.removeClass("input-error");
+                $("#Deauth-Authorized").removeClass("input-error");
             },
             success: function(response) {
                 console.log(response);

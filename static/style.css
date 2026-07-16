@@ -368,3 +368,145 @@ html[data-theme="dark"] .inventory-unknown-row {
 html[data-theme="dark"] .roadmap-completed-note {
     color: #86efac;
 }
+
+.port-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+}
+
+.port-service-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid rgba(40, 167, 69, 0.35);
+  border-left: 0.35rem solid #28a745;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(40, 167, 69, 0.08);
+}
+
+.port-service-card-new {
+  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.2);
+}
+
+.port-service-number {
+  min-width: 3.25rem;
+  min-height: 3.25rem;
+  border-radius: 50%;
+  background: #28a745;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.port-service-card p {
+  margin: 0;
+  color: var(--muted-text, #6c757d);
+}
+
+
+.device-alert-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+
+.device-alert-row[data-device-url] {
+  cursor: pointer;
+}
+
+.alert-device-link {
+  font-weight: 700;
+}
+
+.wireless-chart-panel {
+  margin-bottom: 1rem;
+}
+
+.wireless-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.wireless-chart-grid h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.wireless-chart-row,
+.wireless-band-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.wireless-chart-track {
+  min-height: 0.8rem;
+  border-radius: 999px;
+  background: rgba(80, 115, 160, 0.18);
+  overflow: hidden;
+}
+
+.wireless-chart-bar {
+  min-height: 0.8rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2f80ed, #56ccf2);
+}
+
+.wireless-band-24 .wireless-chart-bar { background: linear-gradient(90deg, #f2994a, #f2c94c); }
+.wireless-band-5 .wireless-chart-bar { background: linear-gradient(90deg, #2f80ed, #56ccf2); }
+.wireless-band-6 .wireless-chart-bar { background: linear-gradient(90deg, #9b51e0, #bb6bd9); }
+.wireless-band-unknown .wireless-chart-bar { background: linear-gradient(90deg, #828282, #bdbdbd); }
+
+
+.evidence-capture-card textarea {
+  resize: vertical;
+}
+
+.evidence-monospace,
+.evidence-output {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.evidence-record {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border, #dee2e6);
+  border-radius: 0.85rem;
+  background: var(--theme-card-bg, #fff);
+}
+
+.evidence-record h3 {
+  margin: 0.35rem 0;
+  font-size: 1.1rem;
+}
+
+.evidence-output {
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.06);
+  white-space: pre-wrap;
+}
+
+html[data-theme="dark"] .evidence-output {
+  background: rgba(255, 255, 255, 0.08);
+}

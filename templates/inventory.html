@@ -74,6 +74,7 @@
               <th>Interfaces</th>
               <th>First seen</th>
               <th>Last seen</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -93,6 +94,13 @@
                 <td>{{ device.interfaces|join(', ') if device.interfaces else '—' }}</td>
                 <td>{{ device.first_seen_label }}</td>
                 <td>{{ device.last_seen_label }}</td>
+                <td>
+                  {% if device.ip and not device.is_control_traffic %}
+                    <a class="btn btn-outline-primary btn-sm" href="/port-scan?host={{ device.ip|urlencode }}">Check ports</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>

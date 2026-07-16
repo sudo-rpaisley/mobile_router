@@ -17,37 +17,51 @@ document.addEventListener('DOMContentLoaded', function () {
         name: iface.name,
         interface_type: iface.interface_type,
         state: iface.state,
-        addresses: iface.addresses
+        addresses: iface.addresses,
+        manufacturer: iface.manufacturer
       };
     }));
   }
 
-  function replaceFragment(nextDocument, selector) {
+  function replaceHtml(selector, html) {
     var current = document.querySelector(selector);
-    var next = nextDocument.querySelector(selector);
-    if (current && next) {
-      current.replaceWith(next);
+    if (current && html) {
+      current.innerHTML = html;
       return true;
     }
     return false;
   }
 
-  function refreshPageFragments() {
-    setStatus('Adapters changed. Updating...');
-    return fetch(window.location.href, { headers: { 'X-Requested-With': 'fetch-fragment' } })
-      .then(function (response) { return response.text(); })
-      .then(function (html) {
-        var nextDocument = new DOMParser().parseFromString(html, 'text/html');
-        var replaced = false;
-        [
-          '#primary-nav-links',
-          '.interface-category-page',
-          '.interface-detail-page .interface-badges',
-          '.interface-detail-page .interface-detail-grid'
-        ].forEach(function (selector) {
-          replaced = replaceFragment(nextDocument, selector) || replaced;
-        });
-        setStatus(replaced ? 'Auto updating' : 'No visible adapter changes');
+  function applyFragments(fragments) {
+    var replaced = false;
+    fragments = fragments || {};
+    replaced = replaceHtml('#primary-nav-links', fragments.primary_nav_links) || replaced;
+    replaced = replaceHtml('.interface-category-page', fragments.interface_categories) || replaced;
+    if (replaced) {
+      document.dispatchEvent(new CustomEvent('adapter-fragments-updated'));
+    }
+    return replaced;
+  }
+
+  function requestAdapterUpdate(force) {
+    return fetch('/adapters/updates', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'adapter-fragment'
+      },
+      body: JSON.stringify({ snapshot: force ? null : lastSnapshot, title: document.title || 'Home' })
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        lastSnapshot = data.snapshot || lastSnapshot;
+        if (data.changed) {
+          setStatus('Adapters changed. Updating...');
+          setStatus(applyFragments(data.fragments) ? 'Auto updating' : 'No visible adapter changes');
+        } else {
+          setStatus(socketConnected ? 'Auto updating' : 'Auto update polling');
+        }
+        return data;
       })
       .catch(function () {
         setStatus('Adapter update failed');
@@ -61,8 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     if (nextSnapshot !== lastSnapshot) {
-      lastSnapshot = nextSnapshot;
-      refreshPageFragments();
+      requestAdapterUpdate(true);
     }
   }
 
@@ -87,17 +100,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (socketConnected) {
       return;
     }
-    fetch('/adapters', { method: 'POST' })
-      .then(function (response) { return response.json(); })
-      .then(function (data) {
-        setStatus('Auto update polling');
-        handleAdapterChange(data.interfaces || []);
-      })
-      .catch(function () {
-        setStatus('Auto update unavailable');
-      });
+    requestAdapterUpdate(false);
   }
 
-  pollAdapters();
+  requestAdapterUpdate(true);
   window.setInterval(pollAdapters, pollIntervalMs);
 });

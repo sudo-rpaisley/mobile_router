@@ -22,6 +22,10 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("commands", capabilities)
         self.assertIn("packages", capabilities)
         self.assertIn("features", capabilities)
+        self.assertIn("registry", capabilities)
+        registry_ids = {capability["id"] for capability in capabilities["registry"]}
+        self.assertIn("port-scan", registry_ids)
+        self.assertIn("reports", registry_ids)
         self.assertTrue(capabilities["features"]["Core web UI"])
         self.assertTrue(capabilities["features"]["Minecraft status lab"])
 
@@ -31,6 +35,27 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("display_commands", capabilities)
         self.assertIn("display_features", capabilities)
         self.assertIn("display_packages", capabilities)
+        self.assertIn("display_registry", capabilities)
+
+    @patch("scripts.capabilities.platform.system", return_value="Windows")
+    def test_optional_packages_all_have_display_entries(self, _system):
+        capabilities = build_capabilities()
+        self.assertEqual(["bleak", "scapy", "pywifi"], list(capabilities["display_packages"].keys()))
+
+    @patch("scripts.capabilities.install_required_package")
+    @patch("scripts.capabilities.package_status")
+    def test_missing_required_packages_are_auto_installed(self, package_status_mock, install_required_package_mock):
+        package_status_mock.side_effect = [
+            {"blinker": False, "click": True},
+            {"blinker": True, "click": True},
+            {"bleak": False, "scapy": False, "pywifi": False},
+        ]
+        install_required_package_mock.return_value = {"package": "blinker", "installed": True, "output": ""}
+
+        capabilities = build_capabilities()
+
+        install_required_package_mock.assert_called_once_with("blinker")
+        self.assertEqual([{"package": "blinker", "installed": True, "output": ""}], capabilities["required_install_results"])
 
     @patch("scripts.capabilities.platform.system", return_value="Linux")
     @patch("scripts.capabilities._busctl_bluez_available", return_value=False)

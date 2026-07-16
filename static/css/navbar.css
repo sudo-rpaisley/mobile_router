@@ -4,3 +4,115 @@
 .dropdown-menu{
   margin-top: 0;
 }
+.job-activity-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.75rem;
+  text-decoration: none;
+}
+
+.job-activity-dial {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #28d17c;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.job-activity-indicator.is-active .job-activity-dial {
+  animation: job-dial-spin 0.9s linear infinite;
+}
+
+.job-activity-indicator:not(.is-active) .job-activity-dial {
+  border-top-color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes job-dial-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.job-activity-dial span {
+  animation: inherit;
+  animation-direction: reverse;
+}
+
+.new-device-alert-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.new-device-alert-indicator.has-alerts {
+  color: #ffc107;
+}
+
+.new-device-alert-indicator span {
+  min-width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-device-alert-indicator.has-alerts span {
+  background: #ffc107;
+  color: #1f2933;
+}
+
+#primary-nav-links {
+  align-items: center;
+  gap: 0.15rem;
+  flex-wrap: wrap;
+}
+
+#primary-nav-links .nav-link {
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+  white-space: nowrap;
+}
+
+.nav-compact-group > .nav-link::after {
+  content: " ▾";
+  font-size: 0.75em;
+  opacity: 0.75;
+}
+
+.nav-tools {
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+}
+
+.auto-update-status {
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 991.98px) {
+  #primary-nav-links,
+  .nav-tools {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nav-tools {
+    margin-top: 0.5rem;
+  }
+}

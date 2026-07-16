@@ -18,11 +18,11 @@ $(document).ready(function () {
       type: 'POST',
       data: { package: packageName },
       beforeSend: function () {
-        button.prop('disabled', true).text('Installing...');
-        response.html(`<div class="alert alert-info" role="alert">Installing ${escapeHtml(packageName)}. This can take a minute.</div>`);
+        button.prop('disabled', true).text('Downloading...');
+        response.html(`<div class="alert alert-info" role="alert">Downloading ${escapeHtml(packageName)}. This can take a minute.</div>`);
       },
       success: function () {
-        response.html(`<div class="alert alert-success" role="alert">${escapeHtml(packageName)} installed. Refreshing capabilities...</div>`);
+        response.html(`<div class="alert alert-success" role="alert">${escapeHtml(packageName)} downloaded. Refreshing capabilities...</div>`);
         window.setTimeout(function () { window.location.reload(); }, 1200);
       },
       error: function (xhr) {
@@ -30,7 +30,7 @@ $(document).ready(function () {
         response.html(`<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`);
       },
       complete: function () {
-        button.prop('disabled', false).text('Install');
+        button.prop('disabled', false).text(button.hasClass('btn-outline-secondary') ? 'Re-download' : 'Download');
       }
     });
   });
