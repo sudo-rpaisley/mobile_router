@@ -50,6 +50,7 @@ FEATURE_KEYS = {feature["key"] for feature in BLUETOOTH_PHONE_FEATURES}
 DEFAULT_DISPLAY_NAME = "Mobile Router"
 DEFAULT_SETTINGS = {
     "display_name": DEFAULT_DISPLAY_NAME,
+    "advertise_enabled": False,
     "enabled_features": {key: False for key in FEATURE_KEYS},
 }
 BLUEZ_ADAPTER_PATH_RE = re.compile(r"(/org/bluez/hci\d+)(?:\s|$)")
@@ -77,6 +78,7 @@ def bluetooth_phone_config_path():
 def _settings_copy():
     return {
         "display_name": DEFAULT_SETTINGS["display_name"],
+        "advertise_enabled": DEFAULT_SETTINGS["advertise_enabled"],
         "enabled_features": dict(DEFAULT_SETTINGS["enabled_features"]),
     }
 
@@ -102,9 +104,10 @@ def normalise_feature_selection(selected_features):
     return {key: key in selected for key in FEATURE_KEYS}
 
 
-def build_settings(display_name, selected_features):
+def build_settings(display_name, selected_features, advertise_enabled=False):
     return {
         "display_name": validate_display_name(display_name),
+        "advertise_enabled": advertise_enabled is True,
         "enabled_features": normalise_feature_selection(selected_features),
     }
 
@@ -129,6 +132,7 @@ def load_bluetooth_phone_settings(path=None):
     settings["display_name"] = validate_display_name(
         saved_settings.get("display_name", DEFAULT_DISPLAY_NAME)
     )
+    settings["advertise_enabled"] = saved_settings.get("advertise_enabled") is True
     saved_features = saved_settings.get("enabled_features", {})
     if not isinstance(saved_features, dict):
         raise BluetoothPhoneSettingsError("enabled_features must contain a JSON object")
@@ -146,6 +150,7 @@ def save_bluetooth_phone_settings(settings, path=None):
             for key, enabled in settings.get("enabled_features", {}).items()
             if enabled is True
         ],
+        settings.get("advertise_enabled") is True,
     )
     config_path = Path(path) if path else bluetooth_phone_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,41 +215,62 @@ def bluetooth_pairing_mode_capability(system=None):
     }
 
 
-def enable_bluetooth_pairing_mode(display_name, timeout=15):
-    name = validate_display_name(display_name)
-    capability = bluetooth_pairing_mode_capability()
-    if not capability["available"]:
-        raise BluetoothPairingModeUnavailable(capability["message"])
-
-    commands = [
-        [capability["path"], "power", "on"],
-        [capability["path"], "system-alias", name],
-        [capability["path"], "agent", "NoInputNoOutput"],
-        [capability["path"], "default-agent"],
-        [capability["path"], "pairable", "on"],
-        [capability["path"], "discoverable", "on"],
-    ]
+def _run_bluetoothctl_pairing_commands(commands, capability, timeout):
     for command in commands:
         try:
             result = subprocess.run(
-                command,
+                [capability["path"], *command],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            raise RuntimeError(f"Unable to enable Bluetooth pairing mode: {exc}") from exc
+            raise RuntimeError(f"Unable to update Bluetooth advertising: {exc}") from exc
         if result.returncode != 0:
-            message = (result.stderr or result.stdout or "Bluetooth pairing mode command failed").strip()
+            message = (result.stderr or result.stdout or "Bluetooth advertising command failed").strip()
             raise RuntimeError(message)
+
+
+def enable_bluetooth_pairing_mode(display_name, timeout=15):
+    name = validate_display_name(display_name)
+    capability = bluetooth_pairing_mode_capability()
+    if not capability["available"]:
+        raise BluetoothPairingModeUnavailable(capability["message"])
+
+    _run_bluetoothctl_pairing_commands(
+        [
+            ["power", "on"],
+            ["system-alias", name],
+            ["agent", "NoInputNoOutput"],
+            ["default-agent"],
+            ["pairable", "on"],
+            ["discoverable", "on"],
+        ],
+        capability,
+        timeout,
+    )
     return {
         "enabled": True,
         "display_name": name,
         "tool": capability["tool"],
-        "message": (
-            f'Bluetooth pairing mode is enabled for "{name}". Pair the phone from its Bluetooth settings, approve the prompt, then synchronise authorised data.'
-        ),
+        "message": f'Bluetooth advertising is on for "{name}". Phones can now pair with it.',
+    }
+
+
+def disable_bluetooth_pairing_mode(timeout=15):
+    capability = bluetooth_pairing_mode_capability()
+    if not capability["available"]:
+        raise BluetoothPairingModeUnavailable(capability["message"])
+    _run_bluetoothctl_pairing_commands(
+        [["discoverable", "off"], ["pairable", "off"]],
+        capability,
+        timeout,
+    )
+    return {
+        "enabled": False,
+        "tool": capability["tool"],
+        "message": "Bluetooth advertising is off.",
     }
 
 def bluetooth_display_name_capability(system=None):

@@ -5,20 +5,18 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 
 from scripts.bluetooth_phone import (
-    BluetoothDisplayNameUnavailable,
     BluetoothPairingModeUnavailable,
     BluetoothPhoneSettingsError,
-    apply_bluetooth_display_name,
     bluetooth_pairing_mode_capability,
-    bluetooth_display_name_capability,
     bluetooth_phone_feature_options,
     build_settings,
+    disable_bluetooth_pairing_mode,
     load_bluetooth_phone_settings,
     enable_bluetooth_pairing_mode,
     save_bluetooth_phone_settings,
 )
 from scripts.bluetooth_phone_runtime import build_bluetooth_phone_runtime
-from scripts.bluetooth_phone_bluez import BluezObexConnector, list_paired_bluez_devices
+from scripts.bluetooth_phone_bluez import BluezObexConnector
 from scripts.bluetooth_phone_connector import (
     BluetoothPhoneConnectorError,
     BluetoothPhoneHelperClient,
@@ -30,22 +28,13 @@ def create_bluetooth_phone_blueprint(context_provider):
 
     def render_settings_page(settings, notice=None, notice_style="info", status_code=200):
         context = context_provider()
-        runtime = build_bluetooth_phone_runtime(settings)
-        paired_devices = (
-            list_paired_bluez_devices()
-            if runtime["host"]["id"] in {"linux", "openwrt"}
-            else []
-        )
         return (
             render_template(
                 "bluetooth_phone.html",
                 title="Phone Integration",
                 settings=settings,
                 feature_options=bluetooth_phone_feature_options(settings),
-                name_capability=bluetooth_display_name_capability(),
                 pairing_capability=bluetooth_pairing_mode_capability(),
-                runtime=runtime,
-                paired_devices=paired_devices,
                 notice=notice,
                 notice_style=notice_style,
                 **context,
@@ -69,6 +58,7 @@ def create_bluetooth_phone_blueprint(context_provider):
             settings = build_settings(
                 request.form.get("display_name"),
                 request.form.getlist("features"),
+                request.form.get("advertise_enabled") == "true",
             )
             settings = save_bluetooth_phone_settings(settings, config_path)
         except BluetoothPhoneSettingsError as exc:
@@ -78,6 +68,7 @@ def create_bluetooth_phone_blueprint(context_provider):
                 submitted_settings = build_settings(
                     fallback_name,
                     [feature for feature in request.form.getlist("features") if feature],
+                    request.form.get("advertise_enabled") == "true",
                 )
             except BluetoothPhoneSettingsError:
                 submitted_settings = build_settings("Mobile Router", [])
@@ -85,17 +76,20 @@ def create_bluetooth_phone_blueprint(context_provider):
 
         notice = "Bluetooth phone settings saved."
         notice_style = "success"
-        if request.form.get("apply_display_name") == "true":
-            try:
-                result = apply_bluetooth_display_name(settings["display_name"])
+        try:
+            if settings["advertise_enabled"]:
+                result = enable_bluetooth_pairing_mode(settings["display_name"])
                 notice = f"Bluetooth phone settings saved. {result['message']}"
-            except BluetoothDisplayNameUnavailable as exc:
-                notice = f"Bluetooth phone settings saved. {exc}"
-                notice_style = "info"
-            except Exception as exc:
-                current_app.logger.warning("Unable to apply Bluetooth display name: %s", exc)
-                notice = f"Bluetooth phone settings saved, but the adapter name could not be applied: {exc}"
-                notice_style = "warning"
+            else:
+                result = disable_bluetooth_pairing_mode()
+                notice = f"Bluetooth phone settings saved. {result['message']}"
+        except BluetoothPairingModeUnavailable as exc:
+            notice = f"Bluetooth phone settings saved. {exc}"
+            notice_style = "info"
+        except Exception as exc:
+            current_app.logger.warning("Unable to update Bluetooth advertising: %s", exc)
+            notice = f"Bluetooth phone settings saved, but Bluetooth advertising could not be updated: {exc}"
+            notice_style = "warning"
 
         current_app.logger.info(
             "Bluetooth phone settings saved with %s selected feature(s)",
