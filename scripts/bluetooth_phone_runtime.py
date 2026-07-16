@@ -92,13 +92,18 @@ def _command_details(command_lookup=None):
     return details
 
 
-def _project_helper_candidates(system):
+def _project_helper_candidates(system, *, python_only=False, native_only=False):
     root = Path(__file__).resolve().parents[1]
     extension = ".exe" if system == "Windows" else ""
-    names = (
+    native_names = (
         f"mobile-router-bluetooth-helper{extension}",
         f"bluetooth-phone-helper{extension}",
     )
+    python_names = (
+        "mobile-router-bluetooth-helper.py",
+        "bluetooth-phone-helper.py",
+    )
+    names = python_names if python_only else native_names if native_only else (*native_names, *python_names)
     folders = (
         root,
         root / "bin",
@@ -116,14 +121,19 @@ def _helper_status(environment):
     if configured_helper:
         helper_path = Path(configured_helper)
         return {"available": helper_path.is_file(), "path": str(helper_path)}
-    for candidate in _project_helper_candidates(environment["system"]):
+    for candidate in _project_helper_candidates(environment["system"], native_only=True):
         if candidate.is_file():
-            return {"available": True, "path": str(candidate)}
+            return {"available": True, "path": str(candidate), "advertising_only": False}
     helper_path = (
         shutil.which("mobile-router-bluetooth-helper")
         or shutil.which("bluetooth-phone-helper")
     )
-    return {"available": helper_path is not None, "path": helper_path}
+    if helper_path:
+        return {"available": True, "path": helper_path, "advertising_only": False}
+    for candidate in _project_helper_candidates(environment["system"], python_only=True):
+        if candidate.is_file():
+            return {"available": True, "path": str(candidate), "advertising_only": True}
+    return {"available": False, "path": None, "advertising_only": False}
 
 
 def _bluez_obex_status(commands, runner=None):
@@ -149,6 +159,7 @@ def _bluez_obex_status(commands, runner=None):
 
 def _backend_for_environment(environment, commands, helper, bluez_obex):
     environment_id = environment["id"]
+    helper_sync_available = helper["available"] and not helper.get("advertising_only")
     if environment_id in {"linux", "openwrt"}:
         has_bluez_control = (
             commands["bluetoothctl"]["available"]
@@ -163,15 +174,15 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             missing.append("BlueZ OBEX client tools (obexctl/obexd)")
         built_in_connector = bluez_obex["available"]
         connector_ready = prerequisites_ready and (
-            built_in_connector or helper["available"]
+            built_in_connector or helper_sync_available
         )
         if (
             commands["busctl"]["available"]
             and not bluez_obex["available"]
-            and not helper["available"]
+            and not helper_sync_available
         ):
             missing.append("running BlueZ OBEX D-Bus service (obexd)")
-        if not commands["busctl"]["available"] and not helper["available"]:
+        if not commands["busctl"]["available"] and not helper_sync_available:
             missing.append("busctl or a Mobile Router BlueZ OBEX connector")
         return {
             "id": "bluez-obex",
@@ -192,9 +203,9 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             "label": "Windows RFCOMM helper",
             "transport": "WinRT RFCOMM + portable OBEX",
             "prerequisites_ready": True,
-            "connector_ready": helper["available"],
-            "missing": [] if helper["available"] else ["Packaged Mobile Router Windows Bluetooth helper"],
-            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper["available"] else [],
+            "connector_ready": helper_sync_available,
+            "missing": [] if helper_sync_available else ["Full Mobile Router Windows Bluetooth sync helper"],
+            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper_sync_available else [],
             "note": "Windows includes RFCOMM, HFP, AVRCP, and PAN support, but PBAP/MAP require the Mobile Router protocol helper.",
         }
     if environment_id == "macos":
@@ -203,9 +214,9 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             "label": "macOS IOBluetooth helper",
             "transport": "IOBluetooth RFCOMM/OBEX",
             "prerequisites_ready": True,
-            "connector_ready": helper["available"],
-            "missing": [] if helper["available"] else ["Packaged Mobile Router macOS Bluetooth helper"],
-            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper["available"] else [],
+            "connector_ready": helper_sync_available,
+            "missing": [] if helper_sync_available else ["Full Mobile Router macOS Bluetooth sync helper"],
+            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper_sync_available else [],
             "note": "The helper isolates macOS IOBluetooth APIs from the portable Python data layer.",
         }
     return {

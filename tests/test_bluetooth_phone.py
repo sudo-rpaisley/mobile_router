@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,10 +171,21 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
             "C:/MobileRouter/mobile-router-bluetooth-helper.exe",
         )
 
+    @patch("scripts.bluetooth_phone.Path.is_file", return_value=False)
     @patch("scripts.bluetooth_phone.shutil.which", return_value=None)
-    def test_pairing_mode_capability_requires_helper_on_windows(self, _which):
+    def test_pairing_mode_capability_requires_helper_on_windows(self, _which, _is_file):
         with patch.dict("os.environ", {}, clear=True):
             self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
+
+
+    @patch("scripts.bluetooth_phone.shutil.which", return_value=None)
+    def test_pairing_mode_capability_discovers_bundled_windows_helper(self, _which):
+        with patch.dict("os.environ", {}, clear=True):
+            capability = bluetooth_pairing_mode_capability(system="Windows")
+
+        self.assertTrue(capability["available"])
+        self.assertEqual(capability["tool"], "native-helper")
+        self.assertTrue(capability["path"].endswith("helpers/windows/mobile-router-bluetooth-helper.py"))
 
     @patch("scripts.bluetooth_phone.BluetoothPhoneHelperClient")
     @patch("scripts.bluetooth_phone.bluetooth_pairing_mode_capability")
@@ -577,6 +589,23 @@ class BluetoothPhoneRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(runtime["features"]["messages"]["status"], "ready")
 
+
+    @patch("scripts.bluetooth_phone_runtime.shutil.which", return_value=None)
+    def test_bundled_windows_helper_supports_pairing_without_sync_readiness(self, _which):
+        settings = build_settings("Mobile Router", ["messages"])
+        with patch.dict("os.environ", {}, clear=True):
+            runtime = build_bluetooth_phone_runtime(
+                settings,
+                system="Windows",
+                openwrt=False,
+                command_lookup=lambda _command: None,
+            )
+
+        self.assertTrue(runtime["helper"]["available"])
+        self.assertTrue(runtime["helper"]["advertising_only"])
+        self.assertFalse(runtime["backend"]["connector_ready"])
+        self.assertEqual(runtime["features"]["messages"]["status"], "transport_required")
+
     def test_helper_backend_marks_messages_ready(self):
         settings = build_settings("Mobile Router", ["messages"])
         with tempfile.NamedTemporaryFile() as helper:
@@ -704,6 +733,24 @@ class BluetoothPhoneConnectorTest(unittest.TestCase):
         self.assertEqual(command, [self.helper.name])
         self.assertEqual(request_payload["action"], "pull_pbap")
         self.assertEqual(request_payload["phonebook"], "pb")
+
+
+    def test_python_helper_runs_with_current_interpreter(self):
+        helper = Path(self.helper.name).with_suffix(".py")
+        helper.write_text("", encoding="utf-8")
+        self.addCleanup(helper.unlink)
+        runner = unittest.mock.Mock(
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"protocol_version": 1, "status": "success", "vcard": ""}),
+                stderr="",
+            )
+        )
+        client = BluetoothPhoneHelperClient(helper, runner=runner)
+
+        client.pull_pbap("AA:BB:CC:DD:EE:FF", "pb")
+
+        self.assertEqual(runner.call_args.args[0], [sys.executable, str(helper)])
 
     def test_helper_set_advertising_uses_protocol_action(self):
         runner = unittest.mock.Mock(

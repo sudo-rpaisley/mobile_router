@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from scripts.bluetooth_phone_data import parse_map_messages, parse_pbap_vcards
@@ -46,6 +47,11 @@ class BluetoothPhoneHelperClient:
         self.timeout = timeout
         self.runner = runner or subprocess.run
 
+    def _command(self):
+        if self.helper_path.suffix.lower() == ".py":
+            return [sys.executable, str(self.helper_path)]
+        return [str(self.helper_path)]
+
     def _request(self, action, **payload):
         if not self.helper_path.is_file():
             raise BluetoothPhoneConnectorError(
@@ -58,7 +64,7 @@ class BluetoothPhoneHelperClient:
         }
         try:
             result = self.runner(
-                [str(self.helper_path)],
+                self._command(),
                 input=json.dumps(request),
                 capture_output=True,
                 text=True,

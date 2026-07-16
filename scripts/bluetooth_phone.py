@@ -195,13 +195,18 @@ def _bluez_dbus_available(busctl_path):
 
 
 
-def _project_helper_candidates(system):
+def _project_helper_candidates(system, *, python_only=False, native_only=False):
     root = Path(__file__).resolve().parents[1]
     extension = ".exe" if system == "Windows" else ""
-    names = (
+    native_names = (
         f"mobile-router-bluetooth-helper{extension}",
         f"bluetooth-phone-helper{extension}",
     )
+    python_names = (
+        "mobile-router-bluetooth-helper.py",
+        "bluetooth-phone-helper.py",
+    )
+    names = python_names if python_only else native_names if native_only else (*native_names, *python_names)
     folders = (
         root,
         root / "bin",
@@ -220,13 +225,19 @@ def _configured_bluetooth_helper(system=None):
     if configured_helper:
         helper_path = Path(configured_helper)
         return str(helper_path) if helper_path.is_file() else None
-    for candidate in _project_helper_candidates(system):
+    for candidate in _project_helper_candidates(system, native_only=True):
         if candidate.is_file():
             return str(candidate)
-    return (
+    helper_on_path = (
         shutil.which("mobile-router-bluetooth-helper")
         or shutil.which("bluetooth-phone-helper")
     )
+    if helper_on_path:
+        return helper_on_path
+    for candidate in _project_helper_candidates(system, python_only=True):
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
