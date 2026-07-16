@@ -31,6 +31,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Hak5-inspired lab features', response.data)
         self.assertIn(b'Payload profile switchboard', response.data)
         self.assertIn(b'Inline network tap mode', response.data)
+        self.assertIn(b'Central capability registry', response.data)
+        self.assertIn(b'Background scan jobs', response.data)
         self.assertIn(b'Done', response.data)
         self.assertIn(b'completed', response.data)
         self.assertIn(b'remaining', response.data)
