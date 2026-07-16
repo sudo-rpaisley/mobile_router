@@ -14,8 +14,12 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Runtime Capabilities', response.data)
+        self.assertIn(b'Central Capability Registry', response.data)
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
+        self.assertIn(b'Tools', response.data)
+        self.assertIn(b'Records', response.data)
+        self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
 
     def test_roadmap_page_renders_project_ideas(self):
@@ -30,6 +34,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Hak5-inspired lab features', response.data)
         self.assertIn(b'Payload profile switchboard', response.data)
         self.assertIn(b'Inline network tap mode', response.data)
+        self.assertIn(b'Central capability registry', response.data)
+        self.assertIn(b'Background scan jobs', response.data)
         self.assertIn(b'Done', response.data)
         self.assertIn(b'completed', response.data)
         self.assertIn(b'remaining', response.data)
@@ -174,6 +180,26 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
         self.assertEqual(response.status_code, 400)
 
+    def test_capability_registry_export_returns_entries(self):
+        response = self.client.get('/capabilities/registry.json')
+
+        self.assertEqual(response.status_code, 200)
+        registry = response.get_json()['registry']
+        self.assertTrue(any(item['id'] == 'wifi-network-scan' for item in registry))
+        self.assertTrue(any(item['id'] == 'reports' for item in registry))
+
+    def test_adapter_updates_returns_partial_fragments_when_changed(self):
+        response = self.client.post('/adapters/updates', json={'snapshot': 'stale', 'title': 'Home'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['changed'])
+        self.assertIn('primary_nav_links', payload['fragments'])
+        self.assertIn('interface_categories', payload['fragments'])
+
+        response = self.client.post('/adapters/updates', json={'snapshot': payload['snapshot'], 'title': 'Home'})
+        self.assertFalse(response.get_json()['changed'])
+
     def test_export_routes_return_json(self):
         response = self.client.get('/export/interfaces.json')
         self.assertEqual(response.status_code, 200)
@@ -182,6 +208,79 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/export/capabilities.json')
         self.assertEqual(response.status_code, 200)
         self.assertIn('capabilities', response.get_json())
+
+
+
+    def test_port_scan_pages_include_cancel_controls(self):
+        response = self.client.get('/port-scan')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-port-scan-cancel', response.data)
+
+        with patch('app.get_mac_by_ip', return_value='48:b0:2d:ef:ec:f2'):
+            response = self.client.get('/clients/192.168.20.1')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Device Port Scan', response.data)
+        self.assertIn(b'data-port-scan-cancel', response.data)
+
+    def test_evidence_vault_records_and_exports_artifacts(self):
+        app_module.evidence_vault.clear()
+
+        response = self.client.get('/evidence')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Evidence and Loot Vault', response.data)
+
+        response = self.client.post('/evidence', data={
+            'title': 'Router scan output',
+            'category': 'scan-output',
+            'source': 'active-scan',
+            'device': '192.168.20.1',
+            'notes': 'Gateway exposed SSH and DNS during lab scan.',
+            'content': 'Open ports: 22, 53',
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['evidence']['category'], 'scan-output')
+
+        response = self.client.get('/evidence.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['evidence'][0]['title'], 'Router scan output')
+
+        response = self.client.get('/reports.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['evidence'][0]['title'], 'Router scan output')
+
+    def test_reports_page_and_exports_render(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/reports')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Reports', response.data)
+        self.assertIn(b'/reports.json', response.data)
+
+        response = self.client.get('/reports.json')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('devices', payload)
+        self.assertIn('capabilities', payload)
+        self.assertIn('alerts', payload)
+
+        response = self.client.get('/reports.csv')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response.content_type)
+        self.assertIn(b'Mobile Router Report', response.data)
+
+        response = self.client.get('/reports.md')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'# Mobile Router Report', response.data)
+
+        response = self.client.get('/reports.html')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Mobile Router Report', response.data)
 
 
     def test_inventory_page_renders_manufacturer_insights(self):
@@ -209,6 +308,256 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['hosts'][0]['manufacturer'], 'Raspberry Pi Foundation')
         self.assertIn('mac:b8:27:eb:11:22:33', app_module.device_inventory)
+
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/24')
+    def test_scan_classification_marks_internal_control_traffic(self, _cidr):
+        from scripts.networkScan import classify_scan_results
+
+        devices = classify_scan_results([
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb'},
+            {'ip': '192.168.20.255', 'mac': 'ff:ff:ff:ff:ff:ff'},
+            {'ip': '192.168.20.1', 'mac': 'ac:16:2d:a2:71:9e'},
+            {'ip': '8.8.8.8', 'mac': '00:11:22:33:44:55'},
+        ], 'eth0')
+
+        self.assertEqual(devices[0]['network_role'], 'Multicast')
+        self.assertTrue(devices[0]['is_control_traffic'])
+        self.assertEqual(devices[1]['network_role'], 'Subnet broadcast')
+        self.assertTrue(devices[1]['is_control_traffic'])
+        self.assertEqual(devices[2]['network_role'], 'Likely gateway/router')
+        self.assertEqual(devices[2]['network_scope'], 'Private LAN')
+        self.assertEqual(devices[3]['network_scope'], 'Public Internet')
+
+    @patch('app.passive_scan')
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/24')
+    def test_passive_scan_response_includes_network_role_metadata(self, _cidr, scan):
+        app_module.device_inventory.clear()
+        scan.return_value = [{'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb'}]
+
+        response = self.client.post('/passive-scan', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        device = response.get_json()['devices'][0]
+        self.assertEqual(device['network_role'], 'Multicast')
+        self.assertEqual(device['network_scope'], 'Local segment')
+        self.assertTrue(device['is_control_traffic'])
+
+    @patch('scripts.networkScan._parse_proc_arp', return_value=[
+        {'ip': '192.168.20.3', 'mac': '48:b0:2d:ef:ec:f2'},
+    ])
+    @patch('scripts.networkScan.get_mac_by_ip', return_value='ac:16:2d:a2:71:9e')
+    @patch('scripts.networkScan._ping_host', side_effect=lambda ip: str(ip) if str(ip) == '192.168.20.1' else None)
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/29')
+    def test_active_scan_is_bounded_and_merges_arp_cache(self, _cidr, _ping, _mac, _arp):
+        from scripts.networkScan import active_scan
+
+        hosts = active_scan('eth0')
+
+        self.assertEqual(hosts, [
+            {'ip': '192.168.20.1', 'mac': 'ac:16:2d:a2:71:9e'},
+            {'ip': '192.168.20.3', 'mac': '48:b0:2d:ef:ec:f2'},
+        ])
+
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='10.0.0.1/20')
+    def test_active_scan_skips_overly_large_subnets(self, _cidr):
+        from scripts.networkScan import active_scan
+
+        self.assertEqual(active_scan('eth0'), [])
+
+    def test_port_scan_page_mentions_device_prefill(self):
+        response = self.client.get('/port-scan?host=192.168.20.10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'live progress updates', response.data)
+        self.assertIn(b'id="scan-host"', response.data)
+        self.assertIn(b'port_scan_live.js', response.data)
+
+    def test_client_detail_links_to_device_port_scan(self):
+        response = self.client.get('/clients/192.168.20.10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Device Port Scan', response.data)
+        self.assertIn(b'Common ports', response.data)
+        self.assertIn(b'All ports', response.data)
+        self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+        self.assertIn(b'port_scan_live.js', response.data)
+
+    def test_inventory_links_host_devices_to_port_scan(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb', 'is_control_traffic': True},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/inventory')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+        self.assertEqual(response.data.count(b'Check ports'), 1)
+
+    def test_new_device_alerts_are_created_and_can_be_read(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb', 'is_control_traffic': True},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/alerts/status')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['unread_count'], 1)
+        self.assertEqual(payload['alerts'][0]['ip'], '192.168.20.10')
+        self.assertEqual(payload['alerts'][0]['device_url'], '/clients/48%3Ab0%3A2d%3Aef%3Aec%3Af2')
+
+        alert_id = payload['alerts'][0]['id']
+        response = self.client.post(f'/alerts/{alert_id}/read')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['unread_count'], 0)
+
+    def test_alerts_page_and_nav_indicator_render(self):
+        app_module.new_device_alerts.clear()
+        app_module.create_new_device_alert({
+            'id': 'mac:48:b0:2d:ef:ec:f2',
+            'ip': '192.168.20.10',
+            'mac': '48:b0:2d:ef:ec:f2',
+            'manufacturer': 'Unknown',
+        }, 'test-scan', 'eth0')
+
+        response = self.client.get('/alerts')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'New Device Alerts', response.data)
+        self.assertIn(b'192.168.20.10', response.data)
+        self.assertIn(b'View device', response.data)
+        self.assertIn(b'data-device-url=', response.data)
+        self.assertIn(b'alerts.js', response.data)
+
+        response = self.client.get('/capabilities')
+        self.assertIn(b'id="new-device-alert-indicator"', response.data)
+
+    @patch('app.threading.Thread')
+    def test_port_scan_job_routes_start_and_report_status(self, thread_cls):
+        app_module.port_scan_jobs.clear()
+        thread_cls.return_value.start.return_value = None
+
+        response = self.client.post('/port-scan-jobs', data={
+            'host': '192.168.20.10',
+            'start': '1',
+            'end': '65535',
+            'label': 'all-port scan',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        job = response.get_json()['job']
+        self.assertEqual(job['status'], 'queued')
+        self.assertEqual(job['total_ports'], 65535)
+
+        response = self.client.get(f"/port-scan-jobs/{job['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['job']['host'], '192.168.20.10')
+
+    @patch('scripts.portScanner.scan_ports')
+    def test_port_scan_job_records_live_open_ports_and_progress(self, scan_ports):
+        app_module.port_scan_jobs.clear()
+        job_id = 'test-job'
+        app_module.port_scan_jobs[job_id] = {
+            'id': job_id,
+            'host': '192.168.20.10',
+            'start': 20,
+            'end': 22,
+            'label': 'custom',
+            'status': 'queued',
+            'open_ports': [],
+            'open_port_details': [],
+            'scanned_ports': 0,
+            'total_ports': 3,
+            'current_port': None,
+            'progress': 0,
+            'message': 'queued',
+            'created_at': 0,
+            'updated_at': 0,
+        }
+
+        def fake_scan(host, start, end, on_open=None, on_progress=None, should_cancel=None, max_ports=None):
+            for port in [20, 21, 22]:
+                if port == 22:
+                    on_open(port)
+                on_progress(port)
+            return [22]
+
+        scan_ports.side_effect = fake_scan
+
+        app_module.run_port_scan_job(job_id)
+
+        job = app_module.port_scan_jobs[job_id]
+        self.assertEqual(job['status'], 'complete')
+        self.assertEqual(job['open_ports'], [22])
+        self.assertEqual(job['open_port_details'][0]['service'], 'SSH')
+        self.assertEqual(job['scanned_ports'], 3)
+        self.assertEqual(job['progress'], 100)
+
+    def test_jobs_page_and_status_show_running_count(self):
+        app_module.scan_jobs.clear()
+        app_module.port_scan_jobs.clear()
+        app_module.port_scan_jobs['port-job'] = {
+            'id': 'port-job',
+            'host': '192.168.20.10',
+            'start': 1,
+            'end': 1024,
+            'label': 'common port scan',
+            'status': 'running',
+            'open_ports': [22],
+            'open_port_details': [{'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'}],
+            'scanned_ports': 20,
+            'total_ports': 1024,
+            'current_port': 22,
+            'progress': 2,
+            'message': 'Open port found: 22',
+            'cancel_requested': False,
+            'created_at': 1,
+            'updated_at': 2,
+        }
+
+        response = self.client.get('/jobs')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Live Jobs', response.data)
+        self.assertIn(b'jobs.js', response.data)
+
+        response = self.client.get('/jobs/status')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['running_count'], 1)
+        self.assertEqual(payload['jobs'][0]['open_ports'], [22])
+        self.assertEqual(payload['jobs'][0]['open_port_details'][0]['service'], 'SSH')
+
+    def test_job_cancel_endpoint_cancels_port_scan_job(self):
+        app_module.port_scan_jobs.clear()
+        app_module.port_scan_jobs['port-job'] = {
+            'id': 'port-job',
+            'host': '192.168.20.10',
+            'start': 1,
+            'end': 1024,
+            'label': 'common port scan',
+            'status': 'running',
+            'open_ports': [],
+            'open_port_details': [],
+            'scanned_ports': 0,
+            'total_ports': 1024,
+            'current_port': None,
+            'progress': 0,
+            'message': 'running',
+            'cancel_requested': False,
+            'created_at': 1,
+            'updated_at': 1,
+        }
+
+        response = self.client.post('/jobs/port-job/cancel')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(app_module.port_scan_jobs['port-job']['cancel_requested'])
+        self.assertEqual(response.get_json()['job']['message'], 'Cancellation requested.')
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

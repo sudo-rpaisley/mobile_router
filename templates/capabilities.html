@@ -1,8 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Capabilities<div id="package-install-response" class="theme-results"></div>
-<script src="/static/js/capabilities.js"></script>
-{% endblock %}
+{% block title %}Capabilities{% endblock %}
 
 {% block content %}
 <section class="page-hero">
@@ -57,6 +55,34 @@
   </article>
 </section>
 
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Central Capability Registry</h2>
+    <p class="text-muted small mb-3">One registry maps UI features to runtime checks, commands, Python packages, and status.</p>
+    <div class="table-responsive">
+      <table class="table table-sm theme-table">
+        <thead><tr><th>Capability</th><th>Category</th><th>Status</th><th>Dependencies</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for capability in capabilities.display_registry %}
+            <tr>
+              <td><strong>{{ capability.name }}</strong><div class="text-muted small">{{ capability.id }}</div></td>
+              <td>{{ capability.category }}</td>
+              <td>{% if capability.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
+              <td>
+                {% if capability.commands %}<div><span class="text-muted">Commands:</span> {{ capability.commands|join(', ') }}</div>{% endif %}
+                {% if capability.packages %}<div><span class="text-muted">Packages:</span> {{ capability.packages|join(', ') }}</div>{% endif %}
+                {% if not capability.commands and not capability.packages %}<span class="text-muted">Built in</span>{% endif %}
+              </td>
+              <td>{{ capability.description }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <section class="theme-card card">
   <div class="card-body">
     <h2 class="theme-section-title">Relevant Commands</h2>
@@ -68,6 +94,32 @@
             <td>{{ command }}</td>
             <td>{% if info.available %}<span class="badge badge-success">Found</span>{% else %}<span class="badge badge-warning">Missing</span>{% endif %}</td>
             <td>{{ info.path or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Required Python Packages</h2>
+    <p class="text-muted small mb-3">Required package pins are checked on page load and missing packages are auto-downloaded before capabilities are rendered.</p>
+    {% if capabilities.required_install_results %}
+      <div class="alert alert-info" role="alert">Auto-downloaded {{ capabilities.required_install_results | length }} required package{{ '' if capabilities.required_install_results | length == 1 else 's' }}. Refresh if a status still shows missing.</div>
+    {% endif %}
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Package</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for package, available in capabilities.required_packages.items() %}
+          <tr>
+            <td>
+              {{ package }}
+              {% if capabilities.required_package_specs.get(package) %}
+                <div class="text-muted small">{{ capabilities.required_package_specs.get(package) }}</div>
+              {% endif %}
+            </td>
+            <td>{% if available %}<span class="badge badge-success">Installed</span>{% else %}<span class="badge badge-danger">Missing - auto-download attempted</span>{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
@@ -92,9 +144,10 @@
             <td>
               {% if available %}
                 <span class="badge badge-success">Installed</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ml-2 install-package-btn" data-package="{{ package }}">Re-download</button>
               {% else %}
                 <span class="badge badge-warning">Not installed</span>
-                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Install</button>
+                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Download</button>
               {% endif %}
             </td>
           </tr>

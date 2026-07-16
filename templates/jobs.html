@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}Jobs{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Background work</p>
+    <h1 class="page-title">Live Jobs</h1>
+    <p class="page-subtitle">Watch running scans and cancel background jobs from one place.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="inventory-table-header">
+      <h2 class="theme-section-title">Current jobs</h2>
+      <span class="badge bg-info text-dark" id="jobs-running-count">0 running</span>
+    </div>
+    <div id="jobs-list" class="theme-results">
+      <p class="text-muted">Loading jobs...</p>
+    </div>
+  </div>
+</section>
+<script src="/static/js/jobs.js"></script>
+{% endblock %}

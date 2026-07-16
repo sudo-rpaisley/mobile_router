@@ -403,12 +403,15 @@ def get_networks_summary():
     for network in networks.values():
         access_points = network.access_points
         strongest_ap = max(access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
+        radio = _ap_radio_details(strongest_ap.channel, strongest_ap.signal) if strongest_ap else {}
         results.append({
             'ssid': network.ssid,
             'bssid': strongest_ap.bssid if strongest_ap else None,
             'bssid_manufacturer': _mac_manufacturer(strongest_ap.bssid) if strongest_ap else 'Unknown',
-            'channel': strongest_ap.channel if strongest_ap else None,
-            'freq': strongest_ap.channel if strongest_ap else None,
+            'channel': radio.get('channel') if strongest_ap else None,
+            'freq': radio.get('frequency') if strongest_ap else None,
+            'frequency': radio.get('frequency') if strongest_ap else None,
+            'band': radio.get('band') if strongest_ap else 'Unknown band',
             'signal': strongest_ap.signal if strongest_ap else None,
             'security': getattr(network, 'security', 'Unknown'),
             'access_points': len(access_points),

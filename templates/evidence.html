@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+
+{% block title %}Evidence Vault{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Evidence</p>
+    <h1 class="page-title">Evidence and Loot Vault</h1>
+    <p class="page-subtitle">Capture timestamped notes, scan output, screenshots, captures, and other authorized lab artifacts in one exportable vault.</p>
+  </div>
+</section>
+
+<section class="theme-grid inventory-summary-grid" aria-label="Evidence summary">
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Records</p><strong>{{ evidence|length }}</strong></div></article>
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Files</p><strong>{{ evidence|selectattr('file_name')|list|length }}</strong></div></article>
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Exports</p><strong>JSON CSV MD</strong></div></article>
+</section>
+
+<section class="theme-card card evidence-capture-card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Add evidence</h2>
+    <form id="evidence-form" method="post" action="/evidence" enctype="multipart/form-data">
+      <div class="form-row">
+        <div class="form-group col-md-6">
+          <label for="evidence-title">Title</label>
+          <input id="evidence-title" class="form-control" name="title" required placeholder="e.g. Active scan output for lab router">
+        </div>
+        <div class="form-group col-md-3">
+          <label for="evidence-category">Category</label>
+          <select id="evidence-category" class="form-control" name="category">
+            <option value="note">Note</option>
+            <option value="scan-output">Scan output</option>
+            <option value="capture">Capture</option>
+            <option value="screenshot">Screenshot</option>
+            <option value="artifact">Artifact</option>
+          </select>
+        </div>
+        <div class="form-group col-md-3">
+          <label for="evidence-source">Source</label>
+          <input id="evidence-source" class="form-control" name="source" placeholder="Tool, page, or job">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group col-md-6">
+          <label for="evidence-device">Device / target</label>
+          <input id="evidence-device" class="form-control" name="device" placeholder="IP, MAC, SSID, job ID, or adapter">
+        </div>
+        <div class="form-group col-md-6">
+          <label for="evidence-file">Optional file</label>
+          <input id="evidence-file" class="form-control-file" type="file" name="artifact">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="evidence-notes">Notes</label>
+        <textarea id="evidence-notes" class="form-control" name="notes" rows="3" placeholder="What does this artifact show?"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="evidence-content">Paste scan output or commands</label>
+        <textarea id="evidence-content" class="form-control evidence-monospace" name="content" rows="5" placeholder="Paste relevant terminal output, JSON, or observations"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit">Store evidence</button>
+    </form>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+      <h2 class="theme-section-title mb-2">Vault records</h2>
+      <div class="theme-actions mb-2">
+        <a class="btn btn-sm btn-outline-primary" href="/evidence.json">JSON</a>
+        <a class="btn btn-sm btn-outline-primary" href="/evidence.csv">CSV</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/evidence.md">Markdown</a>
+      </div>
+    </div>
+    {% if evidence %}
+      <div class="evidence-list">
+        {% for item in evidence %}
+          <article class="evidence-record">
+            <div>
+              <span class="badge badge-info">{{ item.category }}</span>
+              <h3>{{ item.title }}</h3>
+              <p class="text-muted mb-1">{{ item.created_at_label }}{% if item.source %} · {{ item.source }}{% endif %}{% if item.device %} · {{ item.device }}{% endif %}</p>
+              {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
+              {% if item.content %}<pre class="evidence-output">{{ item.content }}</pre>{% endif %}
+            </div>
+            {% if item.file_name %}
+              <a class="btn btn-sm btn-outline-dark" href="{{ item.download_url }}">Download {{ item.file_name }}</a>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted">No evidence records have been captured yet.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

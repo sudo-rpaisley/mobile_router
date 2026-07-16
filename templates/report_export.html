@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Report Export{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">HTML export</p>
+    <h1 class="page-title">Mobile Router Report</h1>
+    <p class="page-subtitle">Exported at {{ report.exported_at_label }}.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Summary</h2>
+    <ul>
+      <li>{{ report.insights.total_devices }} discovered devices</li>
+      <li>{{ report.interfaces|length }} interfaces</li>
+      <li>{{ report.jobs|length }} background jobs</li>
+      <li>{{ report.alerts|length }} new-device alerts</li>
+      <li>{{ report.evidence|length }} evidence vault records</li>
+    </ul>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Devices</h2>
+    {% if report.devices %}
+      <div class="table-responsive">
+        <table class="table theme-table">
+          <thead><tr><th>Name</th><th>IP</th><th>MAC/BSSID</th><th>Manufacturer</th><th>Sources</th></tr></thead>
+          <tbody>
+            {% for device in report.devices %}
+              <tr><td>{{ device.display_name }}</td><td>{{ device.ip or '—' }}</td><td>{{ device.mac or device.bssid or '—' }}</td><td>{{ device.manufacturer }}</td><td>{{ device.sources|join(', ') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted">No devices discovered yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Evidence Vault</h2>
+    {% if report.evidence %}
+      <ul>
+        {% for item in report.evidence %}
+          <li>{{ item.title }} — {{ item.category }} — {{ item.created_at_label }}{% if item.file_name %} — {{ item.file_name }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No evidence records captured yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Alerts</h2>
+    {% if report.alerts %}
+      <ul>
+        {% for alert in report.alerts %}
+          <li>{{ alert.display_name }} — {{ alert.ip or 'No IP' }} — {{ 'Read' if alert.read else 'Unread' }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No alerts recorded.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
