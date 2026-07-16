@@ -338,7 +338,7 @@ class RouteSmokeTest(unittest.TestCase):
             'updated_at': 0,
         }
 
-        def fake_scan(host, start, end, on_open=None, on_progress=None, max_ports=None):
+        def fake_scan(host, start, end, on_open=None, on_progress=None, should_cancel=None, max_ports=None):
             for port in [20, 21, 22]:
                 if port == 22:
                     on_open(port)
@@ -354,6 +354,64 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(job['open_ports'], [22])
         self.assertEqual(job['scanned_ports'], 3)
         self.assertEqual(job['progress'], 100)
+
+    def test_jobs_page_and_status_show_running_count(self):
+        app_module.scan_jobs.clear()
+        app_module.port_scan_jobs.clear()
+        app_module.port_scan_jobs['port-job'] = {
+            'id': 'port-job',
+            'host': '192.168.20.10',
+            'start': 1,
+            'end': 1024,
+            'label': 'common port scan',
+            'status': 'running',
+            'open_ports': [22],
+            'scanned_ports': 20,
+            'total_ports': 1024,
+            'current_port': 22,
+            'progress': 2,
+            'message': 'Open port found: 22',
+            'cancel_requested': False,
+            'created_at': 1,
+            'updated_at': 2,
+        }
+
+        response = self.client.get('/jobs')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Live Jobs', response.data)
+        self.assertIn(b'jobs.js', response.data)
+
+        response = self.client.get('/jobs/status')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['running_count'], 1)
+        self.assertEqual(payload['jobs'][0]['open_ports'], [22])
+
+    def test_job_cancel_endpoint_cancels_port_scan_job(self):
+        app_module.port_scan_jobs.clear()
+        app_module.port_scan_jobs['port-job'] = {
+            'id': 'port-job',
+            'host': '192.168.20.10',
+            'start': 1,
+            'end': 1024,
+            'label': 'common port scan',
+            'status': 'running',
+            'open_ports': [],
+            'scanned_ports': 0,
+            'total_ports': 1024,
+            'current_port': None,
+            'progress': 0,
+            'message': 'running',
+            'cancel_requested': False,
+            'created_at': 1,
+            'updated_at': 1,
+        }
+
+        response = self.client.post('/jobs/port-job/cancel')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(app_module.port_scan_jobs['port-job']['cancel_requested'])
+        self.assertEqual(response.get_json()['job']['message'], 'Cancellation requested.')
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

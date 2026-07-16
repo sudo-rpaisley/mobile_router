@@ -4,3 +4,43 @@
 .dropdown-menu{
   margin-top: 0;
 }
+.job-activity-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.75rem;
+  text-decoration: none;
+}
+
+.job-activity-dial {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #28d17c;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.job-activity-indicator.is-active .job-activity-dial {
+  animation: job-dial-spin 0.9s linear infinite;
+}
+
+.job-activity-indicator:not(.is-active) .job-activity-dial {
+  border-top-color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes job-dial-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.job-activity-dial span {
+  animation: inherit;
+  animation-direction: reverse;
+}

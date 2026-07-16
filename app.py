@@ -421,11 +421,17 @@ def parse_int(value, error_message):
 
 def _set_scan_job(job_id, **updates):
     with scan_jobs_lock:
-        scan_jobs[job_id].update(updates)
+        job = scan_jobs.get(job_id)
+        if not job:
+            return
+        if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
+            return
+        job.update(updates)
+        job['updated_at'] = time.time()
 
 
 def _run_scan_job(job_id, scan_type, selected_interface):
-    _set_scan_job(job_id, status='running', started_at=time.time())
+    _set_scan_job(job_id, status='running', started_at=time.time(), updated_at=time.time())
     try:
         if scan_type == 'wlan':
             from scripts.wifi import utils as wifi_utils
@@ -442,6 +448,11 @@ def _run_scan_job(job_id, scan_type, selected_interface):
             }
         else:
             raise ValueError('Unsupported scan type')
+        with scan_jobs_lock:
+            cancelled = scan_jobs.get(job_id, {}).get('cancel_requested')
+        if cancelled:
+            _set_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Job cancelled.')
+            return
         if scan_type == 'bluetooth':
             record_inventory_devices(result.get('devices', []), 'bluetooth-scan', selected_interface)
         _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
@@ -453,8 +464,35 @@ def _run_scan_job(job_id, scan_type, selected_interface):
 def _port_scan_job_snapshot(job):
     return {
         **job,
+        'kind': 'port-scan',
         'open_ports': list(job.get('open_ports', [])),
+        'cancelable': job.get('status') in {'queued', 'running'},
     }
+
+
+def _scan_job_snapshot(job):
+    return {
+        **job,
+        'kind': 'scan',
+        'label': f"{job.get('scan_type', 'scan')} scan",
+        'total_ports': None,
+        'scanned_ports': None,
+        'progress': 100 if job.get('status') in {'completed', 'failed', 'cancelled'} else 0,
+        'cancelable': job.get('status') in {'queued', 'running'},
+    }
+
+
+def all_job_snapshots():
+    jobs = []
+    with scan_jobs_lock:
+        jobs.extend(_scan_job_snapshot(job) for job in scan_jobs.values())
+    with port_scan_jobs_lock:
+        jobs.extend(_port_scan_job_snapshot(job) for job in port_scan_jobs.values())
+    return sorted(jobs, key=lambda item: item.get('updated_at') or item.get('created_at') or 0, reverse=True)
+
+
+def running_job_count():
+    return len([job for job in all_job_snapshots() if job.get('status') in {'queued', 'running'}])
 
 
 def update_port_scan_job(job_id, **updates):
@@ -495,6 +533,10 @@ def run_port_scan_job(job_id):
             current['message'] = f'Open port found: {port}'
             current['updated_at'] = time.time()
 
+    def should_cancel():
+        with port_scan_jobs_lock:
+            return bool(port_scan_jobs.get(job_id, {}).get('cancel_requested'))
+
     def on_progress(port):
         nonlocal scanned
         scanned += 1
@@ -508,7 +550,10 @@ def run_port_scan_job(job_id):
             current['updated_at'] = time.time()
 
     try:
-        ports = scan_ports(host, start, end, on_open=on_open, on_progress=on_progress, max_ports=None)
+        ports = scan_ports(host, start, end, on_open=on_open, on_progress=on_progress, should_cancel=should_cancel, max_ports=None)
+        if should_cancel():
+            update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
+            return
         update_port_scan_job(
             job_id,
             status='complete',
@@ -546,6 +591,7 @@ def create_port_scan_job(host, start, end, label=None):
         'current_port': None,
         'progress': 0,
         'message': 'Port scan queued.',
+        'cancel_requested': False,
         'created_at': now,
         'updated_at': now,
     }
@@ -563,10 +609,13 @@ def create_scan_job(scan_type, selected_interface):
     with scan_jobs_lock:
         scan_jobs[job_id] = {
             'id': job_id,
+            'kind': 'scan',
             'scan_type': scan_type,
             'selected_interface': selected_interface,
             'status': 'queued',
+            'cancel_requested': False,
             'created_at': time.time(),
+            'updated_at': time.time(),
         }
     threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
     return scan_jobs[job_id]
@@ -699,6 +748,11 @@ def port_scan_page():
     return render_template('port_scan.html', title='Port Scan', **current_context())
 
 
+@app.route('/jobs')
+def jobs_page():
+    return render_template('jobs.html', title='Jobs', **current_context())
+
+
 @app.route('/traceroute')
 def traceroute_page():
     return render_template('traceroute.html', title='Traceroute', **current_context())
@@ -796,6 +850,35 @@ def port_scan_job_status(job_id):
         if not job:
             return json_error('Port scan job not found', 404)
         return json_success(job=_port_scan_job_snapshot(job))
+
+
+@app.route('/jobs/status')
+def jobs_status():
+    jobs = all_job_snapshots()
+    return json_success(jobs=jobs, running_count=len([job for job in jobs if job.get('status') in {'queued', 'running'}]))
+
+
+@app.route('/jobs/<job_id>/cancel', methods=['POST'])
+def cancel_job(job_id):
+    with port_scan_jobs_lock:
+        port_job = port_scan_jobs.get(job_id)
+        if port_job:
+            if port_job.get('status') in {'queued', 'running'}:
+                port_job['cancel_requested'] = True
+                port_job['status'] = 'cancelled' if port_job.get('status') == 'queued' else port_job.get('status')
+                port_job['message'] = 'Cancellation requested.'
+                port_job['updated_at'] = time.time()
+            return json_success(job=_port_scan_job_snapshot(port_job))
+    with scan_jobs_lock:
+        scan_job = scan_jobs.get(job_id)
+        if scan_job:
+            scan_job['cancel_requested'] = True
+            if scan_job.get('status') in {'queued', 'running'}:
+                scan_job['status'] = 'cancelled'
+                scan_job['message'] = 'Cancellation requested.'
+                scan_job['updated_at'] = time.time()
+            return json_success(job=_scan_job_snapshot(scan_job))
+    return json_error('Job not found', 404)
 
 
 @app.route('/traceroute', methods=['POST'])

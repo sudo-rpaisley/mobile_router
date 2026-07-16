@@ -26,6 +26,17 @@ class PortScannerValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(PortScanError, "Host is required"):
             scan_ports("   ", 1, 1)
 
+    def test_scan_ports_stops_when_cancelled(self):
+        calls = []
+
+        def cancelled():
+            return bool(calls)
+
+        ports = scan_ports('127.0.0.1', 1, 3, timeout=0.01, on_progress=lambda port: calls.append(port), should_cancel=cancelled)
+
+        self.assertEqual(ports, [])
+        self.assertTrue(calls)
+
 
 if __name__ == "__main__":
     unittest.main()

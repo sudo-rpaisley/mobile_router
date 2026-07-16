@@ -33,6 +33,9 @@
       <a href="/roadmap" class="nav-link {% if title == 'Roadmap' %}active{% endif %}">Roadmap</a>
     </div>
     <div class="navbar-nav ml-auto nav-tools">
+      <a id="job-activity-indicator" class="job-activity-indicator" href="/jobs" title="View background jobs" aria-label="View background jobs">
+        <span class="job-activity-dial"><span id="job-activity-count">0</span></span>
+      </a>
       <span id="adapter-auto-update-status" class="navbar-text auto-update-status">Auto updating</span>
       <button id="theme-toggle" type="button" class="btn btn-sm btn-outline-light theme-toggle" aria-pressed="false" title="Switch theme">
         <i class="fa-solid fa-moon"></i> Dark

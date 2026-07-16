@@ -19,3 +19,24 @@ $(document).ready(function(){
 
   $('[data-toggle="tooltip"]').tooltip();
 });
+
+
+$(document).ready(function () {
+  function updateJobIndicator() {
+    $.ajax({
+      url: '/jobs/status',
+      method: 'GET',
+      success: function (resp) {
+        const count = resp.running_count || 0;
+        $('#job-activity-count').text(count);
+        $('#job-activity-indicator').toggleClass('is-active', count > 0);
+        $('#job-activity-indicator').attr('title', count > 0 ? `${count} background job(s) running` : 'No background jobs running');
+      },
+      complete: function () {
+        setTimeout(updateJobIndicator, 2000);
+      }
+    });
+  }
+
+  updateJobIndicator();
+});

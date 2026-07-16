@@ -43,6 +43,7 @@ def scan_ports(
     timeout: float = DEFAULT_TIMEOUT,
     on_open: Optional[Callable[[int], None]] = None,
     on_progress: Optional[Callable[[int], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
     max_ports: Optional[int] = MAX_PORTS_PER_SCAN,
     workers: int = DEFAULT_WORKERS,
 ) -> List[int]:
@@ -62,6 +63,10 @@ def scan_ports(
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = [executor.submit(_check_port, host, port, timeout) for port in ports]
         for future in as_completed(futures):
+            if should_cancel and should_cancel():
+                for pending in futures:
+                    pending.cancel()
+                break
             port, is_open = future.result()
             if is_open:
                 open_ports.append(port)
