@@ -1,8 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Capabilities<div id="package-install-response" class="theme-results"></div>
-<script src="/static/js/capabilities.js"></script>
-{% endblock %}
+{% block title %}Capabilities{% endblock %}
 
 {% block content %}
 <section class="page-hero">
@@ -77,6 +75,32 @@
 
 <section class="theme-card card">
   <div class="card-body">
+    <h2 class="theme-section-title">Required Python Packages</h2>
+    <p class="text-muted small mb-3">Required package pins are checked on page load and missing packages are auto-downloaded before capabilities are rendered.</p>
+    {% if capabilities.required_install_results %}
+      <div class="alert alert-info" role="alert">Auto-downloaded {{ capabilities.required_install_results | length }} required package{{ '' if capabilities.required_install_results | length == 1 else 's' }}. Refresh if a status still shows missing.</div>
+    {% endif %}
+    <table class="table table-sm theme-table">
+      <thead><tr><th>Package</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for package, available in capabilities.required_packages.items() %}
+          <tr>
+            <td>
+              {{ package }}
+              {% if capabilities.required_package_specs.get(package) %}
+                <div class="text-muted small">{{ capabilities.required_package_specs.get(package) }}</div>
+              {% endif %}
+            </td>
+            <td>{% if available %}<span class="badge badge-success">Installed</span>{% else %}<span class="badge badge-danger">Missing - auto-download attempted</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
     <h2 class="theme-section-title">Optional Python Packages</h2>
     <table class="table table-sm theme-table">
       <thead><tr><th>Package</th><th>Status</th></tr></thead>
@@ -92,9 +116,10 @@
             <td>
               {% if available %}
                 <span class="badge badge-success">Installed</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ml-2 install-package-btn" data-package="{{ package }}">Re-download</button>
               {% else %}
                 <span class="badge badge-warning">Not installed</span>
-                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Install</button>
+                <button type="button" class="btn btn-sm btn-outline-primary ml-2 install-package-btn" data-package="{{ package }}">Download</button>
               {% endif %}
             </td>
           </tr>

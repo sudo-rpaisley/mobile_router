@@ -7,6 +7,23 @@ from typing import Dict, List
 
 CORE_COMMANDS = ["ip", "ifconfig", "ipconfig", "arp", "ping", "traceroute", "tracepath", "tracert"]
 OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "busctl", "powershell", "pwsh"]
+REQUIRED_PACKAGE_SPECS = {
+    "blinker": "blinker==1.8.2",
+    "click": "click==8.1.7",
+    "Flask": "Flask==3.0.3",
+    "Flask-SocketIO": "Flask-SocketIO==5.3.6",
+    "itsdangerous": "itsdangerous==2.2.0",
+    "Jinja2": "Jinja2==3.1.4",
+    "MarkupSafe": "MarkupSafe==2.1.5",
+    "Werkzeug": "Werkzeug==3.0.3",
+}
+REQUIRED_PACKAGE_IMPORTS = {
+    "Flask": "flask",
+    "Flask-SocketIO": "flask_socketio",
+    "Jinja2": "jinja2",
+    "MarkupSafe": "markupsafe",
+}
+REQUIRED_PACKAGES = list(REQUIRED_PACKAGE_SPECS)
 OPTIONAL_PACKAGES = ["bleak", "scapy", "pywifi"]
 OPTIONAL_PACKAGE_SPECS = {
     "bleak": "bleak==0.22.3",
@@ -25,8 +42,12 @@ def command_status(commands: List[str]) -> Dict[str, Dict[str, object]]:
     }
 
 
+def package_import_name(package: str) -> str:
+    return REQUIRED_PACKAGE_IMPORTS.get(package, package)
+
+
 def package_status(packages: List[str]) -> Dict[str, bool]:
-    return {package: importlib.util.find_spec(package) is not None for package in packages}
+    return {package: importlib.util.find_spec(package_import_name(package)) is not None for package in packages}
 
 
 def _available(commands, *names):
@@ -62,11 +83,9 @@ def _display_feature_names(system):
 
 
 def _display_package_names(system):
-    if system == "Windows":
-        return ["bleak", "pywifi"]
-    if system == "Linux":
-        return ["bleak", "scapy"]
-    return ["bleak"]
+    # Show every optional Python integration so each one always has a download
+    # control, even when it primarily helps another platform.
+    return OPTIONAL_PACKAGES
 
 
 def _busctl_bluez_available(busctl):
@@ -105,13 +124,9 @@ def _host_dependencies(system, commands):
     ]
 
 
-def install_optional_package(package):
-    """Install an approved optional package into the current Python environment."""
-    if package not in OPTIONAL_PACKAGE_SPECS:
-        raise ValueError(f"Unsupported optional package: {package}")
-
+def _install_python_package(package, specs):
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", OPTIONAL_PACKAGE_SPECS[package]],
+        [sys.executable, "-m", "pip", "install", specs[package]],
         capture_output=True,
         text=True,
         timeout=300,
@@ -121,13 +136,38 @@ def install_optional_package(package):
         raise RuntimeError(message)
     return {
         "package": package,
-        "installed": importlib.util.find_spec(package) is not None,
+        "installed": importlib.util.find_spec(package_import_name(package)) is not None,
         "output": result.stdout.strip(),
     }
 
 
+def install_optional_package(package):
+    """Install an approved optional package into the current Python environment."""
+    if package not in OPTIONAL_PACKAGE_SPECS:
+        raise ValueError(f"Unsupported optional package: {package}")
+    return _install_python_package(package, OPTIONAL_PACKAGE_SPECS)
+
+
+def install_required_package(package):
+    """Install an approved required package into the current Python environment."""
+    if package not in REQUIRED_PACKAGE_SPECS:
+        raise ValueError(f"Unsupported required package: {package}")
+    return _install_python_package(package, REQUIRED_PACKAGE_SPECS)
+
+
+def ensure_required_packages_installed():
+    """Auto-download any missing required Python package pins."""
+    results = []
+    for package, installed in package_status(REQUIRED_PACKAGES).items():
+        if not installed:
+            results.append(install_required_package(package))
+    return results
+
+
 def build_capabilities() -> Dict[str, object]:
+    required_install_results = ensure_required_packages_installed()
     commands = command_status(CORE_COMMANDS + OPTIONAL_COMMANDS)
+    required_packages = package_status(REQUIRED_PACKAGES)
     packages = package_status(OPTIONAL_PACKAGES)
     system = platform.system()
 
@@ -185,6 +225,9 @@ def build_capabilities() -> Dict[str, object]:
         },
         "commands": commands,
         "display_commands": display_commands,
+        "required_packages": required_packages,
+        "required_package_specs": REQUIRED_PACKAGE_SPECS,
+        "required_install_results": required_install_results,
         "packages": packages,
         "display_packages": display_packages,
         "optional_package_specs": OPTIONAL_PACKAGE_SPECS,
