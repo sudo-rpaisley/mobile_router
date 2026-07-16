@@ -206,6 +206,17 @@ class RouteSmokeTest(unittest.TestCase):
 
 
 
+    def test_port_scan_pages_include_cancel_controls(self):
+        response = self.client.get('/port-scan')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-port-scan-cancel', response.data)
+
+        with patch('app.get_mac_by_ip', return_value='48:b0:2d:ef:ec:f2'):
+            response = self.client.get('/clients/192.168.20.1')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Device Port Scan', response.data)
+        self.assertIn(b'data-port-scan-cancel', response.data)
+
     def test_evidence_vault_records_and_exports_artifacts(self):
         app_module.evidence_vault.clear()
 

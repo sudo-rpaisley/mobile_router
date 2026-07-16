@@ -43,7 +43,10 @@ $(document).ready(function () {
     const scanned = job.scanned_ports || 0;
     const total = job.total_ports || 0;
     const current = job.current_port ? ` Current port: ${escapeHtml(job.current_port)}.` : '';
-    const statusClass = job.status === 'failed' ? 'danger' : (job.status === 'complete' ? 'success' : 'info');
+    const statusClass = job.status === 'failed' ? 'danger' : (job.status === 'complete' ? 'success' : (job.status === 'cancelled' ? 'warning' : 'info'));
+    const canCancel = Boolean(job.cancelable && !job.cancel_requested);
+    $panel.data('currentJobId', job.id || $panel.data('currentJobId'));
+    $panel.find('[data-port-scan-cancel]').toggle(canCancel).prop('disabled', !canCancel);
 
     $panel.find('[data-port-scan-status]').html(
       `<div class="alert alert-${statusClass}" role="status"><strong>${escapeHtml(job.status)}</strong>: ${escapeHtml(job.message || '')}${current}</div>`
@@ -65,12 +68,14 @@ $(document).ready(function () {
           setTimeout(function () { pollJob($panel, jobId, openPorts); }, 1000);
         } else {
           $panel.find('[data-port-scan-start], [data-port-scan-custom-submit]').prop('disabled', false);
+          $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
         }
       },
       error: function (xhr) {
         const message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Port scan status failed';
         $panel.find('[data-port-scan-status]').html(`<div class="alert alert-danger">${escapeHtml(message)}</div>`);
         $panel.find('[data-port-scan-start], [data-port-scan-custom-submit]').prop('disabled', false);
+        $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
       }
     });
   }
@@ -81,6 +86,7 @@ $(document).ready(function () {
       return;
     }
     $panel.find('[data-port-scan-start], [data-port-scan-custom-submit]').prop('disabled', true);
+    $panel.find('[data-port-scan-cancel]').show().prop('disabled', false);
     $panel.find('[data-port-scan-status]').html(`<div class="alert alert-info">Starting ${escapeHtml(label)} in the background for ${escapeHtml(host)}...</div>`);
     $panel.find('[data-port-scan-progress-bar]').css('width', '0%').attr('aria-valuenow', 0).text('0%');
     $panel.find('[data-port-scan-progress-text]').text('0 ports checked');
@@ -91,6 +97,7 @@ $(document).ready(function () {
       method: 'POST',
       data: { host: host, start: start, end: end, label: label },
       success: function (resp) {
+        $panel.data('currentJobId', resp.job.id);
         renderJob($panel, resp.job, new Set());
         pollJob($panel, resp.job.id, new Set(resp.job.open_ports || []));
       },
@@ -98,6 +105,34 @@ $(document).ready(function () {
         const message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Port scan failed to start';
         $panel.find('[data-port-scan-status]').html(`<div class="alert alert-danger">${escapeHtml(message)}</div>`);
         $panel.find('[data-port-scan-start], [data-port-scan-custom-submit]').prop('disabled', false);
+        $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
+      }
+    });
+  }
+
+
+  function cancelScan($panel) {
+    const jobId = $panel.data('currentJobId');
+    if (!jobId) {
+      $panel.find('[data-port-scan-status]').html('<div class="alert alert-warning">No active port scan job to cancel.</div>');
+      return;
+    }
+    $panel.find('[data-port-scan-cancel]').prop('disabled', true).text('Cancelling...');
+    $.ajax({
+      url: `/jobs/${encodeURIComponent(jobId)}/cancel`,
+      method: 'POST',
+      success: function (resp) {
+        renderJob($panel, resp.job, new Set(resp.job.open_ports || []));
+        $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
+        $panel.find('[data-port-scan-status]').append('<div class="alert alert-warning mt-2">Cancellation requested. Results found so far remain visible.</div>');
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Port scan cancellation failed';
+        $panel.find('[data-port-scan-status]').html(`<div class="alert alert-danger">${escapeHtml(message)}</div>`);
+        $panel.find('[data-port-scan-cancel]').prop('disabled', false).text('Cancel scan');
+      },
+      complete: function () {
+        $panel.find('[data-port-scan-cancel]').text('Cancel scan');
       }
     });
   }
@@ -116,6 +151,13 @@ $(document).ready(function () {
       const $button = $(this);
       const host = ($hostInput.val() || $panel.data('host') || '').trim();
       startScan($panel, host, $button.data('start'), $button.data('end'), $button.data('label') || 'port scan');
+    });
+
+    $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
+
+    $panel.on('click', '[data-port-scan-cancel]', function (e) {
+      e.preventDefault();
+      cancelScan($panel);
     });
 
     $panel.on('submit', '[data-port-scan-custom-form]', function (e) {
