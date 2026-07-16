@@ -1,4 +1,6 @@
 $(document).ready(function () {
+  const activeScanJobs = new Map();
+
   function escapeHtml(value) {
     return String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -276,7 +278,7 @@ $(document).ready(function () {
   }
 
 
-  function pollScanJob(jobId, onComplete, onError) {
+  function pollScanJob(jobId, onComplete, onError, retryCount = 0) {
     window.setTimeout(function checkJob() {
       $.ajax({
         url: `/scan-jobs/${encodeURIComponent(jobId)}`,
@@ -292,6 +294,10 @@ $(document).ready(function () {
           }
         },
         error: function (xhr) {
+          if (retryCount < 3) {
+            pollScanJob(jobId, onComplete, onError, retryCount + 1);
+            return;
+          }
           onError(xhr.responseJSON?.message || 'Unable to check scan job');
         }
       });
@@ -332,6 +338,11 @@ $(document).ready(function () {
     const button = $(this);
     const interfaceName = button.val();
     const resultDiv = scanResultContainer(interfaceName);
+    const scanKey = `wlan:${interfaceName}`;
+    if (activeScanJobs.has(scanKey)) {
+      resultDiv.prepend(`<div class="alert alert-info mt-3" role="alert">A wireless scan is already running for ${escapeHtml(interfaceName)}.</div>`);
+      return;
+    }
 
     button.prop('disabled', true).text('Scanning...');
     resultDiv.html(`
@@ -351,7 +362,9 @@ $(document).ready(function () {
       type: 'POST',
       data: { scanType: 'wlan', selectedInterface: interfaceName },
       success: function (response) {
+        activeScanJobs.set(scanKey, response.job.id);
         pollScanJob(response.job.id, function (result) {
+          activeScanJobs.delete(scanKey);
           const networks = Array.isArray(result.wlans) ? result.wlans : [];
           button.prop('disabled', false).text('Scan for Networks');
           if (networks.length === 0) {
@@ -361,11 +374,13 @@ $(document).ready(function () {
           saveCachedNetworks(interfaceName, networks);
           resultDiv.html(renderNetworks(interfaceName, networks));
         }, function (message) {
+          activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Networks');
           resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities" class="alert-link">Check capabilities</a>.</div>`);
         });
       },
       error: function (xhr) {
+        activeScanJobs.delete(scanKey);
         button.prop('disabled', false).text('Scan for Networks');
         const message = xhr.responseJSON?.message || 'Unable to start wireless scan';
         resultDiv.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities" class="alert-link">Check capabilities</a>.</div>`);

@@ -1,4 +1,6 @@
 $(document).ready(function () {
+  const activeScanJobs = new Map();
+
   function escapeHtml(value) {
     return String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -21,7 +23,7 @@ $(document).ready(function () {
   ];
 
 
-  function pollScanJob(jobId, onComplete, onError) {
+  function pollScanJob(jobId, onComplete, onError, retryCount = 0) {
     window.setTimeout(function checkJob() {
       $.ajax({
         url: `/scan-jobs/${encodeURIComponent(jobId)}`,
@@ -37,6 +39,10 @@ $(document).ready(function () {
           }
         },
         error: function (xhr) {
+          if (retryCount < 3) {
+            pollScanJob(jobId, onComplete, onError, retryCount + 1);
+            return;
+          }
           onError(xhr.responseJSON?.message || 'Unable to check scan job');
         }
       });
@@ -75,6 +81,11 @@ $(document).ready(function () {
     const button = $(this);
     const interfaceName = button.val();
     const result = $("#bluetooth-devices");
+    const scanKey = `bluetooth:${interfaceName}`;
+    if (activeScanJobs.has(scanKey)) {
+      result.prepend(`<div class="alert alert-info mt-3" role="alert">A Bluetooth scan is already running for ${escapeHtml(interfaceName)}.</div>`);
+      return;
+    }
     button.prop('disabled', true).text('Scanning...');
     result.html(`<div class="wireless-scan-state card shadow-sm"><div class="card-body d-flex align-items-center"><div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div><div><strong>Scanning ${escapeHtml(interfaceName)}</strong><p class="text-muted mb-0">Running this Bluetooth scan in the background.</p></div></div></div>`);
 
@@ -100,15 +111,19 @@ $(document).ready(function () {
       type: "POST",
       data: { scanType: 'bluetooth', selectedInterface: interfaceName },
       success: function (response) {
+        activeScanJobs.set(scanKey, response.job.id);
         pollScanJob(response.job.id, function (scanResult) {
+          activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Devices');
           renderScanResult(scanResult);
         }, function (message) {
+          activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Devices');
           result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);
         });
       },
       error: function (xhr) {
+        activeScanJobs.delete(scanKey);
         button.prop('disabled', false).text('Scan for Devices');
         const message = xhr.responseJSON?.message || 'Unable to start Bluetooth scan';
         result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);

@@ -858,6 +858,14 @@ def create_scan_job(scan_type, selected_interface):
         raise ValueError('Unsupported scan type')
     if not selected_interface:
         raise ValueError('Missing selected interface')
+    with scan_jobs_lock:
+        for existing_job in scan_jobs.values():
+            if (
+                existing_job.get('scan_type') == scan_type
+                and existing_job.get('selected_interface') == selected_interface
+                and existing_job.get('status') in {'queued', 'running'}
+            ):
+                return _scan_job_snapshot(existing_job)
     job_id = uuid.uuid4().hex
     with scan_jobs_lock:
         scan_jobs[job_id] = {
@@ -871,7 +879,8 @@ def create_scan_job(scan_type, selected_interface):
             'updated_at': time.time(),
         }
     threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
-    return scan_jobs[job_id]
+    with scan_jobs_lock:
+        return _scan_job_snapshot(scan_jobs[job_id])
 
 
 

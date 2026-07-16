@@ -206,6 +206,16 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['job']['scan_type'], 'wlan')
 
+
+    @patch('app.threading.Thread')
+    def test_duplicate_scan_job_reuses_running_job(self, thread_cls):
+        thread_cls.return_value.start.return_value = None
+        first = self.client.post('/scan-jobs', data={'scanType': 'bluetooth', 'selectedInterface': 'hci0'}).get_json()['job']
+        second = self.client.post('/scan-jobs', data={'scanType': 'bluetooth', 'selectedInterface': 'hci0'}).get_json()['job']
+
+        self.assertEqual(first['id'], second['id'])
+        self.assertEqual(thread_cls.call_count, 1)
+
     def test_scan_job_rejects_unknown_scan_type(self):
         response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
         self.assertEqual(response.status_code, 400)
@@ -440,6 +450,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'data-action="connect"', response.data)
         self.assertIn(b'data-action="pair"', response.data)
         self.assertIn(b'bluetooth-scan.js', response.data)
+        self.assertNotIn(b'Bluetooth Notes', response.data)
         self.assertNotIn(b'Device Port Scan', response.data)
         self.assertNotIn(b'port_scan_live.js', response.data)
 
