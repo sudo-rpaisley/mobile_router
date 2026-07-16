@@ -69,6 +69,21 @@ ROADMAP_SECTIONS = [
             {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Bluetooth scans report action capability and show host-tool guidance for bluetoothctl or BlueZ D-Bus support.', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
         ],
     },
+
+    {
+        'title': 'Wireless risk lab',
+        'items': [
+            {'title': 'WPA handshake capture lab', 'priority': 'High', 'priority_class': 'danger', 'description': 'Capture and catalog WPA/WPA2 handshake or PMKID evidence from owned lab networks, with mitigation notes and no step-by-step attack prompts.'},
+            {'title': 'Scoped deauthentication demos', 'priority': 'High', 'priority_class': 'danger', 'description': 'Demonstrate AP-wide and client-specific disconnect risk in a lab with rate limits, clear logging, and recovery guidance.'},
+            {'title': 'Remote cracking orchestration', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Queue authorized handshake material to a stronger remote worker such as Spark for password-strength demonstrations and import summarized results.'},
+            {'title': 'PineAP-style recon and campaign concepts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Model WiFi Pineapple-style recon, campaigns, handshakes, modules, and Cloud C2 concepts as classroom risk demonstrations.'},
+            {'title': 'Evil twin and captive portal awareness', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show how rogue AP lookalikes and captive portals create phishing risk, paired with user and network detection guidance.'},
+            {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
+            {'title': 'Client privacy and probe request visibility', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Demonstrate how client probe behavior can reveal device presence, preferred networks, and tracking risk.'},
+            {'title': 'Rogue DHCP, DNS, and portal risk demos', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Demonstrate post-association risks such as rogue DHCP, DNS manipulation, and misleading portal flows in an isolated lab.'},
+            {'title': 'RF interference awareness', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide detection-only views for congestion and interference risks without implementing jamming behavior.'},
+        ],
+    },
     {
         'title': 'Safety and architecture',
         'items': [
