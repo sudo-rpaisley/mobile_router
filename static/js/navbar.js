@@ -12,9 +12,11 @@ $(document).ready(function(){
   });
 
   $(document).on('click', '.nav-item.dropdown > a', function(e) {
-      e.preventDefault();
       var link = $(this).attr('href');
-      window.location.href = link;
+      if (link && link !== '#') {
+          e.preventDefault();
+          window.location.href = link;
+      }
   });
 
   $('[data-toggle="tooltip"]').tooltip();

@@ -17,6 +17,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Central Capability Registry', response.data)
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
+        self.assertIn(b'Tools', response.data)
+        self.assertIn(b'Records', response.data)
+        self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
 
     def test_roadmap_page_renders_project_ideas(self):
