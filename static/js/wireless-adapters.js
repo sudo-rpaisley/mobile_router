@@ -128,6 +128,10 @@ $(document).ready(function () {
       const apCount = network.access_points || 1;
       const isOpen = security === 'Open';
       const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ssid)}&bssid=${encodeURIComponent(bssid)}`;
+      const deauthId = `deauth-${interfaceName}-${bssid}`.replace(/[^A-Za-z0-9_-]/g, '-');
+      const canDeauth = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(bssid);
+      const deauthDisabled = canDeauth ? '' : 'disabled';
+      const deauthHelp = canDeauth ? 'Authorized isolated lab only · 1 broadcast frame' : 'Deauth requires a discovered AP BSSID';
 
       return `
         <article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" aria-label="View details for ${escapeHtml(ssid)}">
@@ -150,14 +154,23 @@ $(document).ready(function () {
             <div class="wireless-network-stats" aria-label="Signal strength">
               <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalText)}</span>
             </div>
-            <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
-              <div class="input-group input-group-sm">
-                <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">
-                <div class="input-group-append">
-                  <button class="btn btn-outline-primary" type="submit" title="Connect this host adapter to the selected SSID using the supplied password">Connect</button>
+            <div class="wireless-network-actions">
+              <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
+                <div class="input-group input-group-sm">
+                  <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">
+                  <div class="input-group-append">
+                    <button class="btn btn-outline-primary" type="submit" title="Connect this host adapter to the selected SSID using the supplied password">Connect</button>
+                  </div>
                 </div>
-              </div>
-            </form>
+              </form>
+              <form class="wireless-deauth-form" data-interface="${escapeHtml(interfaceName)}" data-ap="${escapeHtml(bssid)}">
+                <div class="custom-control custom-switch wireless-deauth-switch" title="Send one authorized, rate-limited lab deauth frame to broadcast clients on this AP">
+                  <input type="checkbox" class="custom-control-input wireless-deauth-toggle" id="${escapeHtml(deauthId)}" aria-label="Run limited deauth lab burst for ${escapeHtml(ssid)}" ${deauthDisabled}>
+                  <label class="custom-control-label" for="${escapeHtml(deauthId)}">Limited deauth</label>
+                </div>
+                <p class="wireless-deauth-help text-muted mb-0">${escapeHtml(deauthHelp)}</p>
+              </form>
+            </div>
           </div>
         </article>
       `;
@@ -295,6 +308,47 @@ $(document).ready(function () {
       },
       complete: function () {
         submitButton.prop('disabled', false).text('Connect');
+      }
+    });
+  });
+
+
+  $(document).on('change', '.wireless-deauth-toggle', function () {
+    const toggle = $(this);
+    const form = toggle.closest('.wireless-deauth-form');
+    const label = form.find('.custom-control-label');
+    const originalLabel = label.data('originalText') || label.text();
+
+    label.data('originalText', originalLabel);
+    form.find('.wireless-deauth-status').remove();
+
+    if (!toggle.prop('checked')) {
+      return;
+    }
+
+    toggle.prop('disabled', true);
+    label.text('Sending...');
+
+    $.ajax({
+      url: '/deauth',
+      type: 'POST',
+      data: {
+        selectedInterface: form.data('interface'),
+        ap: form.data('ap'),
+        target: 'ff:ff:ff:ff:ff:ff',
+        frames: 1,
+        authorized: 'on'
+      },
+      success: function (response) {
+        form.append(`<div class="wireless-deauth-status text-success small mt-1">${escapeHtml(response.message || 'Limited deauth burst sent')}</div>`);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Failed to run limited deauth burst';
+        form.append(`<div class="wireless-deauth-status text-danger small mt-1">${escapeHtml(message)}</div>`);
+      },
+      complete: function () {
+        toggle.prop('checked', false).prop('disabled', false);
+        label.text(originalLabel);
       }
     });
   });
