@@ -424,3 +424,45 @@ html[data-theme="dark"] .roadmap-completed-note {
 .alert-device-link {
   font-weight: 700;
 }
+
+.wireless-chart-panel {
+  margin-bottom: 1rem;
+}
+
+.wireless-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.wireless-chart-grid h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.wireless-chart-row,
+.wireless-band-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.wireless-chart-track {
+  min-height: 0.8rem;
+  border-radius: 999px;
+  background: rgba(80, 115, 160, 0.18);
+  overflow: hidden;
+}
+
+.wireless-chart-bar {
+  min-height: 0.8rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2f80ed, #56ccf2);
+}
+
+.wireless-band-24 .wireless-chart-bar { background: linear-gradient(90deg, #f2994a, #f2c94c); }
+.wireless-band-5 .wireless-chart-bar { background: linear-gradient(90deg, #2f80ed, #56ccf2); }
+.wireless-band-6 .wireless-chart-bar { background: linear-gradient(90deg, #9b51e0, #bb6bd9); }
+.wireless-band-unknown .wireless-chart-bar { background: linear-gradient(90deg, #828282, #bdbdbd); }
