@@ -466,3 +466,47 @@ html[data-theme="dark"] .roadmap-completed-note {
 .wireless-band-5 .wireless-chart-bar { background: linear-gradient(90deg, #2f80ed, #56ccf2); }
 .wireless-band-6 .wireless-chart-bar { background: linear-gradient(90deg, #9b51e0, #bb6bd9); }
 .wireless-band-unknown .wireless-chart-bar { background: linear-gradient(90deg, #828282, #bdbdbd); }
+
+
+.evidence-capture-card textarea {
+  resize: vertical;
+}
+
+.evidence-monospace,
+.evidence-output {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.evidence-record {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border, #dee2e6);
+  border-radius: 0.85rem;
+  background: var(--theme-card-bg, #fff);
+}
+
+.evidence-record h3 {
+  margin: 0.35rem 0;
+  font-size: 1.1rem;
+}
+
+.evidence-output {
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.06);
+  white-space: pre-wrap;
+}
+
+html[data-theme="dark"] .evidence-output {
+  background: rgba(255, 255, 255, 0.08);
+}

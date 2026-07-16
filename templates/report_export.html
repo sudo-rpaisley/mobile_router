@@ -19,6 +19,7 @@
       <li>{{ report.interfaces|length }} interfaces</li>
       <li>{{ report.jobs|length }} background jobs</li>
       <li>{{ report.alerts|length }} new-device alerts</li>
+      <li>{{ report.evidence|length }} evidence vault records</li>
     </ul>
   </div>
 </section>
@@ -39,6 +40,22 @@
       </div>
     {% else %}
       <p class="text-muted">No devices discovered yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Evidence Vault</h2>
+    {% if report.evidence %}
+      <ul>
+        {% for item in report.evidence %}
+          <li>{{ item.title }} — {{ item.category }} — {{ item.created_at_label }}{% if item.file_name %} — {{ item.file_name }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No evidence records captured yet.</p>
     {% endif %}
   </div>
 </section>

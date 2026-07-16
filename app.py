@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory
+from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file
 from flask_socketio import SocketIO
 import os
 import json
@@ -12,6 +12,7 @@ import subprocess
 import csv
 import io
 from urllib.parse import quote
+from werkzeug.utils import secure_filename
 
 from routes import register_blueprints
 from scripts.interfaceTools import (
@@ -45,6 +46,9 @@ device_inventory = {}
 device_inventory_lock = threading.Lock()
 new_device_alerts = []
 new_device_alerts_lock = threading.Lock()
+evidence_vault = []
+evidence_vault_lock = threading.Lock()
+EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -102,7 +106,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Cloud C2-style operations controller', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Coordinate approved jobs, progress, artifacts, and remote workers across local and remote lab devices from one dashboard.'},
             {'title': 'Payload/module marketplace', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add a curated module library with prerequisites, expected outputs, configuration, cleanup steps, and professional operator notes.'},
             {'title': 'Quick wired recon profile', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add Shark Jack-style rapid wired-network assessment views for host discovery, service summaries, and risk scoring.'},
-            {'title': 'Evidence and loot vault', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Collect scan outputs, captures, screenshots, and notes into a time-stamped class report with export controls.'},
+            {'title': 'Evidence and loot vault', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Evidence Vault stores timestamped notes, scan output, captures, screenshots, and file metadata with JSON/CSV/Markdown export controls.', 'description': 'Collect scan outputs, captures, screenshots, and notes into a time-stamped class report with export controls.'},
             {'title': 'HID and USB training module', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide Rubber Ducky/Bash Bunny-inspired HID and composite-USB workflows for managed lab machines with logging and cleanup.'},
             {'title': 'Screen capture risk module', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Model Screen Crab-style HDMI observation risk with explicit lab device selection, consent state, and detection/reporting guidance.'},
         ],
@@ -343,6 +347,100 @@ def create_new_device_alert(device, source, interface=None):
         del new_device_alerts[200:]
     return alert
 
+
+
+def evidence_records():
+    """Return evidence vault records with display labels."""
+    with evidence_vault_lock:
+        records = [dict(item) for item in evidence_vault]
+    for item in records:
+        item['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('created_at', 0)))
+    return records
+
+
+def create_evidence_record(title, category='note', source=None, device=None, notes=None, content=None, uploaded_file=None):
+    """Store a timestamped evidence record and optional uploaded file metadata."""
+    title = (title or '').strip()
+    if not title:
+        raise ValueError('Evidence title is required')
+    category = (category or 'note').strip().lower()
+    if category not in {'note', 'scan-output', 'capture', 'screenshot', 'artifact'}:
+        raise ValueError('Unsupported evidence category')
+
+    now = time.time()
+    record = {
+        'id': uuid.uuid4().hex,
+        'title': title,
+        'category': category,
+        'source': (source or '').strip(),
+        'device': (device or '').strip(),
+        'notes': (notes or '').strip(),
+        'content': (content or '').strip(),
+        'created_at': now,
+        'file_name': None,
+        'file_size': None,
+        'download_url': None,
+    }
+
+    if uploaded_file and uploaded_file.filename:
+        os.makedirs(EVIDENCE_DIR, exist_ok=True)
+        safe_name = secure_filename(uploaded_file.filename)
+        if not safe_name:
+            raise ValueError('Uploaded file name is not valid')
+        stored_name = f"{record['id']}-{safe_name}"
+        path = os.path.join(EVIDENCE_DIR, stored_name)
+        uploaded_file.save(path)
+        record.update({
+            'file_name': safe_name,
+            'stored_name': stored_name,
+            'file_size': os.path.getsize(path),
+            'download_url': f"/evidence/{record['id']}/download",
+        })
+
+    with evidence_vault_lock:
+        evidence_vault.insert(0, record)
+        del evidence_vault[500:]
+    return dict(record)
+
+
+def evidence_as_csv(records):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Title', 'Category', 'Source', 'Device', 'File', 'Created', 'Notes', 'Content'])
+    for item in records:
+        writer.writerow([
+            item.get('title'),
+            item.get('category'),
+            item.get('source'),
+            item.get('device'),
+            item.get('file_name'),
+            item.get('created_at_label'),
+            item.get('notes'),
+            item.get('content'),
+        ])
+    return output.getvalue()
+
+
+def evidence_as_markdown(records):
+    lines = ['# Evidence Vault', '']
+    if not records:
+        lines.append('_No evidence records captured yet._')
+    for item in records:
+        lines.extend([
+            f"## {item.get('title', 'Untitled')}",
+            f"- Category: {item.get('category') or 'note'}",
+            f"- Source: {item.get('source') or '—'}",
+            f"- Device: {item.get('device') or '—'}",
+            f"- Created: {item.get('created_at_label')}",
+        ])
+        if item.get('file_name'):
+            lines.append(f"- File: {item.get('file_name')} ({item.get('file_size') or 0} bytes)")
+        if item.get('notes'):
+            lines.extend(['', item.get('notes')])
+        if item.get('content'):
+            lines.extend(['', '```', item.get('content'), '```'])
+        lines.append('')
+    return '\n'.join(lines)
 
 def alert_records():
     """Return alert records with display labels."""
@@ -688,6 +786,7 @@ def build_report_data():
         'insights': manufacturer_insights(devices),
         'jobs': all_job_snapshots(),
         'alerts': alert_records(),
+        'evidence': evidence_records(),
         'capabilities': build_capabilities(),
     }
 
@@ -722,6 +821,11 @@ def report_as_csv(report):
     for job in report['jobs']:
         writer.writerow([job.get('id'), job.get('kind'), job.get('label') or job.get('scan_type'), job.get('status'), job.get('progress')])
     writer.writerow([])
+    writer.writerow(['Evidence'])
+    writer.writerow(['Title', 'Category', 'Source', 'Device', 'File', 'Created'])
+    for item in report['evidence']:
+        writer.writerow([item.get('title'), item.get('category'), item.get('source'), item.get('device'), item.get('file_name'), item.get('created_at_label')])
+    writer.writerow([])
     writer.writerow(['Alerts'])
     writer.writerow(['Device', 'IP', 'MAC', 'Manufacturer', 'Source', 'Read', 'Created'])
     for alert in report['alerts']:
@@ -742,6 +846,7 @@ def report_as_markdown(report):
         f"- Interfaces: {len(report['interfaces'])}",
         f"- Jobs: {len(report['jobs'])}",
         f"- Alerts: {len(report['alerts'])}",
+        f"- Evidence records: {len(report['evidence'])}",
         '',
         '## Devices',
         '| Name | IP | MAC/BSSID | Manufacturer | Sources |',
@@ -752,6 +857,9 @@ def report_as_markdown(report):
     lines.extend(['', '## Interfaces', '| Name | Type | State | Manufacturer |', '| --- | --- | --- | --- |'])
     for iface in report['interfaces']:
         lines.append(f"| {iface.get('name', '')} | {iface.get('interface_type', '')} | {iface.get('state', '')} | {iface.get('manufacturer', '')} |")
+    lines.extend(['', '## Evidence', '| Title | Category | Source | Device | File | Created |', '| --- | --- | --- | --- | --- | --- |'])
+    for item in report['evidence']:
+        lines.append(f"| {item.get('title', '')} | {item.get('category', '')} | {item.get('source') or ''} | {item.get('device') or ''} | {item.get('file_name') or ''} | {item.get('created_at_label') or ''} |")
     lines.extend(['', '## Alerts', '| Device | IP | MAC | Source | Read |', '| --- | --- | --- | --- | --- |'])
     for alert in report['alerts']:
         lines.append(f"| {alert.get('display_name', '')} | {alert.get('ip') or ''} | {alert.get('mac') or ''} | {alert.get('source') or ''} | {alert.get('read')} |")
@@ -896,6 +1004,55 @@ def export_capabilities_json():
         'capabilities': build_capabilities(),
         'exported_at': time.time(),
     })
+
+
+
+@app.route('/evidence')
+def evidence_page():
+    return render_template('evidence.html', title='Evidence Vault', evidence=evidence_records(), **current_context())
+
+
+@app.route('/evidence', methods=['POST'])
+def create_evidence_route():
+    try:
+        record = create_evidence_record(
+            request.form.get('title'),
+            request.form.get('category'),
+            request.form.get('source'),
+            request.form.get('device'),
+            request.form.get('notes'),
+            request.form.get('content'),
+            request.files.get('artifact'),
+        )
+    except ValueError as e:
+        return json_error(str(e))
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_success(evidence=record)
+    return render_template('evidence.html', title='Evidence Vault', evidence=evidence_records(), created=record, **current_context())
+
+
+@app.route('/evidence.<fmt>')
+def export_evidence(fmt):
+    records = evidence_records()
+    if fmt == 'json':
+        return jsonify({'evidence': records, 'exported_at': time.time()})
+    if fmt == 'csv':
+        return Response(evidence_as_csv(records), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=evidence-vault.csv'})
+    if fmt in {'md', 'markdown'}:
+        return Response(evidence_as_markdown(records), mimetype='text/markdown', headers={'Content-Disposition': 'attachment; filename=evidence-vault.md'})
+    return json_error('Unsupported evidence export format', 404)
+
+
+@app.route('/evidence/<evidence_id>/download')
+def download_evidence_file(evidence_id):
+    with evidence_vault_lock:
+        record = next((item for item in evidence_vault if item.get('id') == evidence_id), None)
+    if not record or not record.get('stored_name'):
+        return json_error('Evidence file not found', 404)
+    path = os.path.join(EVIDENCE_DIR, record['stored_name'])
+    if not os.path.isfile(path):
+        return json_error('Evidence file not found', 404)
+    return send_file(path, as_attachment=True, download_name=record.get('file_name') or record['stored_name'])
 
 
 @app.route('/reports')

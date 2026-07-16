@@ -205,6 +205,35 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('capabilities', response.get_json())
 
 
+
+    def test_evidence_vault_records_and_exports_artifacts(self):
+        app_module.evidence_vault.clear()
+
+        response = self.client.get('/evidence')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Evidence and Loot Vault', response.data)
+
+        response = self.client.post('/evidence', data={
+            'title': 'Router scan output',
+            'category': 'scan-output',
+            'source': 'active-scan',
+            'device': '192.168.20.1',
+            'notes': 'Gateway exposed SSH and DNS during lab scan.',
+            'content': 'Open ports: 22, 53',
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['evidence']['category'], 'scan-output')
+
+        response = self.client.get('/evidence.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['evidence'][0]['title'], 'Router scan output')
+
+        response = self.client.get('/reports.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['evidence'][0]['title'], 'Router scan output')
+
     def test_reports_page_and_exports_render(self):
         app_module.device_inventory.clear()
         app_module.new_device_alerts.clear()

@@ -15,6 +15,7 @@
   <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Devices</p><strong>{{ report.insights.total_devices }}</strong></div></article>
   <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Interfaces</p><strong>{{ report.interfaces|length }}</strong></div></article>
   <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Alerts</p><strong>{{ report.alerts|length }}</strong></div></article>
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Evidence</p><strong>{{ report.evidence|length }}</strong></div></article>
 </section>
 
 <section class="theme-card card">
@@ -38,6 +39,7 @@
       <li>Network interface list and adapter metadata</li>
       <li>Background scan jobs and live scan history currently in memory</li>
       <li>New device alerts and read/unread state</li>
+      <li>Evidence vault notes, uploaded artifact metadata, and scan-output records</li>
       <li>Runtime capabilities</li>
     </ul>
   </div>
