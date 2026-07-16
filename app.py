@@ -9,6 +9,7 @@ import asyncio
 import re
 import shutil
 import subprocess
+from urllib.parse import quote
 
 from routes import register_blueprints
 from scripts.interfaceTools import (
@@ -320,6 +321,8 @@ def inventory_key(device):
 def create_new_device_alert(device, source, interface=None):
     """Record an unread alert for a newly observed inventory device."""
     display_name = device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device'
+    device_identifier = device.get('mac') or device.get('bssid') or device.get('ip')
+    device_url = f"/clients/{quote(str(device_identifier))}" if device_identifier else None
     alert = {
         'id': uuid.uuid4().hex,
         'device_id': device.get('id'),
@@ -327,6 +330,7 @@ def create_new_device_alert(device, source, interface=None):
         'ip': device.get('ip'),
         'mac': device.get('mac') or device.get('bssid'),
         'manufacturer': device.get('manufacturer') or 'Unknown',
+        'device_url': device_url,
         'source': source,
         'interface': interface,
         'created_at': time.time(),

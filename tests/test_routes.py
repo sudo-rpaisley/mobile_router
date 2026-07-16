@@ -310,6 +310,7 @@ class RouteSmokeTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload['unread_count'], 1)
         self.assertEqual(payload['alerts'][0]['ip'], '192.168.20.10')
+        self.assertEqual(payload['alerts'][0]['device_url'], '/clients/48%3Ab0%3A2d%3Aef%3Aec%3Af2')
 
         alert_id = payload['alerts'][0]['id']
         response = self.client.post(f'/alerts/{alert_id}/read')
@@ -330,6 +331,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'New Device Alerts', response.data)
         self.assertIn(b'192.168.20.10', response.data)
+        self.assertIn(b'View device', response.data)
+        self.assertIn(b'data-device-url=', response.data)
         self.assertIn(b'alerts.js', response.data)
 
         response = self.client.get('/capabilities')

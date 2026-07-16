@@ -415,3 +415,12 @@ html[data-theme="dark"] .roadmap-completed-note {
   align-items: center;
   gap: 1rem;
 }
+
+
+.device-alert-row[data-device-url] {
+  cursor: pointer;
+}
+
+.alert-device-link {
+  font-weight: 700;
+}
