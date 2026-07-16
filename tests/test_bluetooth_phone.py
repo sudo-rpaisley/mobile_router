@@ -142,8 +142,47 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
             ],
         )
 
-    def test_pairing_mode_capability_is_linux_bluez_only(self):
-        self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
+    def test_pairing_mode_capability_uses_native_helper_on_windows(self):
+        with tempfile.NamedTemporaryFile() as helper:
+            with patch.dict(
+                "os.environ",
+                {"MOBILE_ROUTER_BLUETOOTH_HELPER": helper.name},
+                clear=False,
+            ):
+                capability = bluetooth_pairing_mode_capability(system="Windows")
+
+        self.assertTrue(capability["available"])
+        self.assertEqual(capability["tool"], "native-helper")
+
+    def test_pairing_mode_capability_requires_helper_on_windows(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
+
+    @patch("scripts.bluetooth_phone.BluetoothPhoneHelperClient")
+    @patch("scripts.bluetooth_phone.bluetooth_pairing_mode_capability")
+    def test_enable_pairing_mode_uses_native_helper(self, capability, helper_client):
+        capability.return_value = {
+            "available": True,
+            "tool": "native-helper",
+            "path": "C:/MobileRouter/phone-helper.exe",
+            "message": "Available",
+        }
+        helper_client.return_value.set_advertising.return_value = {
+            "enabled": True,
+            "message": "Advertising enabled",
+        }
+
+        result = enable_bluetooth_pairing_mode("Camper Router")
+
+        helper_client.assert_called_once_with(
+            "C:/MobileRouter/phone-helper.exe",
+            timeout=15,
+        )
+        helper_client.return_value.set_advertising.assert_called_once_with(
+            True,
+            display_name="Camper Router",
+        )
+        self.assertTrue(result["enabled"])
 
 
 class BluetoothPhoneRouteTest(unittest.TestCase):
@@ -625,6 +664,31 @@ class BluetoothPhoneConnectorTest(unittest.TestCase):
         self.assertEqual(command, [self.helper.name])
         self.assertEqual(request_payload["action"], "pull_pbap")
         self.assertEqual(request_payload["phonebook"], "pb")
+
+    def test_helper_set_advertising_uses_protocol_action(self):
+        runner = unittest.mock.Mock(
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "protocol_version": 1,
+                        "status": "success",
+                        "enabled": True,
+                        "message": "Advertising enabled",
+                    }
+                ),
+                stderr="",
+            )
+        )
+        client = BluetoothPhoneHelperClient(self.helper.name, runner=runner)
+
+        result = client.set_advertising(True, display_name="Camper Router")
+
+        request_payload = json.loads(runner.call_args.kwargs["input"])
+        self.assertEqual(request_payload["action"], "set_advertising")
+        self.assertTrue(request_payload["enabled"])
+        self.assertEqual(request_payload["display_name"], "Camper Router")
+        self.assertEqual(result["message"], "Advertising enabled")
 
     def test_synchronise_only_requests_enabled_pbap_features(self):
         contacts = "BEGIN:VCARD\nFN:Test Contact\nTEL:123\nEND:VCARD\n"

@@ -6,6 +6,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from scripts.bluetooth_phone_connector import (
+    BluetoothPhoneConnectorError,
+    BluetoothPhoneHelperClient,
+)
+
 
 BLUETOOTH_PHONE_FEATURES = (
     {
@@ -190,8 +195,16 @@ def _bluez_dbus_available(busctl_path):
 
 
 
+def _configured_bluetooth_helper():
+    configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
+    if not configured_helper:
+        return None
+    helper_path = Path(configured_helper)
+    return str(helper_path) if helper_path.is_file() else None
+
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
+    helper = _configured_bluetooth_helper()
     if system == "Linux":
         bluetoothctl = shutil.which("bluetoothctl")
         if bluetoothctl:
@@ -201,17 +214,42 @@ def bluetooth_pairing_mode_capability(system=None):
                 "path": bluetoothctl,
                 "message": "Mobile Router can make the adapter powered, pairable, and discoverable for phones.",
             }
+        if helper:
+            return {
+                "available": True,
+                "tool": "native-helper",
+                "path": helper,
+                "message": "Mobile Router can ask the configured Bluetooth helper to advertise this adapter for phones.",
+            }
         return {
             "available": False,
             "tool": None,
             "path": None,
-            "message": "Pairing mode requires BlueZ bluetoothctl on this host.",
+            "message": "Pairing mode requires BlueZ bluetoothctl or a Mobile Router Bluetooth helper on this host.",
+        }
+    if system in {"Windows", "Darwin"}:
+        if helper:
+            return {
+                "available": True,
+                "tool": "native-helper",
+                "path": helper,
+                "message": "Mobile Router can ask the configured native Bluetooth helper to advertise this adapter for phones.",
+            }
+        platform_name = "Windows" if system == "Windows" else "macOS"
+        return {
+            "available": False,
+            "tool": None,
+            "path": None,
+            "message": f"{platform_name} Bluetooth advertising requires MOBILE_ROUTER_BLUETOOTH_HELPER to point to the native Mobile Router helper.",
         }
     return {
         "available": False,
         "tool": None,
         "path": None,
-        "message": "Automatic pairing mode is currently supported on Linux/BlueZ hosts only.",
+        "message": (
+            "Automatic pairing mode is not supported on this host without a "
+            "native Mobile Router Bluetooth helper."
+        ),
     }
 
 
@@ -232,11 +270,29 @@ def _run_bluetoothctl_pairing_commands(commands, capability, timeout):
             raise RuntimeError(message)
 
 
+def _run_helper_advertising(capability, enabled, display_name=None, timeout=15):
+    try:
+        result = BluetoothPhoneHelperClient(
+            capability["path"],
+            timeout=timeout,
+        ).set_advertising(enabled, display_name=display_name)
+    except BluetoothPhoneConnectorError as exc:
+        raise RuntimeError(f"Bluetooth helper advertising request failed: {exc}") from exc
+    return {
+        "enabled": result["enabled"],
+        "tool": capability["tool"],
+        "message": result["message"],
+    }
+
+
 def enable_bluetooth_pairing_mode(display_name, timeout=15):
     name = validate_display_name(display_name)
     capability = bluetooth_pairing_mode_capability()
     if not capability["available"]:
         raise BluetoothPairingModeUnavailable(capability["message"])
+    if capability["tool"] == "native-helper":
+        result = _run_helper_advertising(capability, True, display_name=name, timeout=timeout)
+        return {**result, "display_name": name}
 
     _run_bluetoothctl_pairing_commands(
         [
@@ -262,6 +318,8 @@ def disable_bluetooth_pairing_mode(timeout=15):
     capability = bluetooth_pairing_mode_capability()
     if not capability["available"]:
         raise BluetoothPairingModeUnavailable(capability["message"])
+    if capability["tool"] == "native-helper":
+        return _run_helper_advertising(capability, False, timeout=timeout)
     _run_bluetoothctl_pairing_commands(
         [["discoverable", "off"], ["pairable", "off"]],
         capability,

@@ -105,6 +105,16 @@ class BluetoothPhoneHelperClient:
             )
         return capabilities
 
+    def set_advertising(self, enabled, display_name=None):
+        payload = {"enabled": enabled is True}
+        if display_name is not None:
+            payload["display_name"] = str(display_name)
+        response = self._request("set_advertising", **payload)
+        return {
+            "enabled": response.get("enabled") is True,
+            "message": str(response.get("message") or "Bluetooth advertising updated."),
+        }
+
     def pull_pbap(self, device_id, phonebook):
         if phonebook not in PBAP_PHONEBOOKS.values():
             raise BluetoothPhoneConnectorError("Unsupported PBAP phone book")
