@@ -1,6 +1,31 @@
 $(document).ready(function () {
+    function isRedTeamAuthorized() {
+        return $("#red-team-authorization").is(":checked");
+    }
+
+    function requireRedTeamAuthorization() {
+        if (isRedTeamAuthorized()) {
+            return true;
+        }
+        alert("Confirm authorization before running red-team actions.");
+        $("#red-team-authorization").focus();
+        return false;
+    }
+
+    function authorizationPayload() {
+        return isRedTeamAuthorized() ? "true" : "false";
+    }
+
+    function syncRedTeamButtons() {
+        $(".red-team-grid button").prop("disabled", !isRedTeamAuthorized());
+    }
+
+    $("#red-team-authorization").on("change", syncRedTeamButtons);
+    syncRedTeamButtons();
+
     $("#DoS-Submit").on("click", function(event) {
         event.preventDefault(); //stop the form submitting
+        if (!requireRedTeamAuthorization()) { return; }
     
         var $destinationAddressInput = $("#inlineFormInputDestination");
         var $destinationPortInput = $("#inlineFormInputPort");
@@ -46,7 +71,8 @@ $(document).ready(function () {
                 destinationAddress: destinationAddress,
                 destinationPort: destinationPort,
                 frames: frames,
-                selectedInterface: selectedInterface
+                selectedInterface: selectedInterface,
+                authorizationConfirmed: authorizationPayload()
             },
             beforeSend: function() {
                 $submitButton.prop("disabled", true);
@@ -67,7 +93,7 @@ $(document).ready(function () {
                 $submitButton.attr('class', originalButtonClass);
                 $submitButton.attr('style', originalButtonStyle);
                 $submitButton.text(originalButtonText); // restore the original button text
-                $submitButton.prop("disabled", false);
+                syncRedTeamButtons();
             }
         });
     });
@@ -75,6 +101,7 @@ $(document).ready(function () {
 
     $("#DoS-Broadcast-Submit").on("click", function(event) {
         event.preventDefault(); //stop the form submitting
+        if (!requireRedTeamAuthorization()) { return; }
     
         var $framesInput = $("#Broadcast-DoS-Frames"); // variable for frames input
         var frames = $framesInput.val(); // get frames value
@@ -104,7 +131,8 @@ $(document).ready(function () {
             type: "POST",
             data: {
                 frames: frames,
-                selectedInterface: selectedInterface
+                selectedInterface: selectedInterface,
+                authorizationConfirmed: authorizationPayload()
             },
             beforeSend: function() {
                 $submitButton.prop("disabled", true);
@@ -123,7 +151,7 @@ $(document).ready(function () {
                 $submitButton.attr('class', originalButtonClass);
                 $submitButton.attr('style', originalButtonStyle);
                 $submitButton.text(originalButtonText); // restore the original button text
-                $submitButton.prop("disabled", false);
+                syncRedTeamButtons();
             }
         });
     });
@@ -131,6 +159,7 @@ $(document).ready(function () {
 
     $("#Beacon-Advertise-Submit").on("click", function(event) {
         event.preventDefault();
+        if (!requireRedTeamAuthorization()) { return; }
 
         var $ssidInput = $("#Beacon-SSID");
         var $framesInput = $("#Beacon-Frames");
@@ -161,7 +190,8 @@ $(document).ready(function () {
                 frames: frames,
                 srcMac: srcMac,
                 bssid: bssid,
-                selectedInterface: selectedInterface
+                selectedInterface: selectedInterface,
+                authorizationConfirmed: authorizationPayload()
             },
             beforeSend: function() {
                 $submitButton.prop("disabled", true);
@@ -180,7 +210,7 @@ $(document).ready(function () {
                 $submitButton.attr('class', originalButtonClass);
                 $submitButton.attr('style', originalButtonStyle);
                 $submitButton.text(originalButtonText);
-                $submitButton.prop("disabled", false);
+                syncRedTeamButtons();
             }
         });
     });
@@ -188,6 +218,7 @@ $(document).ready(function () {
 
     $("#Deauth-Submit").on("click", function(event) {
         event.preventDefault();
+        if (!requireRedTeamAuthorization()) { return; }
 
         var $apInput = $("#Deauth-AP");
         var $targetInput = $("#Deauth-Target");
@@ -215,7 +246,8 @@ $(document).ready(function () {
                 ap: ap,
                 target: target,
                 frames: frames,
-                selectedInterface: selectedInterface
+                selectedInterface: selectedInterface,
+                authorizationConfirmed: authorizationPayload()
             },
             beforeSend: function() {
                 $submitButton.prop("disabled", true);
@@ -234,13 +266,14 @@ $(document).ready(function () {
                 $submitButton.attr('class', originalButtonClass);
                 $submitButton.attr('style', originalButtonStyle);
                 $submitButton.text(originalButtonText);
-                $submitButton.prop("disabled", false);
+                syncRedTeamButtons();
             }
         });
     });
 
     $("#Aireplay-Deauth-Submit").on("click", function(event) {
         event.preventDefault();
+        if (!requireRedTeamAuthorization()) { return; }
 
         var $apInput = $("#Aireplay-Deauth-AP");
         var $targetInput = $("#Aireplay-Deauth-Target");
@@ -268,7 +301,8 @@ $(document).ready(function () {
                 ap: ap,
                 target: target,
                 frames: frames,
-                selectedInterface: selectedInterface
+                selectedInterface: selectedInterface,
+                authorizationConfirmed: authorizationPayload()
             },
             beforeSend: function() {
                 $submitButton.prop("disabled", true);
@@ -287,7 +321,7 @@ $(document).ready(function () {
                 $submitButton.attr('class', originalButtonClass);
                 $submitButton.attr('style', originalButtonStyle);
                 $submitButton.text(originalButtonText);
-                $submitButton.prop("disabled", false);
+                syncRedTeamButtons();
             }
         });
     });

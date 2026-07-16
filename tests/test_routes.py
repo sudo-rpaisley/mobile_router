@@ -157,6 +157,23 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.get_json()['hosts'][0]['manufacturer'], 'Raspberry Pi Foundation')
         self.assertIn('mac:b8:27:eb:11:22:33', app_module.device_inventory)
 
+
+    def test_red_team_page_requires_authorization_confirmation(self):
+        response = self.client.get('/red-team')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="red-team-authorization"', response.data)
+        self.assertIn(b'Authorization required', response.data)
+
+    def test_red_team_actions_reject_missing_authorization(self):
+        response = self.client.post('/syn-flood-broadcast', data={
+            'frames': '1',
+            'selectedInterface': 'eth0',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Authorization confirmation is required')
+
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')
         self.assertEqual(response.status_code, 200)

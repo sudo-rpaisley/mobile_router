@@ -10,6 +10,20 @@
       </div>
     </section>
 
+    <section class="red-team-authorization theme-card card" aria-labelledby="red-team-authorization-title">
+      <div class="card-body">
+        <div>
+          <p class="page-kicker">Safety gate</p>
+          <h2 id="red-team-authorization-title" class="theme-section-title">Authorization required</h2>
+          <p class="red-team-authorization-copy">Confirm you own or have explicit permission to test the target network before running any red-team action.</p>
+        </div>
+        <label class="red-team-authorization-check" for="red-team-authorization">
+          <input id="red-team-authorization" type="checkbox" value="true">
+          I am authorized to run these tests.
+        </label>
+      </div>
+    </section>
+
     <section class="red-team-grid">
       {% include 'attacks/_DOSAttack.html' %}
       {% include 'attacks/_broadcastAttack.html' %}
