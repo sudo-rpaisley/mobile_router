@@ -240,21 +240,6 @@ def _configured_bluetooth_helper(system=None):
     return None
 
 
-def _is_bundled_windows_settings_helper(helper_path):
-    if not helper_path:
-        return False
-    try:
-        helper = Path(helper_path).resolve()
-        bundled = (
-            Path(__file__).resolve().parents[1]
-            / "helpers"
-            / "windows"
-            / "mobile-router-bluetooth-helper.py"
-        ).resolve()
-    except OSError:
-        return False
-    return helper == bundled
-
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
     helper = _configured_bluetooth_helper(system)
@@ -281,17 +266,6 @@ def bluetooth_pairing_mode_capability(system=None):
             "message": "Pairing mode requires BlueZ bluetoothctl or a Mobile Router Bluetooth helper on this host.",
         }
     if system in {"Windows", "Darwin"}:
-        if helper and system == "Windows" and _is_bundled_windows_settings_helper(helper):
-            return {
-                "available": False,
-                "tool": None,
-                "path": helper,
-                "message": (
-                    "The bundled Windows helper will not pair phones through the whole laptop. "
-                    "Install a full Mobile Router native Bluetooth helper that provides an app-scoped "
-                    "Bluetooth service/profile to pair only with this app."
-                ),
-            }
         if helper:
             return {
                 "available": True,
@@ -432,7 +406,7 @@ def bluetooth_display_name_capability(system=None):
             "available": False,
             "tool": None,
             "path": None,
-            "message": "The name will be saved for Mobile Router. Windows system Bluetooth names are not changed because pairing through the PC would pair with the whole laptop, not only this app.",
+            "message": "The name will be saved for Mobile Router. Windows system Bluetooth names are not changed; the bundled helper advertises an app-scoped Mobile Router Bluetooth LE service instead.",
         }
     return {
         "available": False,

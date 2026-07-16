@@ -73,15 +73,18 @@ browse interfaces or open the **Red Team** page to try the network utilities.
 
 ### Windows Bluetooth phone helper
 
-For the Bluetooth Phone Integration card on Windows, Mobile Router now bundles
-a lightweight helper at `helpers/windows/mobile-router-bluetooth-helper.py`. No
-separate download is required for basic pairing: when advertising is enabled,
-this helper opens Windows Bluetooth settings so the phone can pair with the PC.
+For the Bluetooth Phone Integration card on Windows, Mobile Router bundles a
+lightweight helper at `helpers/windows/mobile-router-bluetooth-helper.py`. When
+advertising is enabled, this helper starts a Mobile Router-owned Bluetooth LE
+advertisement with an app-specific service UUID instead of opening Windows
+Bluetooth settings. That keeps discovery scoped to Mobile Router and avoids
+pairing the phone with the whole laptop or renaming the PC Bluetooth adapter.
 
-The bundled helper is intentionally pairing-only. PBAP/MAP contact, call-history,
-and message sync still require a full native helper executable when that is
-available. Put that executable in one of these project folders before starting
-Mobile Router:
+The bundled helper is intentionally advertising-only: a phone needs a Mobile
+Router companion/client app that knows the advertised service UUID to connect to
+this app-scoped service. PBAP/MAP contact, call-history, and message sync still
+require a full native helper executable when that is available. Put that
+executable in one of these project folders before starting Mobile Router:
 
 - `helpers/windows/mobile-router-bluetooth-helper.exe`
 - `helpers/bluetooth/mobile-router-bluetooth-helper.exe`
@@ -91,7 +94,7 @@ If you prefer a system-wide install, put `mobile-router-bluetooth-helper.exe` on
 `PATH`. Advanced deployments can still set `MOBILE_ROUTER_BLUETOOTH_HELPER` to a
 full helper path. The app checks `MOBILE_ROUTER_BLUETOOTH_HELPER` first, then the project
 folders, then `PATH` when deciding whether Windows Bluetooth sync is available;
-the bundled Python helper is used as the fallback for pairing.
+the bundled Python helper is used as the fallback for app-scoped BLE advertising.
 
 ### OUI Database Location
 
