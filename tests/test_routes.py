@@ -184,6 +184,39 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('capabilities', response.get_json())
 
 
+    def test_reports_page_and_exports_render(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/reports')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Reports', response.data)
+        self.assertIn(b'/reports.json', response.data)
+
+        response = self.client.get('/reports.json')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('devices', payload)
+        self.assertIn('capabilities', payload)
+        self.assertIn('alerts', payload)
+
+        response = self.client.get('/reports.csv')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response.content_type)
+        self.assertIn(b'Mobile Router Report', response.data)
+
+        response = self.client.get('/reports.md')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'# Mobile Router Report', response.data)
+
+        response = self.client.get('/reports.html')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Mobile Router Report', response.data)
+
+
     def test_inventory_page_renders_manufacturer_insights(self):
         app_module.device_inventory.clear()
         app_module.record_inventory_devices([

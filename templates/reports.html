@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Exports</p>
+    <h1 class="page-title">Reports</h1>
+    <p class="page-subtitle">Export interfaces, discovered devices, jobs, alerts, and runtime capabilities in multiple formats.</p>
+  </div>
+</section>
+
+<section class="theme-grid inventory-summary-grid" aria-label="Report summary">
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Devices</p><strong>{{ report.insights.total_devices }}</strong></div></article>
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Interfaces</p><strong>{{ report.interfaces|length }}</strong></div></article>
+  <article class="theme-card inventory-stat-card"><div class="card-body"><p class="page-kicker">Alerts</p><strong>{{ report.alerts|length }}</strong></div></article>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Download report</h2>
+    <p class="text-muted">Report generated at {{ report.exported_at_label }}.</p>
+    <div class="theme-actions">
+      <a class="btn btn-primary" href="/reports.json">JSON</a>
+      <a class="btn btn-outline-primary" href="/reports.csv">CSV</a>
+      <a class="btn btn-outline-secondary" href="/reports.md">Markdown</a>
+      <a class="btn btn-outline-dark" href="/reports.html">HTML</a>
+    </div>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Included sections</h2>
+    <ul>
+      <li>Discovered device inventory and manufacturer insights</li>
+      <li>Network interface list and adapter metadata</li>
+      <li>Background scan jobs and live scan history currently in memory</li>
+      <li>New device alerts and read/unread state</li>
+      <li>Runtime capabilities</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}
