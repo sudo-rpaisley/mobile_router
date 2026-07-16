@@ -45,8 +45,8 @@ ROADMAP_SECTIONS = [
     {
         'title': 'High-impact UX',
         'items': [
-            {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
-            {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
+            {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Shows Ready/state, No address, and adapter type directly on adapter cards.', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
+            {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Interface detail pages include an Action Readiness panel with available actions and dependency guidance.', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
             {'title': 'Better empty and error states', 'priority': 'High', 'priority_class': 'danger', 'description': 'Replace generic scan failures with actionable install/setup guidance and links to capabilities.'},
             {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
         ],
@@ -54,9 +54,9 @@ ROADMAP_SECTIONS = [
     {
         'title': 'Network visibility',
         'items': [
-            {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
+            {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
-            {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
+            {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
         ],
     },
@@ -66,7 +66,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
             {'title': 'Wireless network timelines', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track signal, channel, security, AP count, and seen timestamps per SSID/BSSID.'},
             {'title': 'Known network labels', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users mark SSIDs as trusted, lab, suspicious, or ignored.'},
-            {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
+            {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Bluetooth scans report action capability and show host-tool guidance for bluetoothctl or BlueZ D-Bus support.', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
         ],
     },
     {
@@ -80,6 +80,16 @@ ROADMAP_SECTIONS = [
         ],
     },
 ]
+
+
+def remaining_roadmap_items():
+    """Return roadmap entries that have not been checked off as done."""
+    remaining = []
+    for section in ROADMAP_SECTIONS:
+        for item in section['items']:
+            if item.get('status') != 'Done':
+                remaining.append({**item, 'section': section['title']})
+    return remaining
 
 
 BLUETOOTHCTL_ACTIONS = {
@@ -467,7 +477,13 @@ def red_team():
 
 @app.route('/roadmap')
 def roadmap_page():
-    return render_template('roadmap.html', title='Roadmap', roadmap_sections=ROADMAP_SECTIONS, **current_context())
+    return render_template(
+        'roadmap.html',
+        title='Roadmap',
+        roadmap_sections=ROADMAP_SECTIONS,
+        remaining_roadmap_items=remaining_roadmap_items(),
+        **current_context(),
+    )
 
 
 register_blueprints(app, current_context)

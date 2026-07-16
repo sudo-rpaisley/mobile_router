@@ -351,3 +351,20 @@ html[data-theme="dark"] .inventory-unknown-vendor,
 html[data-theme="dark"] .inventory-unknown-row {
     background: #3a2f12;
 }
+
+.roadmap-progress-card {
+    margin-bottom: 1.25rem;
+}
+
+.roadmap-status {
+    white-space: nowrap;
+}
+
+.roadmap-completed-note {
+    color: #198754;
+    font-size: 0.9rem;
+}
+
+html[data-theme="dark"] .roadmap-completed-note {
+    color: #86efac;
+}

@@ -24,6 +24,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Project Roadmap', response.data)
         self.assertIn(b'Device inventory page', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
+        self.assertIn(b'Done', response.data)
+        self.assertIn(b'completed', response.data)
+        self.assertIn(b'remaining', response.data)
 
 
 
