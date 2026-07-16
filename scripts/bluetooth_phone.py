@@ -63,6 +63,10 @@ class BluetoothDisplayNameUnavailable(RuntimeError):
     """Raised when the host Bluetooth display name cannot be changed safely."""
 
 
+class BluetoothPairingModeUnavailable(RuntimeError):
+    """Raised when the host adapter cannot be made pairable/discoverable safely."""
+
+
 def bluetooth_phone_config_path():
     configured_path = os.environ.get("MOBILE_ROUTER_BLUETOOTH_PHONE_CONFIG")
     if configured_path:
@@ -179,6 +183,69 @@ def _bluez_dbus_available(busctl_path):
         return False
     return result.returncode == 0
 
+
+
+def bluetooth_pairing_mode_capability(system=None):
+    system = system or platform.system()
+    if system == "Linux":
+        bluetoothctl = shutil.which("bluetoothctl")
+        if bluetoothctl:
+            return {
+                "available": True,
+                "tool": "bluetoothctl",
+                "path": bluetoothctl,
+                "message": "Mobile Router can make the adapter powered, pairable, and discoverable for phones.",
+            }
+        return {
+            "available": False,
+            "tool": None,
+            "path": None,
+            "message": "Pairing mode requires BlueZ bluetoothctl on this host.",
+        }
+    return {
+        "available": False,
+        "tool": None,
+        "path": None,
+        "message": "Automatic pairing mode is currently supported on Linux/BlueZ hosts only.",
+    }
+
+
+def enable_bluetooth_pairing_mode(display_name, timeout=15):
+    name = validate_display_name(display_name)
+    capability = bluetooth_pairing_mode_capability()
+    if not capability["available"]:
+        raise BluetoothPairingModeUnavailable(capability["message"])
+
+    commands = [
+        [capability["path"], "power", "on"],
+        [capability["path"], "system-alias", name],
+        [capability["path"], "agent", "NoInputNoOutput"],
+        [capability["path"], "default-agent"],
+        [capability["path"], "pairable", "on"],
+        [capability["path"], "discoverable", "on"],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"Unable to enable Bluetooth pairing mode: {exc}") from exc
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "Bluetooth pairing mode command failed").strip()
+            raise RuntimeError(message)
+    return {
+        "enabled": True,
+        "display_name": name,
+        "tool": capability["tool"],
+        "message": (
+            f'Bluetooth pairing mode is enabled for "{name}". Pair the phone from its Bluetooth settings, approve the prompt, then synchronise authorised data.'
+        ),
+    }
 
 def bluetooth_display_name_capability(system=None):
     system = system or platform.system()

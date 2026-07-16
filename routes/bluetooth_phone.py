@@ -6,12 +6,15 @@ from flask import Blueprint, current_app, jsonify, render_template, request, sen
 
 from scripts.bluetooth_phone import (
     BluetoothDisplayNameUnavailable,
+    BluetoothPairingModeUnavailable,
     BluetoothPhoneSettingsError,
     apply_bluetooth_display_name,
+    bluetooth_pairing_mode_capability,
     bluetooth_display_name_capability,
     bluetooth_phone_feature_options,
     build_settings,
     load_bluetooth_phone_settings,
+    enable_bluetooth_pairing_mode,
     save_bluetooth_phone_settings,
 )
 from scripts.bluetooth_phone_runtime import build_bluetooth_phone_runtime
@@ -40,6 +43,7 @@ def create_bluetooth_phone_blueprint(context_provider):
                 settings=settings,
                 feature_options=bluetooth_phone_feature_options(settings),
                 name_capability=bluetooth_display_name_capability(),
+                pairing_capability=bluetooth_pairing_mode_capability(),
                 runtime=runtime,
                 paired_devices=paired_devices,
                 notice=notice,
@@ -98,6 +102,31 @@ def create_bluetooth_phone_blueprint(context_provider):
             sum(settings["enabled_features"].values()),
         )
         return render_settings_page(settings, notice, notice_style)
+
+
+    @blueprint.route("/bluetooth-phone/pairing-mode", methods=["POST"])
+    def bluetooth_phone_pairing_mode():
+        config_path = current_app.config.get("BLUETOOTH_PHONE_CONFIG")
+        try:
+            settings = load_bluetooth_phone_settings(config_path)
+        except BluetoothPhoneSettingsError as exc:
+            current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
+            settings = build_settings("Mobile Router", [])
+            return render_settings_page(settings, str(exc), "danger", 500)
+
+        try:
+            result = enable_bluetooth_pairing_mode(settings["display_name"])
+        except BluetoothPairingModeUnavailable as exc:
+            return render_settings_page(settings, str(exc), "info", 400)
+        except Exception as exc:
+            current_app.logger.warning("Unable to enable Bluetooth pairing mode: %s", exc)
+            return render_settings_page(
+                settings,
+                f"Bluetooth pairing mode could not be enabled: {exc}",
+                "warning",
+                500,
+            )
+        return render_settings_page(settings, result["message"], "success")
 
     @blueprint.route("/bluetooth-phone/status")
     def bluetooth_phone_status():

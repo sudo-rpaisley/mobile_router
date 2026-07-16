@@ -97,6 +97,37 @@
     <div class="card-body">
       <div class="bluetooth-phone-section-header">
         <div>
+          <h2 class="theme-section-title mb-1">Pair a phone to Mobile Router</h2>
+          <p class="text-muted mb-0">Make this Bluetooth adapter discoverable as a phone accessory using the saved display name, then pair from the phone.</p>
+        </div>
+        {% if pairing_capability.available %}
+          <span class="badge badge-success">Pairing mode available</span>
+        {% else %}
+          <span class="badge badge-secondary">Manual pairing required</span>
+        {% endif %}
+      </div>
+      <p class="text-muted small mt-3 mb-3">{{ pairing_capability.message }}</p>
+      <ol class="theme-list small mb-3">
+        <li>Save the Bluetooth display name and allowed features above.</li>
+        <li>Start pairing mode, then open Bluetooth settings on the phone and select <strong>{{ settings.display_name }}</strong>.</li>
+        <li>Approve the phone permission prompts for the selected details before synchronising.</li>
+      </ol>
+      <div class="theme-actions">
+        <button
+          class="btn btn-outline-primary"
+          type="submit"
+          form="bluetooth-pairing-mode-form"
+          {% if not pairing_capability.available %}disabled{% endif %}>
+          <i class="fa-brands fa-bluetooth-b"></i> Start pairing mode
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="theme-card card">
+    <div class="card-body">
+      <div class="bluetooth-phone-section-header">
+        <div>
           <h2 class="theme-section-title mb-1">Host compatibility</h2>
           <p class="text-muted mb-0">The data model is portable; the Bluetooth transport is selected for the current host.</p>
         </div>
@@ -150,6 +181,8 @@
     <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save phone settings</button>
   </div>
 </form>
+
+<form id="bluetooth-pairing-mode-form" method="post" action="/bluetooth-phone/pairing-mode"></form>
 
 <section class="theme-card card">
   <div class="card-body">

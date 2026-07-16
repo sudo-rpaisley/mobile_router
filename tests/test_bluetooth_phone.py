@@ -9,6 +9,8 @@ from app import app
 from scripts.bluetooth_phone import (
     BluetoothPhoneSettingsError,
     apply_bluetooth_display_name,
+    bluetooth_pairing_mode_capability,
+    enable_bluetooth_pairing_mode,
     bluetooth_display_name_capability,
     build_settings,
     load_bluetooth_phone_settings,
@@ -114,6 +116,35 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
             ["/usr/bin/bluetoothctl", "system-alias", "Camper Router"],
         )
 
+    @patch("scripts.bluetooth_phone.subprocess.run")
+    @patch("scripts.bluetooth_phone.bluetooth_pairing_mode_capability")
+    def test_enable_pairing_mode_makes_adapter_pairable_and_discoverable(self, capability, run):
+        capability.return_value = {
+            "available": True,
+            "tool": "bluetoothctl",
+            "path": "/usr/bin/bluetoothctl",
+            "message": "Available",
+        }
+        run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        result = enable_bluetooth_pairing_mode("Camper Router")
+
+        self.assertTrue(result["enabled"])
+        self.assertEqual(
+            [call.args[0] for call in run.call_args_list],
+            [
+                ["/usr/bin/bluetoothctl", "power", "on"],
+                ["/usr/bin/bluetoothctl", "system-alias", "Camper Router"],
+                ["/usr/bin/bluetoothctl", "agent", "NoInputNoOutput"],
+                ["/usr/bin/bluetoothctl", "default-agent"],
+                ["/usr/bin/bluetoothctl", "pairable", "on"],
+                ["/usr/bin/bluetoothctl", "discoverable", "on"],
+            ],
+        )
+
+    def test_pairing_mode_capability_is_linux_bluez_only(self):
+        self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
+
 
 class BluetoothPhoneRouteTest(unittest.TestCase):
     def setUp(self):
@@ -153,6 +184,8 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.assertIn(b"Phone compatibility", response.data)
         self.assertIn(b"Android", response.data)
         self.assertIn(b"iPhone", response.data)
+        self.assertIn(b"Pair a phone to Mobile Router", response.data)
+        self.assertIn(b"Start pairing mode", response.data)
         self.assertIn(b"Synchronise phone data", response.data)
 
     @patch("routes.bluetooth_phone.bluetooth_display_name_capability")
@@ -226,6 +259,25 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         apply_name.assert_called_once_with("Camper Router")
         self.assertIn(b"Bluetooth display name updated", response.data)
+
+    @patch("routes.bluetooth_phone.enable_bluetooth_pairing_mode")
+    def test_pairing_mode_endpoint_uses_saved_display_name(self, enable_pairing):
+        save_bluetooth_phone_settings(
+            build_settings("Camper Router", ["contacts"]),
+            self.config_path,
+        )
+        enable_pairing.return_value = {
+            "enabled": True,
+            "display_name": "Camper Router",
+            "tool": "bluetoothctl",
+            "message": "Bluetooth pairing mode is enabled for \"Camper Router\".",
+        }
+
+        response = self.client.post("/bluetooth-phone/pairing-mode")
+
+        self.assertEqual(response.status_code, 200)
+        enable_pairing.assert_called_once_with("Camper Router")
+        self.assertIn(b"pairing mode is enabled", response.data)
 
     @patch("routes.bluetooth_phone.build_bluetooth_phone_runtime")
     def test_status_endpoint_reports_runtime_backend(self, build_runtime):
