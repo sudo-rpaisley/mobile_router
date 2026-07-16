@@ -269,15 +269,19 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/port-scan?host=192.168.20.10')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Check a specific device or host', response.data)
+        self.assertIn(b'live progress updates', response.data)
         self.assertIn(b'id="scan-host"', response.data)
+        self.assertIn(b'port_scan_live.js', response.data)
 
     def test_client_detail_links_to_device_port_scan(self):
         response = self.client.get('/clients/192.168.20.10')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Check ports on this device', response.data)
+        self.assertIn(b'Device Port Scan', response.data)
+        self.assertIn(b'Common ports', response.data)
+        self.assertIn(b'All ports', response.data)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+        self.assertIn(b'port_scan_live.js', response.data)
 
     def test_inventory_links_host_devices_to_port_scan(self):
         app_module.device_inventory.clear()
@@ -291,6 +295,65 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertEqual(response.data.count(b'Check ports'), 1)
+
+    @patch('app.threading.Thread')
+    def test_port_scan_job_routes_start_and_report_status(self, thread_cls):
+        app_module.port_scan_jobs.clear()
+        thread_cls.return_value.start.return_value = None
+
+        response = self.client.post('/port-scan-jobs', data={
+            'host': '192.168.20.10',
+            'start': '1',
+            'end': '65535',
+            'label': 'all-port scan',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        job = response.get_json()['job']
+        self.assertEqual(job['status'], 'queued')
+        self.assertEqual(job['total_ports'], 65535)
+
+        response = self.client.get(f"/port-scan-jobs/{job['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['job']['host'], '192.168.20.10')
+
+    @patch('scripts.portScanner.scan_ports')
+    def test_port_scan_job_records_live_open_ports_and_progress(self, scan_ports):
+        app_module.port_scan_jobs.clear()
+        job_id = 'test-job'
+        app_module.port_scan_jobs[job_id] = {
+            'id': job_id,
+            'host': '192.168.20.10',
+            'start': 20,
+            'end': 22,
+            'label': 'custom',
+            'status': 'queued',
+            'open_ports': [],
+            'scanned_ports': 0,
+            'total_ports': 3,
+            'current_port': None,
+            'progress': 0,
+            'message': 'queued',
+            'created_at': 0,
+            'updated_at': 0,
+        }
+
+        def fake_scan(host, start, end, on_open=None, on_progress=None, max_ports=None):
+            for port in [20, 21, 22]:
+                if port == 22:
+                    on_open(port)
+                on_progress(port)
+            return [22]
+
+        scan_ports.side_effect = fake_scan
+
+        app_module.run_port_scan_job(job_id)
+
+        job = app_module.port_scan_jobs[job_id]
+        self.assertEqual(job['status'], 'complete')
+        self.assertEqual(job['open_ports'], [22])
+        self.assertEqual(job['scanned_ports'], 3)
+        self.assertEqual(job['progress'], 100)
 
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')

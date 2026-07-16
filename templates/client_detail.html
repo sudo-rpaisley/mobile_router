@@ -26,14 +26,49 @@
             <dd>{{ manufacturer }}</dd>
           </div>
         </dl>
-        {% if ip %}
-          <div class="theme-actions mt-3">
-            <a class="btn btn-primary" href="/port-scan?host={{ ip|urlencode }}">Check ports on this device</a>
-          </div>
-        {% endif %}
       </div>
     </section>
+
+    {% if ip %}
+      <section class="theme-card card port-scan-panel" data-host="{{ ip }}">
+        <div class="card-body">
+          <h2 class="theme-section-title">Device Port Scan</h2>
+          <p class="text-muted">Run scans in the background and watch open ports appear as they are discovered.</p>
+          <div class="theme-actions">
+            <button class="btn btn-outline-primary" data-port-scan-start data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
+            <button class="btn btn-outline-danger" data-port-scan-start data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
+          </div>
+          <form class="theme-form mt-3" data-port-scan-custom-form>
+            <input type="hidden" data-port-scan-host value="{{ ip }}">
+            <div class="form-row">
+              <div class="col">
+                <label for="device-scan-start">Custom Start Port</label>
+                <input type="number" class="form-control" id="device-scan-start" data-port-scan-start-input value="1" min="1" max="65535" required>
+              </div>
+              <div class="col">
+                <label for="device-scan-end">Custom End Port</label>
+                <input type="number" class="form-control" id="device-scan-end" data-port-scan-end-input value="1024" min="1" max="65535" required>
+              </div>
+            </div>
+            <div class="theme-actions">
+              <button class="btn btn-primary" data-port-scan-custom-submit>Run custom scan</button>
+              <a class="btn btn-link" href="/port-scan?host={{ ip|urlencode }}">Open full port scan page</a>
+            </div>
+          </form>
+          <div class="theme-results mt-3">
+            <div data-port-scan-status class="mb-2"><p class="text-muted">No port scan running for this device.</p></div>
+            <div class="progress mb-2" aria-label="Device port scan progress">
+              <div class="progress-bar" data-port-scan-progress-bar role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</div>
+            </div>
+            <p class="text-muted" data-port-scan-progress-text>0 ports checked</p>
+            <h3>Open ports discovered</h3>
+            <div data-port-scan-open-ports><p class="text-muted mb-0">Open ports will appear here immediately.</p></div>
+          </div>
+        </div>
+      </section>
+    {% endif %}
   </main>
+<script src="/static/js/port_scan_live.js"></script>
 </body>
 {% include '_footer.html' %}
 </html>

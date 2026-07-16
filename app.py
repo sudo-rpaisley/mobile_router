@@ -36,6 +36,8 @@ network_interfaces = get_network_interfaces()
 networkTechnologies = {iface.interface_type for iface in network_interfaces}
 scan_jobs = {}
 scan_jobs_lock = threading.Lock()
+port_scan_jobs = {}
+port_scan_jobs_lock = threading.Lock()
 device_inventory = {}
 device_inventory_lock = threading.Lock()
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
@@ -447,6 +449,111 @@ def _run_scan_job(job_id, scan_type, selected_interface):
         _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
 
 
+
+def _port_scan_job_snapshot(job):
+    return {
+        **job,
+        'open_ports': list(job.get('open_ports', [])),
+    }
+
+
+def update_port_scan_job(job_id, **updates):
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return None
+        job.update(updates)
+        job['updated_at'] = time.time()
+        return _port_scan_job_snapshot(job)
+
+
+def run_port_scan_job(job_id):
+    from scripts.portScanner import PortScanError, scan_ports
+
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return
+        host = job['host']
+        start = job['start']
+        end = job['end']
+        total = job['total_ports']
+        job['status'] = 'running'
+        job['started_at'] = time.time()
+        job['updated_at'] = job['started_at']
+
+    scanned = 0
+
+    def on_open(port):
+        with port_scan_jobs_lock:
+            current = port_scan_jobs.get(job_id)
+            if not current:
+                return
+            if port not in current['open_ports']:
+                current['open_ports'].append(port)
+                current['open_ports'].sort()
+            current['message'] = f'Open port found: {port}'
+            current['updated_at'] = time.time()
+
+    def on_progress(port):
+        nonlocal scanned
+        scanned += 1
+        with port_scan_jobs_lock:
+            current = port_scan_jobs.get(job_id)
+            if not current:
+                return
+            current['scanned_ports'] = scanned
+            current['current_port'] = port
+            current['progress'] = round((scanned / total) * 100, 1) if total else 100
+            current['updated_at'] = time.time()
+
+    try:
+        ports = scan_ports(host, start, end, on_open=on_open, on_progress=on_progress, max_ports=None)
+        update_port_scan_job(
+            job_id,
+            status='complete',
+            open_ports=ports,
+            scanned_ports=total,
+            current_port=end,
+            progress=100,
+            completed_at=time.time(),
+            message=f'Port scan complete: {len(ports)} open port(s) found.',
+        )
+    except PortScanError as e:
+        update_port_scan_job(job_id, status='failed', error=str(e), message=str(e), completed_at=time.time())
+    except Exception as e:
+        update_port_scan_job(job_id, status='failed', error=str(e), message=f'Port scan failed: {e}', completed_at=time.time())
+
+
+def create_port_scan_job(host, start, end, label=None):
+    from scripts.portScanner import validate_port_range
+
+    if not host or not str(host).strip():
+        raise ValueError('Host is required')
+    start, end = validate_port_range(start, end, max_ports=None)
+    job_id = str(uuid.uuid4())
+    now = time.time()
+    job = {
+        'id': job_id,
+        'host': str(host).strip(),
+        'start': start,
+        'end': end,
+        'label': label or f'{start}-{end}',
+        'status': 'queued',
+        'open_ports': [],
+        'scanned_ports': 0,
+        'total_ports': end - start + 1,
+        'current_port': None,
+        'progress': 0,
+        'message': 'Port scan queued.',
+        'created_at': now,
+        'updated_at': now,
+    }
+    with port_scan_jobs_lock:
+        port_scan_jobs[job_id] = job
+    threading.Thread(target=run_port_scan_job, args=(job_id,), daemon=True).start()
+    return _port_scan_job_snapshot(job)
+
 def create_scan_job(scan_type, selected_interface):
     if scan_type not in {'wlan', 'bluetooth'}:
         raise ValueError('Unsupported scan type')
@@ -666,6 +773,29 @@ def port_scan_route():
         return json_error(str(e))
 
     return jsonify({'ports': ports})
+
+
+@app.route('/port-scan-jobs', methods=['POST'])
+def start_port_scan_job():
+    data = request.form
+    if missing_fields(data, 'host', 'start', 'end'):
+        return json_error('Missing parameters')
+    try:
+        start_port = parse_int(data.get('start'), 'Ports must be integers')
+        end_port = parse_int(data.get('end'), 'Ports must be integers')
+        job = create_port_scan_job(data.get('host'), start_port, end_port, data.get('label'))
+        return json_success(job=job)
+    except ValueError as e:
+        return json_error(str(e))
+
+
+@app.route('/port-scan-jobs/<job_id>')
+def port_scan_job_status(job_id):
+    with port_scan_jobs_lock:
+        job = port_scan_jobs.get(job_id)
+        if not job:
+            return json_error('Port scan job not found', 404)
+        return json_success(job=_port_scan_job_snapshot(job))
 
 
 @app.route('/traceroute', methods=['POST'])

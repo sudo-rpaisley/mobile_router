@@ -7,33 +7,45 @@
   <div class="page-hero-copy">
     <p class="page-kicker">Services</p>
     <h1 class="page-title">Port Scan</h1>
-    <p class="page-subtitle">Check a specific device or host for open TCP ports in an authorized range. Use device links from scan results to pre-fill this host field.</p>
+    <p class="page-subtitle">Run a background TCP port scan with live progress updates and obvious open-port output.</p>
   </div>
 </section>
 
-<section class="theme-card card">
+<section class="theme-card card port-scan-panel">
   <div class="card-body">
-    <form id="port-scan-form" class="theme-form">
+    <form id="port-scan-form" class="theme-form" data-port-scan-custom-form>
       <div class="form-group mb-0">
         <label for="scan-host">Host</label>
-        <input type="text" class="form-control" id="scan-host" placeholder="127.0.0.1" required>
+        <input type="text" class="form-control" id="scan-host" data-port-scan-host placeholder="127.0.0.1" required>
+      </div>
+      <div class="theme-actions">
+        <button class="btn btn-outline-primary" data-port-scan-start data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
+        <button class="btn btn-outline-danger" data-port-scan-start data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
       </div>
       <div class="form-row">
         <div class="col">
-          <label for="scan-start">Start Port</label>
-          <input type="number" class="form-control" id="scan-start" placeholder="Start port" value="1" min="1" max="65535" required>
+          <label for="scan-start">Custom Start Port</label>
+          <input type="number" class="form-control" id="scan-start" data-port-scan-start-input placeholder="Start port" value="1" min="1" max="65535" required>
         </div>
         <div class="col">
-          <label for="scan-end">End Port</label>
-          <input type="number" class="form-control" id="scan-end" placeholder="End port" value="1024" min="1" max="65535" required>
+          <label for="scan-end">Custom End Port</label>
+          <input type="number" class="form-control" id="scan-end" data-port-scan-end-input placeholder="End port" value="1024" min="1" max="65535" required>
         </div>
       </div>
       <div class="theme-actions">
-        <button id="port-scan-btn" class="btn btn-primary">Scan</button>
+        <button id="port-scan-btn" class="btn btn-primary" data-port-scan-custom-submit>Run custom scan</button>
       </div>
     </form>
-    <div id="port-scan-results" class="theme-results"></div>
+    <div class="theme-results mt-3">
+      <div data-port-scan-status class="mb-2"><p class="text-muted">Start a scan to see live progress.</p></div>
+      <div class="progress mb-2" aria-label="Port scan progress">
+        <div class="progress-bar" data-port-scan-progress-bar role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</div>
+      </div>
+      <p class="text-muted" data-port-scan-progress-text>0 ports checked</p>
+      <h3>Open ports discovered</h3>
+      <div data-port-scan-open-ports><p class="text-muted mb-0">No scan running.</p></div>
+    </div>
   </div>
 </section>
-<script src="/static/js/port_scan.js"></script>
+<script src="/static/js/port_scan_live.js"></script>
 {% endblock %}
