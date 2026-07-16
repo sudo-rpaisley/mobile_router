@@ -447,6 +447,62 @@ def evidence_as_markdown(records):
         lines.append('')
     return '\n'.join(lines)
 
+
+def bluetooth_device_summary(device):
+    summary = device.to_dict() if hasattr(device, 'to_dict') else {
+        'address': getattr(device, 'address', None),
+        'name': getattr(device, 'name', None),
+    }
+    address = summary.get('address')
+    summary['address'] = address
+    summary['mac'] = normalize_mac(address) if address else None
+    summary['manufacturer'] = summary.get('manufacturer') or lookup_manufacturer(address)
+    summary['device_type'] = 'Bluetooth device'
+    return {key: value for key, value in summary.items() if value not in (None, '')}
+
+
+def find_inventory_device(identifier):
+    normalized = normalize_mac(identifier) if identifier else None
+    with device_inventory_lock:
+        if normalized:
+            for key in (f'mac:{normalized}', normalized):
+                if key in device_inventory:
+                    return dict(device_inventory[key])
+            for item in device_inventory.values():
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    return dict(item)
+        for item in device_inventory.values():
+            if item.get('ip') == identifier or item.get('id') == identifier:
+                return dict(item)
+    return None
+
+
+def bluetooth_detail_fields(device):
+    skip = {
+        'id', 'name', 'display_name', 'ip', 'mac', 'address', 'manufacturer',
+        'first_seen', 'last_seen', 'sources', 'interfaces', 'is_unknown_manufacturer',
+    }
+    labels = {
+        'status': 'Status',
+        'instance_id': 'Windows Instance ID',
+        'device_class': 'Device Class',
+        'service': 'Service',
+        'pnp_manufacturer': 'PnP Manufacturer',
+        'rssi': 'RSSI',
+        'details': 'Adapter Details',
+        'device_type': 'Device Type',
+    }
+    fields = []
+    for key, value in sorted((device or {}).items()):
+        if key in skip or value in (None, ''):
+            continue
+        if isinstance(value, (list, tuple, set)):
+            value = ', '.join(str(item) for item in value if item not in (None, ''))
+        elif isinstance(value, dict):
+            value = json.dumps(value, sort_keys=True)
+        fields.append({'label': labels.get(key, key.replace('_', ' ').title()), 'value': value})
+    return fields
+
 def alert_records():
     """Return alert records with display labels."""
     with new_device_alerts_lock:
@@ -589,10 +645,7 @@ def _run_scan_job(job_id, scan_type, selected_interface):
         elif scan_type == 'bluetooth':
             devices = asyncio.run(get_bluetooth_devices())
             result = {
-                'devices': [
-                    {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
-                    for dev in devices
-                ],
+                'devices': [bluetooth_device_summary(dev) for dev in devices],
                 'action_capability': bluetooth_action_capability(),
             }
         else:
@@ -1165,27 +1218,42 @@ def traceroute_page():
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
     mac_re = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+    inventory_device = find_inventory_device(identifier)
 
     mac = None
     ip = None
 
     if mac_re.match(identifier):
-        # Identifier is a MAC address
-        mac = identifier
-        ip = get_ip_by_mac(mac)
+        mac = normalize_mac(identifier)
+        ip = (inventory_device or {}).get('ip') or get_ip_by_mac(mac)
     else:
-        # Identifier is likely an IP address
         ip = identifier
-        mac = get_mac_by_ip(ip)
+        mac = (inventory_device or {}).get('mac') or get_mac_by_ip(ip)
 
-    manufacturer = lookup_manufacturer(mac) if mac else 'Unknown'
+    sources = set((inventory_device or {}).get('sources', []))
+    device_type = str((inventory_device or {}).get('device_type') or '').casefold()
+    is_bluetooth = 'bluetooth-scan' in sources or 'bluetooth' in device_type
+    if is_bluetooth:
+        ip = None
+
+    manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
+    display_name = (
+        (inventory_device or {}).get('name')
+        or (inventory_device or {}).get('display_name')
+        or mac
+        or ip
+        or identifier
+    )
 
     return render_template(
         'client_detail.html',
-        title=f'Client {identifier}',
+        title=f'Client {display_name}',
         ip=ip,
         mac=mac,
         manufacturer=manufacturer,
+        display_name=display_name,
+        is_bluetooth=is_bluetooth,
+        bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         **current_context(),
     )
 
@@ -1476,10 +1544,7 @@ def bluetooth_scan():
 
     try:
         devices = asyncio.run(get_bluetooth_devices())
-        devices_summary = [
-            {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
-            for dev in devices
-        ]
+        devices_summary = [bluetooth_device_summary(dev) for dev in devices]
         return json_success(devices=devices_summary, action_capability=bluetooth_action_capability())
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)

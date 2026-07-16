@@ -409,6 +409,33 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertIn(b'port_scan_live.js', response.data)
 
+
+    def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {
+                'address': '6a:76:8a:0c:36:70',
+                'name': 'Trail Speaker',
+                'manufacturer': 'Audio Lab',
+                'status': 'OK',
+                'device_class': 'Bluetooth',
+                'instance_id': 'BTHENUM\\DEV_6A768A0C3670',
+            }
+        ], 'bluetooth-scan', 'hci0')
+
+        response = self.client.get('/clients/6a:76:8a:0c:36:70')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Trail Speaker', response.data)
+        self.assertIn(b'Bluetooth Device', response.data)
+        self.assertIn(b'Bluetooth Address', response.data)
+        self.assertIn(b'6a:76:8a:0c:36:70', response.data)
+        self.assertIn(b'Status', response.data)
+        self.assertIn(b'OK', response.data)
+        self.assertNotIn(b'IP Address', response.data)
+        self.assertNotIn(b'Device Port Scan', response.data)
+        self.assertNotIn(b'port_scan_live.js', response.data)
+
     def test_inventory_links_host_devices_to_port_scan(self):
         app_module.device_inventory.clear()
         app_module.record_inventory_devices([

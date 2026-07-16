@@ -174,13 +174,23 @@ class NetworkInterface:
 
 
 class BluetoothDevice:
-    def __init__(self, address, name):
+    def __init__(self, address, name, **metadata):
         self.address = address
         self.name = name
+        self.metadata = {key: value for key, value in metadata.items() if value not in (None, '')}
+
+    def to_dict(self):
+        return {
+            'address': self.address,
+            'name': self.name,
+            **self.metadata,
+        }
 
     def __str__(self):
+        metadata = "\n".join(f"  {key}: {value}" for key, value in self.metadata.items())
         return (f"Bluetooth Device: {self.name}\n"
-                f"  Address: {self.address}\n")
+                f"  Address: {self.address}\n"
+                f"{metadata}\n")
 
 def _powershell_json(command):
     powershell = shutil.which("powershell") or shutil.which("pwsh")
@@ -635,7 +645,15 @@ def _parse_windows_bluetooth_devices(output):
             raw = address_match.group(1).lower()
             address = ':'.join(raw[index:index + 2] for index in range(0, 12, 2))
         if name or address:
-            devices.append(BluetoothDevice(address or instance_id, name or 'Unknown'))
+            devices.append(BluetoothDevice(
+                address or instance_id,
+                name or 'Unknown',
+                status=item.get('Status'),
+                instance_id=instance_id,
+                device_class=item.get('Class'),
+                pnp_manufacturer=item.get('Manufacturer'),
+                service=item.get('Service'),
+            ))
     return devices
 
 
@@ -654,7 +672,7 @@ def _get_windows_bluetooth_devices():
                 (
                     "Get-PnpDevice -Class Bluetooth | "
                     "Where-Object { $_.FriendlyName -or $_.Name } | "
-                    "Select-Object FriendlyName,Name,InstanceId,Status | "
+                    "Select-Object FriendlyName,Name,InstanceId,Status,Class,Manufacturer,Service | "
                     "ConvertTo-Json -Compress"
                 ),
             ],
@@ -697,7 +715,13 @@ async def get_bluetooth_devices(timeout=10):
         bleak_module = importlib.import_module("bleak")
         try:
             devices = await bleak_module.BleakScanner.discover(timeout=timeout)
-            bluetooth_objects.extend(BluetoothDevice(address=device.address, name=device.name) for device in devices)
+            for device in devices:
+                bluetooth_objects.append(BluetoothDevice(
+                    address=device.address,
+                    name=device.name,
+                    details=getattr(device, 'details', None),
+                    rssi=getattr(device, 'rssi', None),
+                ))
         except Exception as e:
             print(f"Error discovering BLE devices: {e}")
     else:
