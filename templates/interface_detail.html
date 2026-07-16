@@ -154,9 +154,7 @@
                   {% if not bluetooth_phone_pairing_capability.available %}disabled{% endif %}>
                 <label class="custom-control-label" for="advertise-enabled">Advertise device for phone pairing</label>
               </div>
-              {% if not bluetooth_phone_pairing_capability.available %}
-                <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
-              {% endif %}
+              <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
 
               <fieldset>
                 <legend class="h6">Allowed phone features</legend>

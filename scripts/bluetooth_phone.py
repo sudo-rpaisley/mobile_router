@@ -270,7 +270,10 @@ def bluetooth_pairing_mode_capability(system=None):
                 "available": True,
                 "tool": "native-helper",
                 "path": helper,
-                "message": "Mobile Router can ask the configured native Bluetooth helper to advertise this adapter for phones.",
+                "message": (
+                    "Mobile Router can ask the configured native Bluetooth helper to open pairing. "
+                    "On Windows, Mobile Router will try to temporarily set the Bluetooth local name and restore it when advertising is turned off."
+                ),
             }
         platform_name = "Windows" if system == "Windows" else "macOS"
         return {
@@ -402,7 +405,7 @@ def bluetooth_display_name_capability(system=None):
             "available": False,
             "tool": None,
             "path": None,
-            "message": "The name will be saved for the Mobile Router service. Windows uses the computer name as its system Bluetooth name.",
+            "message": "The name will be saved for Mobile Router. Windows adapter renaming is handled temporarily by the bundled pairing helper when advertising is turned on.",
         }
     return {
         "available": False,

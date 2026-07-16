@@ -1,4 +1,6 @@
+import io
 import json
+import runpy
 import sys
 import tempfile
 import unittest
@@ -96,7 +98,7 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
         capability = bluetooth_display_name_capability(system="Windows")
 
         self.assertFalse(capability["available"])
-        self.assertIn("computer name", capability["message"])
+        self.assertIn("temporarily", capability["message"])
 
     @patch("scripts.bluetooth_phone.subprocess.run")
     @patch("scripts.bluetooth_phone.bluetooth_display_name_capability")
@@ -186,6 +188,65 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
         self.assertTrue(capability["available"])
         self.assertEqual(capability["tool"], "native-helper")
         self.assertTrue(capability["path"].endswith("helpers/windows/mobile-router-bluetooth-helper.py"))
+
+
+    def test_windows_pairing_message_warns_name_stays_pc_name(self):
+        with tempfile.NamedTemporaryFile() as helper:
+            with patch.dict(
+                "os.environ",
+                {"MOBILE_ROUTER_BLUETOOTH_HELPER": helper.name},
+                clear=False,
+            ):
+                capability = bluetooth_pairing_mode_capability(system="Windows")
+
+        self.assertTrue(capability["available"])
+        self.assertIn("temporarily set the Bluetooth local name", capability["message"])
+
+    def test_bundled_windows_helper_temporarily_overrides_visible_name(self):
+        helper_module = runpy.run_path(
+            str(Path(__file__).resolve().parents[1] / "helpers" / "windows" / "mobile-router-bluetooth-helper.py"),
+            run_name="mobile_router_bluetooth_helper",
+        )
+
+        helper_globals = helper_module["handle_set_advertising"].__globals__
+        with patch.dict("os.environ", {"COMPUTERNAME": "Laptop-Name"}, clear=True), \
+             patch.object(helper_module["platform"], "system", return_value="Windows"), \
+             patch.object(helper_module["os"], "startfile", create=True, return_value=None), \
+             patch.dict(helper_globals, {"ORIGINAL_NAME_STATE_PATH": str(Path(self.temp_dir.name) / "state.json"), "_run_powershell": lambda script: {"ok": True, "message": "Camper Router"}}), \
+             patch.object(helper_module["sys"], "stdout", new_callable=io.StringIO) as stdout:
+            helper_module["handle_set_advertising"]({
+                "enabled": True,
+                "display_name": "Camper Router",
+            })
+
+        response = json.loads(stdout.getvalue())
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(response["display_name"], "Camper Router")
+        self.assertEqual(response["visible_name"], "Camper Router")
+        self.assertTrue(response["name_override_applied"])
+        self.assertIn("temporarily changed", response["message"])
+
+    def test_bundled_windows_helper_falls_back_to_pc_name_when_override_fails(self):
+        helper_module = runpy.run_path(
+            str(Path(__file__).resolve().parents[1] / "helpers" / "windows" / "mobile-router-bluetooth-helper.py"),
+            run_name="mobile_router_bluetooth_helper",
+        )
+
+        helper_globals = helper_module["handle_set_advertising"].__globals__
+        with patch.dict("os.environ", {"COMPUTERNAME": "Laptop-Name"}, clear=True), \
+             patch.object(helper_module["platform"], "system", return_value="Windows"), \
+             patch.object(helper_module["os"], "startfile", create=True, return_value=None), \
+             patch.dict(helper_globals, {"ORIGINAL_NAME_STATE_PATH": str(Path(self.temp_dir.name) / "state.json"), "_run_powershell": lambda script: {"ok": False, "message": "Access denied"}}), \
+             patch.object(helper_module["sys"], "stdout", new_callable=io.StringIO) as stdout:
+            helper_module["handle_set_advertising"]({
+                "enabled": True,
+                "display_name": "Camper Router",
+            })
+
+        response = json.loads(stdout.getvalue())
+        self.assertEqual(response["visible_name"], "Laptop-Name")
+        self.assertFalse(response["name_override_applied"])
+        self.assertIn("Access denied", response["message"])
 
     @patch("scripts.bluetooth_phone.BluetoothPhoneHelperClient")
     @patch("scripts.bluetooth_phone.bluetooth_pairing_mode_capability")
