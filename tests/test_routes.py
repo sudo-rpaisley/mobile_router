@@ -18,6 +18,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertIn(b'Tools', response.data)
+        self.assertIn(b'href="/bluetooth-phone"', response.data)
+        self.assertIn(b'Phone Integration', response.data)
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
@@ -111,6 +113,28 @@ class RouteSmokeTest(unittest.TestCase):
 
 
 
+
+
+    def test_bluetooth_interface_detail_links_to_phone_integration(self):
+        bluetooth_interface = SimpleNamespace(
+            name='hci0',
+            interface_type='Bluetooth',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+            extra_info={},
+            get_mac_address=lambda: '00:11:22:33:44:55',
+        )
+        with (
+            patch.object(app_module, 'network_interfaces', [bluetooth_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Bluetooth'}),
+        ):
+            response = self.client.get('/bluetooth/hci0')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/bluetooth-phone"', response.data)
+        self.assertIn(b'Phone Integration', response.data)
+        self.assertIn(b'Pair phones and request authorised contacts', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):
         css = open('static/css/red-team.css').read()
