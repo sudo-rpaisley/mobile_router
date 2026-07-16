@@ -14,7 +14,7 @@ from scripts.bluetooth_phone import (
     load_bluetooth_phone_settings,
     save_bluetooth_phone_settings,
 )
-from scripts.bluetooth_phone_data import parse_pbap_vcards, unfold_vcard_lines
+from scripts.bluetooth_phone_data import parse_map_messages, parse_pbap_vcards, unfold_vcard_lines
 from scripts.bluetooth_phone_connector import (
     BluetoothPhoneConnectorError,
     BluetoothPhoneHelperClient,
@@ -315,6 +315,28 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         helper_client.assert_called_once_with("C:/MobileRouter/phone-helper.exe")
 
+    def test_helper_synchronises_messages_with_map_payload(self):
+        helper = Path(self.temp_dir.name) / "helper.py"
+        helper.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "response = {\"protocol_version\": 1, \"status\": \"success\"}\n"
+            "if request[\"action\"] == \"pull_map\":\n"
+            "    response[\"messages\"] = [{\"handle\": \"1\", \"sender\": \"+15551234567\", \"text\": \"Arrived\", \"read\": True}]\n"
+            "else:\n"
+            "    response[\"vcard\"] = \"\"\n"
+            "json.dump(response, sys.stdout)\n",
+            encoding="utf-8",
+        )
+        helper.chmod(0o755)
+
+        client = BluetoothPhoneHelperClient(helper)
+        data = client.synchronise("AA:BB:CC:DD:EE:FF", {"messages": True})
+
+        self.assertEqual(data["messages"][0]["text"], "Arrived")
+        self.assertTrue(data["messages"][0]["read"])
+
 
 class BluetoothPhoneRuntimeTest(unittest.TestCase):
     def test_detects_supported_host_families(self):
@@ -466,6 +488,23 @@ class BluetoothPhoneRuntimeTest(unittest.TestCase):
             "host_integration_required",
         )
 
+    def test_helper_backend_marks_messages_ready(self):
+        settings = build_settings("Mobile Router", ["messages"])
+        with tempfile.NamedTemporaryFile() as helper:
+            with patch.dict(
+                "os.environ",
+                {"MOBILE_ROUTER_BLUETOOTH_HELPER": helper.name},
+                clear=False,
+            ):
+                runtime = build_bluetooth_phone_runtime(
+                    settings,
+                    system="Windows",
+                    openwrt=False,
+                    command_lookup=lambda _command: None,
+                )
+
+        self.assertEqual(runtime["features"]["messages"]["status"], "ready")
+
 
 class BluetoothPhoneDataTest(unittest.TestCase):
     def test_parses_pbap_contact_vcard(self):
@@ -512,6 +551,21 @@ END:VCARD
         self.assertEqual([call["call_type"] for call in calls], ["incoming", "missed"])
         self.assertEqual(calls[0]["timestamp"], "2026-07-16T14:30:00")
         self.assertEqual(calls[1]["timestamp"], "2026-07-16T15:00:00")
+
+    def test_parses_map_message_list_payload(self):
+        messages = parse_map_messages([
+            {
+                "handle": "42",
+                "sender": "+15551234567",
+                "body": "Camp check-in",
+                "read": True,
+            }
+        ])
+
+        self.assertEqual(messages[0]["handle"], "42")
+        self.assertEqual(messages[0]["text"], "Camp check-in")
+        self.assertTrue(messages[0]["read"])
+
 
     def test_unfolds_folded_vcard_lines(self):
         lines = unfold_vcard_lines("NOTE:This is a long\r\n note\r\nTEL:123")
@@ -580,6 +634,17 @@ class BluetoothPhoneConnectorTest(unittest.TestCase):
                 ),
                 stderr="",
             ),
+            SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "protocol_version": 1,
+                        "status": "success",
+                        "messages": [{"handle": "1", "text": "Hello"}],
+                    }
+                ),
+                stderr="",
+            ),
         ]
         runner = unittest.mock.Mock(side_effect=responses)
         client = BluetoothPhoneHelperClient(self.helper.name, runner=runner)
@@ -589,10 +654,11 @@ class BluetoothPhoneConnectorTest(unittest.TestCase):
             {"contacts": True, "call_history": True, "messages": True},
         )
 
-        self.assertEqual(set(data), {"contacts", "call_history"})
+        self.assertEqual(set(data), {"contacts", "call_history", "messages"})
         self.assertEqual(data["contacts"][0]["display_name"], "Test Contact")
         self.assertEqual(data["call_history"][0]["call_type"], "missed")
-        self.assertEqual(runner.call_count, 2)
+        self.assertEqual(data["messages"][0]["text"], "Hello")
+        self.assertEqual(runner.call_count, 3)
 
     def test_helper_protocol_errors_are_reported(self):
         runner = unittest.mock.Mock(

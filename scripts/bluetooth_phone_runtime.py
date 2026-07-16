@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA_FEATURES = {"contacts", "call_history", "messages"}
 IMPLEMENTED_SYNC_FEATURES = {"contacts", "call_history"}
+HELPER_SYNC_FEATURES = {"contacts", "call_history", "messages"}
 CONTROL_FEATURES = {"call_controls", "media_controls", "tethering"}
 
 PHONE_PROFILE_SUPPORT = {
@@ -153,6 +154,7 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             "prerequisites_ready": prerequisites_ready,
             "connector_ready": connector_ready,
             "missing": missing,
+            "sync_features": sorted(IMPLEMENTED_SYNC_FEATURES),
             "note": (
                 "Uses the same BlueZ D-Bus transport on desktop Linux and OpenWrt. "
                 "OpenWrt installations can omit control/audio components that are not selected."
@@ -166,6 +168,7 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             "prerequisites_ready": True,
             "connector_ready": helper["available"],
             "missing": [] if helper["available"] else ["Packaged Mobile Router Windows Bluetooth helper"],
+            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper["available"] else [],
             "note": "Windows includes RFCOMM, HFP, AVRCP, and PAN support, but PBAP/MAP require the Mobile Router protocol helper.",
         }
     if environment_id == "macos":
@@ -176,6 +179,7 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
             "prerequisites_ready": True,
             "connector_ready": helper["available"],
             "missing": [] if helper["available"] else ["Packaged Mobile Router macOS Bluetooth helper"],
+            "sync_features": sorted(HELPER_SYNC_FEATURES) if helper["available"] else [],
             "note": "The helper isolates macOS IOBluetooth APIs from the portable Python data layer.",
         }
     return {
@@ -185,6 +189,7 @@ def _backend_for_environment(environment, commands, helper, bluez_obex):
         "prerequisites_ready": False,
         "connector_ready": False,
         "missing": [f'No Bluetooth phone backend is defined for {environment["label"]}'],
+        "sync_features": [],
         "note": "The configuration page remains available, but phone data transfer is disabled.",
     }
 
@@ -199,7 +204,7 @@ def _feature_runtime_status(settings, backend):
                 "status": "disabled",
                 "label": "Not selected",
             }
-        elif feature_key in IMPLEMENTED_SYNC_FEATURES and backend["connector_ready"]:
+        elif feature_key in set(backend.get("sync_features", [])) and backend["connector_ready"]:
             statuses[feature_key] = {
                 "selected": True,
                 "status": "ready",
