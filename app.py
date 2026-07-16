@@ -84,6 +84,21 @@ ROADMAP_SECTIONS = [
             {'title': 'RF interference awareness', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide detection-only views for congestion and interference risks without implementing jamming behavior.'},
         ],
     },
+
+    {
+        'title': 'Hak5-inspired lab features',
+        'items': [
+            {'title': 'Payload profile switchboard', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create selectable, named lab profiles with status feedback inspired by Hak5 payload switch workflows, without auto-running unreviewed actions.'},
+            {'title': 'Inline network tap mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Offer Packet Squirrel-style lab views for packet capture, transparent bridge/NAT/VPN concepts, and defensive visibility.'},
+            {'title': 'DNS manipulation awareness demo', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Demonstrate how DNS spoofing or redirection changes user risk in an isolated lab, paired with validation and mitigation checks.'},
+            {'title': 'Cloud C2-style classroom controller', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Coordinate approved lab jobs, progress, and artifacts across local and remote devices from one dashboard.'},
+            {'title': 'Payload/module marketplace for lessons', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add a curated module library for safe lessons, prerequisites, expected outputs, cleanup steps, and instructor notes.'},
+            {'title': 'Quick wired recon profile', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add Shark Jack-style rapid wired-network assessment views for host discovery, service summaries, and risk scoring.'},
+            {'title': 'Evidence and loot vault', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Collect scan outputs, captures, screenshots, and notes into a time-stamped class report with export controls.'},
+            {'title': 'HID and USB risk simulator', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide Rubber Ducky/Bash Bunny-inspired awareness simulations that teach keystroke-injection and composite-USB risks without targeting unmanaged machines.'},
+            {'title': 'Screen capture risk awareness', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Model Screen Crab-style HDMI observation risk as a policy and detection lesson rather than covert capture tooling.'},
+        ],
+    },
     {
         'title': 'Safety and architecture',
         'items': [
