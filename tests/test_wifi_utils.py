@@ -15,6 +15,8 @@ def test_add_network_groups_access_points_and_sorts_by_signal():
     assert summary[0]['signal'] == 85
     assert summary[0]['access_points'] == 2
     assert summary[0]['security'] == 'WPA2'
+    assert summary[0]['band'] == '2.4 GHz'
+    assert summary[0]['frequency'] == 2462
     assert summary[1]['ssid'] == 'Guest'
 
 
@@ -84,6 +86,7 @@ SSID 2 : Guest
     assert summary[0]['bssid'] == 'aa:bb:cc:dd:ee:ff'
     assert summary[0]['signal'] == 82
     assert summary[0]['channel'] == 11
+    assert summary[0]['band'] == '2.4 GHz'
     assert summary[0]['security'] == 'WPA2-Personal'
     assert summary[0]['access_points'] == 2
     assert summary[1]['ssid'] == 'Guest'

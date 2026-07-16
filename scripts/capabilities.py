@@ -31,6 +31,117 @@ OPTIONAL_PACKAGE_SPECS = {
     "pywifi": "pywifi==1.1.12",
 }
 
+CENTRAL_CAPABILITY_REGISTRY = [
+    {
+        "id": "core-web-ui",
+        "name": "Core web UI",
+        "category": "Core",
+        "description": "Dashboard, navigation, theme controls, reports, jobs, and inventory views.",
+        "feature": "Core web UI",
+        "commands": [],
+        "packages": ["Flask", "Flask-SocketIO", "Jinja2"],
+    },
+    {
+        "id": "interface-inventory",
+        "name": "Interface inventory",
+        "category": "Discovery",
+        "description": "List local network adapters, addresses, status, and manufacturer metadata.",
+        "feature": "Interface inventory",
+        "commands": ["ip", "ifconfig", "ipconfig"],
+        "packages": [],
+    },
+    {
+        "id": "passive-arp-scan",
+        "name": "Passive ARP scan",
+        "category": "Discovery",
+        "description": "Read ARP cache entries to discover local devices without probing.",
+        "feature": "Passive ARP scan",
+        "commands": ["arp"],
+        "packages": [],
+    },
+    {
+        "id": "active-ping-scan",
+        "name": "Active ping scan",
+        "category": "Discovery",
+        "description": "Probe local subnets and merge ARP results for live host discovery.",
+        "feature": "Active ping scan",
+        "commands": ["ping"],
+        "packages": [],
+    },
+    {
+        "id": "port-scan",
+        "name": "Port scan",
+        "category": "Services",
+        "description": "Concurrent TCP port scans with live jobs, cancellation, and service hints.",
+        "feature": "Port scan",
+        "commands": [],
+        "packages": [],
+    },
+    {
+        "id": "traceroute",
+        "name": "Traceroute",
+        "category": "Services",
+        "description": "Trace network paths using platform traceroute tools.",
+        "feature": "Traceroute",
+        "commands": ["traceroute", "tracepath", "tracert"],
+        "packages": [],
+    },
+    {
+        "id": "wifi-network-scan",
+        "name": "Wi-Fi network scan",
+        "category": "Wireless",
+        "description": "Discover SSIDs/BSSIDs, channels, bands, security, and signal strength.",
+        "feature": "Wi-Fi network scan",
+        "commands": ["nmcli", "iw", "netsh"],
+        "packages": ["scapy", "pywifi"],
+    },
+    {
+        "id": "linux-monitor-packet-scan",
+        "name": "Linux monitor packet scan",
+        "category": "Wireless",
+        "description": "Use Scapy and monitor-mode adapters for deeper wireless packet visibility.",
+        "feature": "Linux monitor packet scan",
+        "commands": [],
+        "packages": ["scapy"],
+    },
+    {
+        "id": "bluetooth-scan",
+        "name": "Bluetooth scan",
+        "category": "Bluetooth",
+        "description": "Discover Bluetooth devices through Bleak or platform tools.",
+        "feature": "Bluetooth scan",
+        "commands": ["bluetoothctl", "powershell", "pwsh"],
+        "packages": ["bleak"],
+    },
+    {
+        "id": "bluetooth-actions",
+        "name": "Bluetooth actions",
+        "category": "Bluetooth",
+        "description": "Run local Bluetooth info/connect/pair/trust/block/remove actions when BlueZ tooling is available.",
+        "feature": "Bluetooth actions",
+        "commands": ["bluetoothctl", "busctl"],
+        "packages": [],
+    },
+    {
+        "id": "reports",
+        "name": "Reports",
+        "category": "Operations",
+        "description": "Export inventory, alerts, jobs, capabilities, and interfaces as JSON, CSV, Markdown, or HTML.",
+        "feature": "Reports",
+        "commands": [],
+        "packages": [],
+    },
+    {
+        "id": "new-device-alerts",
+        "name": "New device alerts",
+        "category": "Operations",
+        "description": "Raise unread alerts when newly observed non-control devices enter inventory.",
+        "feature": "New device alerts",
+        "commands": [],
+        "packages": [],
+    },
+]
+
 
 def command_status(commands: List[str]) -> Dict[str, Dict[str, object]]:
     return {
@@ -71,6 +182,9 @@ def _display_feature_names(system):
         "Passive ARP scan",
         "Active ping scan",
         "Traceroute",
+        "Port scan",
+        "Reports",
+        "New device alerts",
         "Bluetooth scan",
         "Bluetooth actions",
         "Wi-Fi network scan",
@@ -164,6 +278,22 @@ def ensure_required_packages_installed():
     return results
 
 
+def build_capability_registry(features, commands, required_packages, packages):
+    """Resolve the central capability registry against current runtime status."""
+    registry = []
+    for capability in CENTRAL_CAPABILITY_REGISTRY:
+        command_requirements = {name: commands.get(name, {"available": False, "path": None}) for name in capability.get("commands", [])}
+        package_requirements = {}
+        for name in capability.get("packages", []):
+            package_requirements[name] = required_packages.get(name, packages.get(name, False))
+        registry.append({
+            **capability,
+            "available": bool(features.get(capability.get("feature"), False)),
+            "commands_status": command_requirements,
+            "packages_status": package_requirements,
+        })
+    return registry
+
 def build_capabilities() -> Dict[str, object]:
     required_install_results = ensure_required_packages_installed()
     commands = command_status(CORE_COMMANDS + OPTIONAL_COMMANDS)
@@ -191,6 +321,9 @@ def build_capabilities() -> Dict[str, object]:
         "Passive ARP scan": bool(commands.get("arp", {}).get("available") or system == "Linux"),
         "Active ping scan": bool(commands.get("ping", {}).get("available")),
         "Traceroute": bool(commands.get("traceroute", {}).get("available") or commands.get("tracepath", {}).get("available") or commands.get("tracert", {}).get("available")),
+        "Port scan": True,
+        "Reports": True,
+        "New device alerts": True,
         "Bluetooth scan": has_bluetooth_scan,
         "Bluetooth actions": has_bluetooth_actions,
         "Wi-Fi network scan": has_wifi_network_scan,
@@ -206,6 +339,8 @@ def build_capabilities() -> Dict[str, object]:
         "Linux monitor packet scan": "Requires Linux and Scapy; monitor-mode support depends on the adapter/driver.",
         "Windows Wi-Fi connect": "Requires the optional pywifi package for connection management.",
         "Aireplay deauth": "Requires the external aireplay-ng command from aircrack-ng.",
+        "Reports": "Exports the current in-memory runtime state; restart-persistent storage is not required.",
+        "New device alerts": "Alerts are generated for newly recorded non-control inventory devices.",
     }
 
     display_command_names = _display_command_names(system)
@@ -215,6 +350,7 @@ def build_capabilities() -> Dict[str, object]:
     display_features = {name: features[name] for name in display_feature_names if name in features}
     display_packages = {name: packages[name] for name in display_package_names if name in packages}
     display_host_dependencies = _host_dependencies(system, commands)
+    registry = build_capability_registry(features, commands, required_packages, packages)
 
     return {
         "platform": {
@@ -235,4 +371,6 @@ def build_capabilities() -> Dict[str, object]:
         "features": features,
         "display_features": display_features,
         "feature_notes": feature_notes,
+        "registry": registry,
+        "display_registry": registry,
     }
