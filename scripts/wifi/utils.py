@@ -332,6 +332,11 @@ def _wps_exposure(wps=False, wps_status=None):
 
 
 def _scan_windows_with_netsh(interface_name=None):
+    scan_command = ['netsh', 'wlan', 'scan']
+    if interface_name:
+        scan_command.append(f'interface={interface_name}')
+    _run_command(scan_command, timeout=15)
+
     command = ['netsh', 'wlan', 'show', 'networks', 'mode=bssid']
     if interface_name:
         command.append(f'interface={interface_name}')
@@ -446,6 +451,8 @@ def scan_networks(interface_name=None, timeout=12):
         scan_errors = []
         try:
             _scan_windows_with_netsh(interface_name)
+            if interface_name and _network_count() <= 1:
+                _scan_windows_with_netsh(None)
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
             scan_errors.append(str(exc))
 

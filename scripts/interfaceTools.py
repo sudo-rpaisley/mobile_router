@@ -51,11 +51,11 @@ def _normalize_interface_state(status, interface_type=None):
     normalized = str(status or '').strip().casefold()
     normalized_type = str(interface_type or '').strip().casefold()
 
-    if normalized in {'up', 'connected', 'running'}:
+    if normalized in {'up', 'connected', 'running', 'ok'}:
         return 'UP'
     if normalized_type == 'bluetooth' and normalized == 'disconnected':
         return 'UP'
-    if normalized in {'down', 'disconnected', 'disabled', 'not present', 'notpresent'}:
+    if normalized in {'down', 'disconnected', 'disabled', 'error', 'degraded', 'not present', 'notpresent', 'unknown'}:
         return 'DOWN'
     return 'UNKNOWN'
 
@@ -182,53 +182,72 @@ class BluetoothDevice:
         return (f"Bluetooth Device: {self.name}\n"
                 f"  Address: {self.address}\n")
 
-def _get_windows_adapter_metadata():
-    """Return Windows adapter information indexed by friendly name."""
-
+def _powershell_json(command):
     powershell = shutil.which("powershell") or shutil.which("pwsh")
     if not powershell:
-        return {}
-
+        return []
     try:
         output = subprocess.check_output(
-            [
-                powershell,
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                (
-                    "Get-NetAdapter | "
-                    "Select-Object Name,InterfaceDescription,Status,"
-                    "MediaType,PhysicalMediaType | "
-                    "ConvertTo-Json -Compress"
-                ),
-            ],
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
             encoding="utf-8",
             errors="ignore",
         )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if not output.strip():
+        return []
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(payload, dict):
+        return [payload]
+    return payload if isinstance(payload, list) else []
 
-        if not output.strip():
-            return {}
 
-        adapters = json.loads(output)
-
-        # ConvertTo-Json returns an object rather than a list when there
-        # is only one adapter.
-        if isinstance(adapters, dict):
-            adapters = [adapters]
-
-        return {
-            adapter["Name"]: adapter
-            for adapter in adapters
-            if isinstance(adapter, dict) and adapter.get("Name")
+def _get_windows_bluetooth_pnp_metadata():
+    devices = _powershell_json(
+        "Get-PnpDevice -Class Bluetooth -PresentOnly:$false | "
+        "Select-Object FriendlyName,Name,Status,Class,InstanceId | "
+        "ConvertTo-Json -Compress"
+    )
+    metadata = {}
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        name = device.get("FriendlyName") or device.get("Name")
+        if not name:
+            continue
+        metadata[name] = {
+            "Name": name,
+            "InterfaceDescription": name,
+            "Status": device.get("Status") or "DOWN",
+            "MediaType": "Bluetooth",
+            "PhysicalMediaType": "Bluetooth",
+            "PnpInstanceId": device.get("InstanceId"),
         }
+    return metadata
 
-    except (
-        OSError,
-        subprocess.SubprocessError,
-        json.JSONDecodeError,
-    ):
-        return {}
+
+def _get_windows_adapter_metadata():
+    """Return Windows adapter information indexed by friendly name."""
+
+    adapters = _powershell_json(
+        "Get-NetAdapter -IncludeHidden | "
+        "Select-Object Name,InterfaceDescription,Status,"
+        "MediaType,PhysicalMediaType | "
+        "ConvertTo-Json -Compress"
+    )
+    metadata = {
+        adapter["Name"]: adapter
+        for adapter in adapters
+        if isinstance(adapter, dict) and adapter.get("Name")
+    }
+
+    for name, bluetooth_metadata in _get_windows_bluetooth_pnp_metadata().items():
+        metadata.setdefault(name, bluetooth_metadata)
+
+    return metadata
 
 def get_interface_type(name):
     normalized_name = name.casefold()

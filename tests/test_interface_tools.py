@@ -49,3 +49,25 @@ def test_parse_bluetoothctl_devices():
         ('Speaker', 'aa:bb:cc:dd:ee:ff'),
         ('Phone', '11:22:33:44:55:66'),
     ]
+
+
+def test_windows_metadata_includes_disabled_bluetooth_pnp_device(monkeypatch):
+    def fake_powershell_json(command):
+        if 'Get-NetAdapter' in command:
+            return []
+        if 'Get-PnpDevice' in command:
+            return [{
+                'FriendlyName': 'Intel Wireless Bluetooth',
+                'Status': 'Disabled',
+                'InstanceId': 'USB\\VID_8087&PID_0026',
+            }]
+        return []
+
+    monkeypatch.setattr(interfaceTools, '_powershell_json', fake_powershell_json)
+
+    metadata = interfaceTools._get_windows_adapter_metadata()
+
+    assert 'Intel Wireless Bluetooth' in metadata
+    assert metadata['Intel Wireless Bluetooth']['Status'] == 'Disabled'
+    assert metadata['Intel Wireless Bluetooth']['PhysicalMediaType'] == 'Bluetooth'
+    assert interfaceTools._normalize_interface_state('Disabled', 'Bluetooth') == 'DOWN'

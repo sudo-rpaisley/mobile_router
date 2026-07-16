@@ -77,7 +77,7 @@ SSID 2 : Guest
         stdout = output
         stderr = ''
 
-    monkeypatch.setattr(utils, '_run_command', lambda command: Result())
+    monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
 
     utils._scan_windows_with_netsh()
     summary = utils.get_networks_summary()
@@ -92,6 +92,39 @@ SSID 2 : Guest
     assert summary[1]['ssid'] == 'Guest'
     assert summary[1]['security'] == 'Open'
 
+
+def test_windows_scan_refreshes_and_falls_back_to_all_interfaces(monkeypatch):
+    utils.networks = {}
+    calls = []
+
+    class Result:
+        def __init__(self, stdout=''):
+            self.returncode = 0
+            self.stdout = stdout
+            self.stderr = ''
+
+    connected_only = '\nSSID 1 : Home\n    Authentication          : WPA2-Personal\n    BSSID 1                 : aa:bb:cc:dd:ee:ff\n         Signal             : 72%\n         Channel            : 6\n'
+    all_networks = '\nSSID 1 : Home\n    Authentication          : WPA2-Personal\n    BSSID 1                 : aa:bb:cc:dd:ee:ff\n         Signal             : 72%\n         Channel            : 6\nSSID 2 : Cafe\n    Authentication          : Open\n    BSSID 1                 : 11:22:33:44:55:66\n         Signal             : 41%\n         Channel            : 11\n'
+
+    def fake_run(command, timeout=20):
+        calls.append(command)
+        if command[:3] == ['netsh', 'wlan', 'scan']:
+            return Result()
+        if any(part == 'interface=Wi-Fi' for part in command):
+            return Result(connected_only)
+        return Result(all_networks)
+
+    monkeypatch.setattr(utils.platform, 'system', lambda: 'Windows')
+    monkeypatch.setattr(utils, '_run_command', fake_run)
+    monkeypatch.setattr(utils, '_scan_windows_with_pywifi', lambda interface_name: None)
+    monkeypatch.setattr(utils, 'display_all_networks', lambda: None)
+    monkeypatch.setattr(utils, 'send_alerts', lambda: None)
+
+    utils.scan_networks('Wi-Fi')
+
+    assert ['netsh', 'wlan', 'scan', 'interface=Wi-Fi'] in calls
+    assert ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'] in calls
+    assert [network['ssid'] for network in utils.get_networks_summary()] == ['Home', 'Cafe']
 
 def test_scan_linux_with_iw_parses_multiple_bss_results(monkeypatch):
     utils.networks = {}

@@ -416,3 +416,30 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* Horizontal interface overview and address layouts. */
+.interface-summary-card .interface-definition-list {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.interface-address-card {
+  grid-column: 1 / -1;
+}
+
+.interface-address-card .address-card-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.interface-address-card .address-card {
+  flex: 0 0 min(19rem, 85vw);
+}
+
+@media (max-width: 767.98px) {
+  .interface-summary-card .interface-definition-list {
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  }
+}
