@@ -26,6 +26,11 @@
             <dd>{{ manufacturer }}</dd>
           </div>
         </dl>
+        {% if ip %}
+          <div class="theme-actions mt-3">
+            <a class="btn btn-primary" href="/port-scan?host={{ ip|urlencode }}">Check ports on this device</a>
+          </div>
+        {% endif %}
       </div>
     </section>
   </main>

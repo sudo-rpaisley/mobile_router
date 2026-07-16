@@ -7,7 +7,7 @@
   <div class="page-hero-copy">
     <p class="page-kicker">Discovery</p>
     <h1 class="page-title">Network Scan</h1>
-    <p class="page-subtitle">Choose an adapter and run active or passive discovery against the local network.</p>
+    <p class="page-subtitle">Choose an adapter and run active or passive discovery against the local network. Results label host-like devices separately from internal broadcast, multicast, and gateway/control entries.</p>
   </div>
 </section>
 
@@ -24,6 +24,9 @@
         <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
       </div>
     </form>
+    <div class="alert alert-secondary mt-3" role="note">
+      <strong>How to read passive results:</strong> private LAN hosts are likely devices on your network, gateway/router rows are infrastructure, and broadcast or multicast rows are local control traffic rather than individual clients.
+    </div>
     <div id="scan-results" class="theme-results"></div>
   </div>
 </section>

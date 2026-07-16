@@ -21,6 +21,7 @@ from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
     passive_scan,
+    classify_scan_results,
     get_mac_by_ip,
     get_ip_by_mac,
 )
@@ -630,7 +631,7 @@ def active_scan_route():
     iface = request.form.get('selectedInterface')
     if not iface:
         return json_error('Missing interface')
-    hosts = active_scan(iface)
+    hosts = classify_scan_results(active_scan(iface), iface)
     enriched_hosts = record_inventory_devices(hosts, 'active-scan', iface)
     return jsonify({'hosts': enriched_hosts})
 
@@ -640,7 +641,7 @@ def passive_scan_route():
     iface = request.form.get('selectedInterface')
     if not iface:
         return json_error('Missing interface')
-    devices = passive_scan(iface)
+    devices = classify_scan_results(passive_scan(iface), iface)
     enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
     return jsonify({'devices': enriched_devices})
 

@@ -1,4 +1,19 @@
 $(document).ready(function () {
+  const params = new URLSearchParams(window.location.search);
+  const hostParam = params.get('host');
+  if (hostParam) {
+    $('#scan-host').val(hostParam);
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   $('#port-scan-btn').on('click', function (e) {
     e.preventDefault();
 
@@ -14,12 +29,12 @@ $(document).ready(function () {
       method: 'POST',
       data: { host: host, start: start, end: end },
       success: function (resp) {
-        let html = '<h3>Open Ports</h3>';
+        let html = `<h3>Open Ports for ${escapeHtml(host)}</h3>`;
         if (resp.ports.length === 0) {
           html += '<p>No open ports found</p>';
         } else {
           html += '<ul>';
-          resp.ports.forEach(function (p) { html += `<li>${p}</li>`; });
+          resp.ports.forEach(function (p) { html += `<li>${escapeHtml(p)}</li>`; });
           html += '</ul>';
         }
         $('#port-scan-results').html(html);

@@ -210,6 +210,88 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.get_json()['hosts'][0]['manufacturer'], 'Raspberry Pi Foundation')
         self.assertIn('mac:b8:27:eb:11:22:33', app_module.device_inventory)
 
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/24')
+    def test_scan_classification_marks_internal_control_traffic(self, _cidr):
+        from scripts.networkScan import classify_scan_results
+
+        devices = classify_scan_results([
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb'},
+            {'ip': '192.168.20.255', 'mac': 'ff:ff:ff:ff:ff:ff'},
+            {'ip': '192.168.20.1', 'mac': 'ac:16:2d:a2:71:9e'},
+            {'ip': '8.8.8.8', 'mac': '00:11:22:33:44:55'},
+        ], 'eth0')
+
+        self.assertEqual(devices[0]['network_role'], 'Multicast')
+        self.assertTrue(devices[0]['is_control_traffic'])
+        self.assertEqual(devices[1]['network_role'], 'Subnet broadcast')
+        self.assertTrue(devices[1]['is_control_traffic'])
+        self.assertEqual(devices[2]['network_role'], 'Likely gateway/router')
+        self.assertEqual(devices[2]['network_scope'], 'Private LAN')
+        self.assertEqual(devices[3]['network_scope'], 'Public Internet')
+
+    @patch('app.passive_scan')
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/24')
+    def test_passive_scan_response_includes_network_role_metadata(self, _cidr, scan):
+        app_module.device_inventory.clear()
+        scan.return_value = [{'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb'}]
+
+        response = self.client.post('/passive-scan', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        device = response.get_json()['devices'][0]
+        self.assertEqual(device['network_role'], 'Multicast')
+        self.assertEqual(device['network_scope'], 'Local segment')
+        self.assertTrue(device['is_control_traffic'])
+
+    @patch('scripts.networkScan._parse_proc_arp', return_value=[
+        {'ip': '192.168.20.3', 'mac': '48:b0:2d:ef:ec:f2'},
+    ])
+    @patch('scripts.networkScan.get_mac_by_ip', return_value='ac:16:2d:a2:71:9e')
+    @patch('scripts.networkScan._ping_host', side_effect=lambda ip: str(ip) if str(ip) == '192.168.20.1' else None)
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='192.168.20.2/29')
+    def test_active_scan_is_bounded_and_merges_arp_cache(self, _cidr, _ping, _mac, _arp):
+        from scripts.networkScan import active_scan
+
+        hosts = active_scan('eth0')
+
+        self.assertEqual(hosts, [
+            {'ip': '192.168.20.1', 'mac': 'ac:16:2d:a2:71:9e'},
+            {'ip': '192.168.20.3', 'mac': '48:b0:2d:ef:ec:f2'},
+        ])
+
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value='10.0.0.1/20')
+    def test_active_scan_skips_overly_large_subnets(self, _cidr):
+        from scripts.networkScan import active_scan
+
+        self.assertEqual(active_scan('eth0'), [])
+
+    def test_port_scan_page_mentions_device_prefill(self):
+        response = self.client.get('/port-scan?host=192.168.20.10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Check a specific device or host', response.data)
+        self.assertIn(b'id="scan-host"', response.data)
+
+    def test_client_detail_links_to_device_port_scan(self):
+        response = self.client.get('/clients/192.168.20.10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Check ports on this device', response.data)
+        self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+
+    def test_inventory_links_host_devices_to_port_scan(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '224.0.0.251', 'mac': '01:00:5e:00:00:fb', 'is_control_traffic': True},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/inventory')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+        self.assertEqual(response.data.count(b'Check ports'), 1)
+
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')
         self.assertEqual(response.status_code, 200)
