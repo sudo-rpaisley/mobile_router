@@ -1,10 +1,12 @@
 from .client import Client
 
 class AccessPoint:
-    def __init__(self, bssid, channel, signal):
+    def __init__(self, bssid, channel, signal, wps=False, wps_status=None):
         self.bssid = bssid
         self.channel = channel
         self.signal = signal
+        self.wps = wps is True
+        self.wps_status = wps_status
         self.clients = []
 
     def add_client(self, mac, signal):

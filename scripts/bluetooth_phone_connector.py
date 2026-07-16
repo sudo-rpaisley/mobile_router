@@ -1,14 +1,18 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
-from scripts.bluetooth_phone_data import parse_pbap_vcards
+from scripts.bluetooth_phone_data import parse_map_messages, parse_pbap_vcards
 
 
 HELPER_PROTOCOL_VERSION = 1
 PBAP_PHONEBOOKS = {
     "contacts": "pb",
     "call_history": "cch",
+}
+MAP_MESSAGE_FOLDERS = {
+    "messages": "telecom/msg/inbox",
 }
 MAX_HELPER_RESPONSE_BYTES = 32 * 1024 * 1024
 
@@ -43,6 +47,11 @@ class BluetoothPhoneHelperClient:
         self.timeout = timeout
         self.runner = runner or subprocess.run
 
+    def _command(self):
+        if self.helper_path.suffix.lower() == ".py":
+            return [sys.executable, str(self.helper_path)]
+        return [str(self.helper_path)]
+
     def _request(self, action, **payload):
         if not self.helper_path.is_file():
             raise BluetoothPhoneConnectorError(
@@ -55,7 +64,7 @@ class BluetoothPhoneHelperClient:
         }
         try:
             result = self.runner(
-                [str(self.helper_path)],
+                self._command(),
                 input=json.dumps(request),
                 capture_output=True,
                 text=True,
@@ -102,6 +111,16 @@ class BluetoothPhoneHelperClient:
             )
         return capabilities
 
+    def set_advertising(self, enabled, display_name=None):
+        payload = {"enabled": enabled is True}
+        if display_name is not None:
+            payload["display_name"] = str(display_name)
+        response = self._request("set_advertising", **payload)
+        return {
+            "enabled": response.get("enabled") is True,
+            "message": str(response.get("message") or "Bluetooth advertising updated."),
+        }
+
     def pull_pbap(self, device_id, phonebook):
         if phonebook not in PBAP_PHONEBOOKS.values():
             raise BluetoothPhoneConnectorError("Unsupported PBAP phone book")
@@ -118,11 +137,26 @@ class BluetoothPhoneHelperClient:
             )
         return payload
 
+    def pull_map(self, device_id, folder):
+        if folder not in MAP_MESSAGE_FOLDERS.values():
+            raise BluetoothPhoneConnectorError("Unsupported MAP message folder")
+        response = self._request(
+            "pull_map",
+            device_id=validate_device_id(device_id),
+            folder=folder,
+        )
+        payload = response.get("messages", response.get("bmessage", ""))
+        if not isinstance(payload, (str, list)):
+            raise BluetoothPhoneConnectorError(
+                "Bluetooth phone helper MAP payload must be text or a message list"
+            )
+        return payload
+
     def synchronise(self, device_id, enabled_features):
         selected = {
             key
             for key, enabled in (enabled_features or {}).items()
-            if enabled is True and key in PBAP_PHONEBOOKS
+            if enabled is True and key in {*PBAP_PHONEBOOKS, *MAP_MESSAGE_FOLDERS}
         }
         synced = {}
         if "contacts" in selected:
@@ -134,5 +168,13 @@ class BluetoothPhoneHelperClient:
             synced["call_history"] = parse_pbap_vcards(
                 self.pull_pbap(device_id, PBAP_PHONEBOOKS["call_history"]),
                 "calls",
+            )
+        if "messages" in selected:
+            synced["messages"] = parse_map_messages(
+                self.pull_map(device_id, MAP_MESSAGE_FOLDERS["messages"])
+            )
+        if not synced:
+            raise BluetoothPhoneConnectorError(
+                "Select contacts, call history, or messages before synchronising"
             )
         return synced

@@ -14,6 +14,78 @@ CALL_TYPE_MAP = {
 }
 
 
+MAP_MESSAGE_BLOCK_RE = re.compile(
+    r"BEGIN:MSG\s*(.*?)\s*END:MSG",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def parse_map_messages(payload):
+    """Parse a compact Bluetooth MAP message listing into JSON-safe records.
+
+    Native helpers may return either the MAP bMessage text format or a JSON list
+    of already-normalised messages. The parser keeps unknown fields out of the
+    export and limits records to the metadata Mobile Router displays/downloads.
+    """
+    if isinstance(payload, list):
+        return [_normalise_message_record(item) for item in payload if isinstance(item, dict)]
+    text = _payload_text(payload)
+    blocks = MAP_MESSAGE_BLOCK_RE.findall(text)
+    if not blocks and text.strip().startswith("["):
+        import json
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            decoded = []
+        if isinstance(decoded, list):
+            return [_normalise_message_record(item) for item in decoded if isinstance(item, dict)]
+    return [_message_from_bmessage(block) for block in blocks]
+
+
+def _normalise_message_record(record):
+    return {
+        "handle": str(record.get("handle") or ""),
+        "subject": str(record.get("subject") or ""),
+        "sender": str(record.get("sender") or ""),
+        "recipient": str(record.get("recipient") or ""),
+        "timestamp": str(record.get("timestamp") or record.get("datetime") or ""),
+        "message_type": str(record.get("message_type") or record.get("type") or ""),
+        "read": record.get("read") is True,
+        "text": str(record.get("text") or record.get("body") or ""),
+    }
+
+
+def _message_from_bmessage(block):
+    fields = {}
+    body_lines = []
+    in_body = False
+    for line in unfold_vcard_lines(block):
+        if ":" not in line:
+            if in_body:
+                body_lines.append(line)
+            continue
+        name, value = line.split(":", 1)
+        key = name.upper()
+        if key in {"BODY", "MSG"}:
+            in_body = True
+            if value:
+                body_lines.append(value)
+        elif in_body:
+            body_lines.append(value)
+        else:
+            fields[key] = value
+    return _normalise_message_record({
+        "handle": fields.get("HANDLE", ""),
+        "subject": fields.get("SUBJECT", ""),
+        "sender": fields.get("ORIGINATOR", fields.get("FROM", "")),
+        "recipient": fields.get("RECIPIENT", fields.get("TO", "")),
+        "timestamp": fields.get("DATETIME", ""),
+        "message_type": fields.get("TYPE", ""),
+        "read": fields.get("READ", "").lower() in {"yes", "true", "1"},
+        "text": "\n".join(body_lines).strip(),
+    })
+
+
 def _payload_text(payload):
     if isinstance(payload, bytes):
         return payload.decode("utf-8", errors="replace")

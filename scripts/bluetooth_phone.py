@@ -6,6 +6,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from scripts.bluetooth_phone_connector import (
+    BluetoothPhoneConnectorError,
+    BluetoothPhoneHelperClient,
+)
+
 
 BLUETOOTH_PHONE_FEATURES = (
     {
@@ -50,6 +55,7 @@ FEATURE_KEYS = {feature["key"] for feature in BLUETOOTH_PHONE_FEATURES}
 DEFAULT_DISPLAY_NAME = "Mobile Router"
 DEFAULT_SETTINGS = {
     "display_name": DEFAULT_DISPLAY_NAME,
+    "advertise_enabled": False,
     "enabled_features": {key: False for key in FEATURE_KEYS},
 }
 BLUEZ_ADAPTER_PATH_RE = re.compile(r"(/org/bluez/hci\d+)(?:\s|$)")
@@ -63,6 +69,10 @@ class BluetoothDisplayNameUnavailable(RuntimeError):
     """Raised when the host Bluetooth display name cannot be changed safely."""
 
 
+class BluetoothPairingModeUnavailable(RuntimeError):
+    """Raised when the host adapter cannot be made pairable/discoverable safely."""
+
+
 def bluetooth_phone_config_path():
     configured_path = os.environ.get("MOBILE_ROUTER_BLUETOOTH_PHONE_CONFIG")
     if configured_path:
@@ -73,6 +83,7 @@ def bluetooth_phone_config_path():
 def _settings_copy():
     return {
         "display_name": DEFAULT_SETTINGS["display_name"],
+        "advertise_enabled": DEFAULT_SETTINGS["advertise_enabled"],
         "enabled_features": dict(DEFAULT_SETTINGS["enabled_features"]),
     }
 
@@ -98,9 +109,10 @@ def normalise_feature_selection(selected_features):
     return {key: key in selected for key in FEATURE_KEYS}
 
 
-def build_settings(display_name, selected_features):
+def build_settings(display_name, selected_features, advertise_enabled=False):
     return {
         "display_name": validate_display_name(display_name),
+        "advertise_enabled": advertise_enabled is True,
         "enabled_features": normalise_feature_selection(selected_features),
     }
 
@@ -125,6 +137,7 @@ def load_bluetooth_phone_settings(path=None):
     settings["display_name"] = validate_display_name(
         saved_settings.get("display_name", DEFAULT_DISPLAY_NAME)
     )
+    settings["advertise_enabled"] = saved_settings.get("advertise_enabled") is True
     saved_features = saved_settings.get("enabled_features", {})
     if not isinstance(saved_features, dict):
         raise BluetoothPhoneSettingsError("enabled_features must contain a JSON object")
@@ -142,6 +155,7 @@ def save_bluetooth_phone_settings(settings, path=None):
             for key, enabled in settings.get("enabled_features", {}).items()
             if enabled is True
         ],
+        settings.get("advertise_enabled") is True,
     )
     config_path = Path(path) if path else bluetooth_phone_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,6 +193,184 @@ def _bluez_dbus_available(busctl_path):
         return False
     return result.returncode == 0
 
+
+
+def _project_helper_candidates(system, *, python_only=False, native_only=False):
+    root = Path(__file__).resolve().parents[1]
+    extension = ".exe" if system == "Windows" else ""
+    native_names = (
+        f"mobile-router-bluetooth-helper{extension}",
+        f"bluetooth-phone-helper{extension}",
+    )
+    python_names = (
+        "mobile-router-bluetooth-helper.py",
+        "bluetooth-phone-helper.py",
+    )
+    names = python_names if python_only else native_names if native_only else (*native_names, *python_names)
+    folders = (
+        root,
+        root / "bin",
+        root / "helpers",
+        root / "helpers" / "bluetooth",
+        root / "helpers" / system.lower(),
+    )
+    for folder in folders:
+        for name in names:
+            yield folder / name
+
+
+def _configured_bluetooth_helper(system=None):
+    system = system or platform.system()
+    configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
+    if configured_helper:
+        helper_path = Path(configured_helper)
+        return str(helper_path) if helper_path.is_file() else None
+    for candidate in _project_helper_candidates(system, native_only=True):
+        if candidate.is_file():
+            return str(candidate)
+    helper_on_path = (
+        shutil.which("mobile-router-bluetooth-helper")
+        or shutil.which("bluetooth-phone-helper")
+    )
+    if helper_on_path:
+        return helper_on_path
+    for candidate in _project_helper_candidates(system, python_only=True):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+def bluetooth_pairing_mode_capability(system=None):
+    system = system or platform.system()
+    helper = _configured_bluetooth_helper(system)
+    if system == "Linux":
+        bluetoothctl = shutil.which("bluetoothctl")
+        if bluetoothctl:
+            return {
+                "available": True,
+                "tool": "bluetoothctl",
+                "path": bluetoothctl,
+                "message": "Mobile Router can make the adapter powered, pairable, and discoverable for phones.",
+            }
+        if helper:
+            return {
+                "available": True,
+                "tool": "native-helper",
+                "path": helper,
+                "message": "Mobile Router can ask the configured Bluetooth helper to advertise this adapter for phones.",
+            }
+        return {
+            "available": False,
+            "tool": None,
+            "path": None,
+            "message": "Pairing mode requires BlueZ bluetoothctl or a Mobile Router Bluetooth helper on this host.",
+        }
+    if system in {"Windows", "Darwin"}:
+        if helper:
+            return {
+                "available": True,
+                "tool": "native-helper",
+                "path": helper,
+                "message": "Mobile Router can ask the configured native Bluetooth helper to advertise this adapter for phones.",
+            }
+        platform_name = "Windows" if system == "Windows" else "macOS"
+        return {
+            "available": False,
+            "tool": None,
+            "path": None,
+            "message": (
+                f"{platform_name} Bluetooth advertising needs the Mobile Router native "
+                "Bluetooth helper installed beside the app, on PATH, or "
+                "MOBILE_ROUTER_BLUETOOTH_HELPER set to the helper executable."
+            ),
+        }
+    return {
+        "available": False,
+        "tool": None,
+        "path": None,
+        "message": (
+            "Automatic pairing mode is not supported on this host without a "
+            "native Mobile Router Bluetooth helper."
+        ),
+    }
+
+
+def _run_bluetoothctl_pairing_commands(commands, capability, timeout):
+    for command in commands:
+        try:
+            result = subprocess.run(
+                [capability["path"], *command],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"Unable to update Bluetooth advertising: {exc}") from exc
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "Bluetooth advertising command failed").strip()
+            raise RuntimeError(message)
+
+
+def _run_helper_advertising(capability, enabled, display_name=None, timeout=15):
+    try:
+        result = BluetoothPhoneHelperClient(
+            capability["path"],
+            timeout=timeout,
+        ).set_advertising(enabled, display_name=display_name)
+    except BluetoothPhoneConnectorError as exc:
+        raise RuntimeError(f"Bluetooth helper advertising request failed: {exc}") from exc
+    return {
+        "enabled": result["enabled"],
+        "tool": capability["tool"],
+        "message": result["message"],
+    }
+
+
+def enable_bluetooth_pairing_mode(display_name, timeout=15):
+    name = validate_display_name(display_name)
+    capability = bluetooth_pairing_mode_capability()
+    if not capability["available"]:
+        raise BluetoothPairingModeUnavailable(capability["message"])
+    if capability["tool"] == "native-helper":
+        result = _run_helper_advertising(capability, True, display_name=name, timeout=timeout)
+        return {**result, "display_name": name}
+
+    _run_bluetoothctl_pairing_commands(
+        [
+            ["power", "on"],
+            ["system-alias", name],
+            ["agent", "NoInputNoOutput"],
+            ["default-agent"],
+            ["pairable", "on"],
+            ["discoverable", "on"],
+        ],
+        capability,
+        timeout,
+    )
+    return {
+        "enabled": True,
+        "display_name": name,
+        "tool": capability["tool"],
+        "message": f'Bluetooth advertising is on for "{name}". Phones can now pair with it.',
+    }
+
+
+def disable_bluetooth_pairing_mode(timeout=15):
+    capability = bluetooth_pairing_mode_capability()
+    if not capability["available"]:
+        raise BluetoothPairingModeUnavailable(capability["message"])
+    if capability["tool"] == "native-helper":
+        return _run_helper_advertising(capability, False, timeout=timeout)
+    _run_bluetoothctl_pairing_commands(
+        [["discoverable", "off"], ["pairable", "off"]],
+        capability,
+        timeout,
+    )
+    return {
+        "enabled": False,
+        "tool": capability["tool"],
+        "message": "Bluetooth advertising is off.",
+    }
 
 def bluetooth_display_name_capability(system=None):
     system = system or platform.system()

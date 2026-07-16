@@ -14,6 +14,7 @@
         <h1 class="interface-detail-title mb-2">{{ network.ssid }}</h1>
         <div class="interface-badges">
           <span class="badge {{ 'badge-success' if network.security == 'Open' else 'badge-secondary' }}">{{ network.security }}</span>
+          {% if network.wps %}<span class="badge badge-warning">WPS exposed</span>{% endif %}
           <span class="badge badge-primary">{{ network.access_points | length }} {{ 'AP' if network.access_points | length == 1 else 'APs' }}</span>
           {% if network.interface %}<span class="badge badge-light border">{{ network.interface }}</span>{% endif %}
           {% for band in network.bands | default([]) %}<span class="badge badge-info">{{ band }}</span>{% endfor %}
@@ -48,6 +49,16 @@
           </dl>
         </div>
       </article>
+
+      {% if network.wps %}
+        <article class="card shadow-sm interface-extra-card">
+          <div class="card-body">
+            <h2 class="interface-section-title">WPS Exposure</h2>
+            <p class="text-warning mb-2"><i class="fa-solid fa-triangle-exclamation"></i> {{ network.wps_note }}</p>
+            <p class="text-muted mb-0">Detected on {{ network.wps_access_points }} {{ 'AP' if network.wps_access_points == 1 else 'APs' }}{% if network.wps_status %}; status: {{ network.wps_status }}{% endif %}.</p>
+          </div>
+        </article>
+      {% endif %}
 
       <article class="card shadow-sm interface-address-card">
         <div class="card-body">

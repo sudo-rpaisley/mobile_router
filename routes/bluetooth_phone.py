@@ -1,21 +1,21 @@
 import io
 import json
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
-from flask import Blueprint, current_app, jsonify, render_template, request, send_file
+from flask import Blueprint, current_app, jsonify, redirect, request, send_file
 
 from scripts.bluetooth_phone import (
-    BluetoothDisplayNameUnavailable,
+    BluetoothPairingModeUnavailable,
     BluetoothPhoneSettingsError,
-    apply_bluetooth_display_name,
-    bluetooth_display_name_capability,
-    bluetooth_phone_feature_options,
     build_settings,
+    disable_bluetooth_pairing_mode,
     load_bluetooth_phone_settings,
+    enable_bluetooth_pairing_mode,
     save_bluetooth_phone_settings,
 )
 from scripts.bluetooth_phone_runtime import build_bluetooth_phone_runtime
-from scripts.bluetooth_phone_bluez import BluezObexConnector, list_paired_bluez_devices
+from scripts.bluetooth_phone_bluez import BluezObexConnector
 from scripts.bluetooth_phone_connector import (
     BluetoothPhoneConnectorError,
     BluetoothPhoneHelperClient,
@@ -25,79 +25,73 @@ from scripts.bluetooth_phone_connector import (
 def create_bluetooth_phone_blueprint(context_provider):
     blueprint = Blueprint("bluetooth_phone", __name__)
 
-    def render_settings_page(settings, notice=None, notice_style="info", status_code=200):
-        context = context_provider()
-        runtime = build_bluetooth_phone_runtime(settings)
-        paired_devices = (
-            list_paired_bluez_devices()
-            if runtime["host"]["id"] in {"linux", "openwrt"}
-            else []
-        )
-        return (
-            render_template(
-                "bluetooth_phone.html",
-                title="Phone Integration",
-                settings=settings,
-                feature_options=bluetooth_phone_feature_options(settings),
-                name_capability=bluetooth_display_name_capability(),
-                runtime=runtime,
-                paired_devices=paired_devices,
-                notice=notice,
-                notice_style=notice_style,
-                **context,
-            ),
-            status_code,
-        )
+    def redirect_to_return_target(notice, notice_style="success"):
+        target = request.form.get("return_to") or request.referrer or "/bluetooth"
+        separator = "&" if "?" in target else "?"
+        query = urlencode({"bluetooth_notice": notice, "bluetooth_notice_style": notice_style})
+        return redirect(f"{target}{separator}{query}")
 
     @blueprint.route("/bluetooth-phone", methods=["GET", "POST"])
     def bluetooth_phone_page():
         config_path = current_app.config.get("BLUETOOTH_PHONE_CONFIG")
         if request.method == "GET":
-            try:
-                settings = load_bluetooth_phone_settings(config_path)
-            except BluetoothPhoneSettingsError as exc:
-                current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
-                settings = build_settings("Mobile Router", [])
-                return render_settings_page(settings, str(exc), "danger", 500)
-            return render_settings_page(settings)
+            return redirect("/bluetooth")
 
         try:
             settings = build_settings(
                 request.form.get("display_name"),
                 request.form.getlist("features"),
+                request.form.get("advertise_enabled") == "true",
             )
             settings = save_bluetooth_phone_settings(settings, config_path)
         except BluetoothPhoneSettingsError as exc:
             current_app.logger.info("Bluetooth phone settings validation failed: %s", exc)
-            fallback_name = request.form.get("display_name") or "Mobile Router"
-            try:
-                submitted_settings = build_settings(
-                    fallback_name,
-                    [feature for feature in request.form.getlist("features") if feature],
-                )
-            except BluetoothPhoneSettingsError:
-                submitted_settings = build_settings("Mobile Router", [])
-            return render_settings_page(submitted_settings, str(exc), "danger", 400)
+            return redirect_to_return_target(str(exc), "danger")
 
         notice = "Bluetooth phone settings saved."
         notice_style = "success"
-        if request.form.get("apply_display_name") == "true":
-            try:
-                result = apply_bluetooth_display_name(settings["display_name"])
+        try:
+            if settings["advertise_enabled"]:
+                result = enable_bluetooth_pairing_mode(settings["display_name"])
                 notice = f"Bluetooth phone settings saved. {result['message']}"
-            except BluetoothDisplayNameUnavailable as exc:
-                notice = f"Bluetooth phone settings saved. {exc}"
-                notice_style = "info"
-            except Exception as exc:
-                current_app.logger.warning("Unable to apply Bluetooth display name: %s", exc)
-                notice = f"Bluetooth phone settings saved, but the adapter name could not be applied: {exc}"
-                notice_style = "warning"
+            else:
+                result = disable_bluetooth_pairing_mode()
+                notice = f"Bluetooth phone settings saved. {result['message']}"
+        except BluetoothPairingModeUnavailable as exc:
+            notice = f"Bluetooth phone settings saved. {exc}"
+            notice_style = "info"
+        except Exception as exc:
+            current_app.logger.warning("Unable to update Bluetooth advertising: %s", exc)
+            notice = f"Bluetooth phone settings saved, but Bluetooth advertising could not be updated: {exc}"
+            notice_style = "warning"
 
         current_app.logger.info(
             "Bluetooth phone settings saved with %s selected feature(s)",
             sum(settings["enabled_features"].values()),
         )
-        return render_settings_page(settings, notice, notice_style)
+        return redirect_to_return_target(notice, notice_style)
+
+
+    @blueprint.route("/bluetooth-phone/pairing-mode", methods=["POST"])
+    def bluetooth_phone_pairing_mode():
+        config_path = current_app.config.get("BLUETOOTH_PHONE_CONFIG")
+        try:
+            settings = load_bluetooth_phone_settings(config_path)
+        except BluetoothPhoneSettingsError as exc:
+            current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
+            return redirect_to_return_target(str(exc), "danger")
+
+        try:
+            result = enable_bluetooth_pairing_mode(settings["display_name"])
+        except BluetoothPairingModeUnavailable as exc:
+            return redirect_to_return_target(str(exc), "info")
+        except Exception as exc:
+            current_app.logger.warning("Unable to enable Bluetooth pairing mode: %s", exc)
+            return redirect_to_return_target(
+                f"Bluetooth pairing mode could not be enabled: {exc}",
+                "warning",
+            )
+        return redirect_to_return_target(result["message"], "success")
 
     @blueprint.route("/bluetooth-phone/status")
     def bluetooth_phone_status():

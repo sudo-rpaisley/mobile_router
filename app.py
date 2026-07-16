@@ -21,6 +21,13 @@ from scripts.interfaceTools import (
     lookup_manufacturer,
     spoof_mac,
 )
+from scripts.bluetooth_phone import (
+    BluetoothPhoneSettingsError,
+    bluetooth_pairing_mode_capability,
+    bluetooth_phone_feature_options,
+    build_settings as build_bluetooth_phone_settings,
+    load_bluetooth_phone_settings,
+)
 from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
@@ -90,7 +97,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Remote cracking orchestration', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Queue authorized handshake material to stronger remote workers such as Spark, track job progress, and import results for password-strength review.'},
             {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
             {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
-            {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
+            {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results and network detail pages now flag APs advertising WPS and explain why WPS can weaken credential protection.', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
             {'title': 'Client privacy and probe request monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Monitor probe behavior to show device presence, preferred-network leakage, and tracking risk in authorized training environments.'},
             {'title': 'Rogue DHCP, DNS, and portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run isolated post-association lab workflows for rogue DHCP, DNS manipulation, and portal redirection with validation checks.'},
             {'title': 'RF interference awareness', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Provide detection-only views for congestion and interference risks without implementing jamming behavior.'},
@@ -114,8 +121,6 @@ ROADMAP_SECTIONS = [
     {
         'title': 'Safety and architecture',
         'items': [
-            {'title': 'Authorization guardrails', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require explicit authorization confirmation and add clearer logs before noisy red-team actions.'},
-            {'title': 'Demo/simulation mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Provide fake adapters, devices, networks, and scan results for demos and UI testing without hardware.'},
             {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Capabilities now come from a central registry with required commands, packages, platforms, runtime checks, install hints, UI rendering, and JSON export.', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
             {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless, Bluetooth, and port scans now use tracked background jobs with live status polling and cancellation controls.', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
             {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Adapter polling now returns targeted navbar/card fragments for DOM replacement without a full-page reload.', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
@@ -866,6 +871,26 @@ def report_as_markdown(report):
     return '\n'.join(lines) + '\n'
 
 
+
+def bluetooth_phone_card_context():
+    config_path = app.config.get('BLUETOOTH_PHONE_CONFIG')
+    notice = request.args.get('bluetooth_notice')
+    notice_style = request.args.get('bluetooth_notice_style', 'info')
+    try:
+        settings = load_bluetooth_phone_settings(config_path)
+    except BluetoothPhoneSettingsError as exc:
+        app.logger.warning('Unable to load Bluetooth phone settings: %s', exc)
+        settings = build_bluetooth_phone_settings('Mobile Router', [])
+        notice = notice or str(exc)
+        notice_style = 'danger'
+    return {
+        'bluetooth_phone_settings': settings,
+        'bluetooth_phone_feature_options': bluetooth_phone_feature_options(settings),
+        'bluetooth_phone_pairing_capability': bluetooth_pairing_mode_capability(),
+        'bluetooth_phone_notice': notice,
+        'bluetooth_phone_notice_style': notice_style,
+    }
+
 def adapter_snapshot(interfaces=None):
     """Return a stable snapshot for adapter partial-update comparisons."""
     return json.dumps([
@@ -1306,7 +1331,13 @@ def interface_detail(interface_type, interface_name):
     interface_type = interface_type.lower()
     interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
-        return render_template('interface_detail.html', title=interface.name, interface=interface, **current_context())
+        return render_template(
+            'interface_detail.html',
+            title=interface.name,
+            interface=interface,
+            **current_context(),
+            **(bluetooth_phone_card_context() if interface.interface_type == 'Bluetooth' else {}),
+        )
     else:
         return "Interface not found", 404
 

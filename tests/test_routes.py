@@ -18,6 +18,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertIn(b'Tools', response.data)
+        self.assertNotIn(b'href="/bluetooth-phone"', response.data)
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
@@ -28,6 +29,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Project Roadmap', response.data)
         self.assertIn(b'Device inventory page', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
+        self.assertIn(b'WPS exposure checks', response.data)
+        self.assertNotIn(b'Authorization guardrails', response.data)
+        self.assertNotIn(b'Demo/simulation mode', response.data)
         self.assertIn(b'WPA handshake capture lab', response.data)
         self.assertIn(b'Remote cracking orchestration', response.data)
         self.assertIn(b'PineAP-style recon and campaign engine', response.data)
@@ -111,6 +115,29 @@ class RouteSmokeTest(unittest.TestCase):
 
 
 
+
+
+    def test_bluetooth_interface_detail_links_to_phone_integration(self):
+        bluetooth_interface = SimpleNamespace(
+            name='hci0',
+            interface_type='Bluetooth',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+            extra_info={},
+            get_mac_address=lambda: '00:11:22:33:44:55',
+        )
+        with (
+            patch.object(app_module, 'network_interfaces', [bluetooth_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Bluetooth'}),
+        ):
+            response = self.client.get('/bluetooth/hci0')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'action="/bluetooth-phone"', response.data)
+        self.assertIn(b'Phone Integration', response.data)
+        self.assertIn(b'id="advertise-enabled"', response.data)
+        self.assertIn(b'Pair phones and request authorised contacts', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):
         css = open('static/css/red-team.css').read()
@@ -578,6 +605,10 @@ class RouteSmokeTest(unittest.TestCase):
             'discovered': True,
             'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55', 'manufacturer': 'Training Vendor'},
             'bands': ['5 GHz'],
+            'wps': True,
+            'wps_status': '2 (Configured)',
+            'wps_note': 'WPS is advertised by this AP. Review lab router settings and disable WPS when possible because WPS can weaken credential protection, especially when PIN enrolment is enabled.',
+            'wps_access_points': 1,
             'ap_groups': [
                 {
                     'label': 'AP group 1',
@@ -600,6 +631,8 @@ class RouteSmokeTest(unittest.TestCase):
                     'manufacturer': 'Training Vendor',
                     'signal_quality': 'Strong',
                     'notes': ['DFS channel; may be affected by radar events'],
+                    'wps': True,
+                    'wps_status': '2 (Configured)',
                     'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff', 'manufacturer': 'Client Vendor'}],
                 }
             ],
@@ -614,6 +647,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'AP Identity Hints', response.data)
+        self.assertIn(b'WPS Exposure', response.data)
+        self.assertIn(b'WPS exposed', response.data)
         self.assertIn(b'Training Vendor', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
 
