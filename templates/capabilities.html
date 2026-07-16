@@ -55,6 +55,34 @@
   </article>
 </section>
 
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Central Capability Registry</h2>
+    <p class="text-muted small mb-3">One registry maps UI features to runtime checks, commands, Python packages, and status.</p>
+    <div class="table-responsive">
+      <table class="table table-sm theme-table">
+        <thead><tr><th>Capability</th><th>Category</th><th>Status</th><th>Dependencies</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for capability in capabilities.display_registry %}
+            <tr>
+              <td><strong>{{ capability.name }}</strong><div class="text-muted small">{{ capability.id }}</div></td>
+              <td>{{ capability.category }}</td>
+              <td>{% if capability.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
+              <td>
+                {% if capability.commands %}<div><span class="text-muted">Commands:</span> {{ capability.commands|join(', ') }}</div>{% endif %}
+                {% if capability.packages %}<div><span class="text-muted">Packages:</span> {{ capability.packages|join(', ') }}</div>{% endif %}
+                {% if not capability.commands and not capability.packages %}<span class="text-muted">Built in</span>{% endif %}
+              </td>
+              <td>{{ capability.description }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <section class="theme-card card">
   <div class="card-body">
     <h2 class="theme-section-title">Relevant Commands</h2>

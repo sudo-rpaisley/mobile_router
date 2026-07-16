@@ -16,6 +16,10 @@ def create_capabilities_blueprint(context_provider):
             **context,
         )
 
+    @blueprint.route('/capabilities/registry.json')
+    def capability_registry_json():
+        return jsonify({'registry': build_capabilities().get('registry', [])})
+
     @blueprint.route('/capabilities/install-package', methods=['POST'])
     def install_package():
         package = request.form.get('package')

@@ -22,6 +22,10 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("commands", capabilities)
         self.assertIn("packages", capabilities)
         self.assertIn("features", capabilities)
+        self.assertIn("registry", capabilities)
+        registry_ids = {capability["id"] for capability in capabilities["registry"]}
+        self.assertIn("port-scan", registry_ids)
+        self.assertIn("reports", registry_ids)
         self.assertTrue(capabilities["features"]["Core web UI"])
         self.assertTrue(capabilities["features"]["Minecraft status lab"])
 
@@ -31,6 +35,7 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("display_commands", capabilities)
         self.assertIn("display_features", capabilities)
         self.assertIn("display_packages", capabilities)
+        self.assertIn("display_registry", capabilities)
 
     @patch("scripts.capabilities.platform.system", return_value="Windows")
     def test_optional_packages_all_have_display_entries(self, _system):

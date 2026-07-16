@@ -14,6 +14,7 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Runtime Capabilities', response.data)
+        self.assertIn(b'Central Capability Registry', response.data)
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
@@ -173,6 +174,14 @@ class RouteSmokeTest(unittest.TestCase):
     def test_scan_job_rejects_unknown_scan_type(self):
         response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
         self.assertEqual(response.status_code, 400)
+
+    def test_capability_registry_export_returns_entries(self):
+        response = self.client.get('/capabilities/registry.json')
+
+        self.assertEqual(response.status_code, 200)
+        registry = response.get_json()['registry']
+        self.assertTrue(any(item['id'] == 'wifi-network-scan' for item in registry))
+        self.assertTrue(any(item['id'] == 'reports' for item in registry))
 
     def test_export_routes_return_json(self):
         response = self.client.get('/export/interfaces.json')
