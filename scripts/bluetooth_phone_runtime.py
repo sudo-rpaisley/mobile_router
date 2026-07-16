@@ -92,11 +92,33 @@ def _command_details(command_lookup=None):
     return details
 
 
+def _project_helper_candidates(system):
+    root = Path(__file__).resolve().parents[1]
+    extension = ".exe" if system == "Windows" else ""
+    names = (
+        f"mobile-router-bluetooth-helper{extension}",
+        f"bluetooth-phone-helper{extension}",
+    )
+    folders = (
+        root,
+        root / "bin",
+        root / "helpers",
+        root / "helpers" / "bluetooth",
+        root / "helpers" / system.lower(),
+    )
+    for folder in folders:
+        for name in names:
+            yield folder / name
+
+
 def _helper_status(environment):
     configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
     if configured_helper:
         helper_path = Path(configured_helper)
         return {"available": helper_path.is_file(), "path": str(helper_path)}
+    for candidate in _project_helper_candidates(environment["system"]):
+        if candidate.is_file():
+            return {"available": True, "path": str(candidate)}
     helper_path = (
         shutil.which("mobile-router-bluetooth-helper")
         or shutil.which("bluetooth-phone-helper")

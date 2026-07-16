@@ -195,11 +195,34 @@ def _bluez_dbus_available(busctl_path):
 
 
 
-def _configured_bluetooth_helper():
+def _project_helper_candidates(system):
+    root = Path(__file__).resolve().parents[1]
+    extension = ".exe" if system == "Windows" else ""
+    names = (
+        f"mobile-router-bluetooth-helper{extension}",
+        f"bluetooth-phone-helper{extension}",
+    )
+    folders = (
+        root,
+        root / "bin",
+        root / "helpers",
+        root / "helpers" / "bluetooth",
+        root / "helpers" / system.lower(),
+    )
+    for folder in folders:
+        for name in names:
+            yield folder / name
+
+
+def _configured_bluetooth_helper(system=None):
+    system = system or platform.system()
     configured_helper = os.environ.get("MOBILE_ROUTER_BLUETOOTH_HELPER")
     if configured_helper:
         helper_path = Path(configured_helper)
         return str(helper_path) if helper_path.is_file() else None
+    for candidate in _project_helper_candidates(system):
+        if candidate.is_file():
+            return str(candidate)
     return (
         shutil.which("mobile-router-bluetooth-helper")
         or shutil.which("bluetooth-phone-helper")
@@ -207,7 +230,7 @@ def _configured_bluetooth_helper():
 
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
-    helper = _configured_bluetooth_helper()
+    helper = _configured_bluetooth_helper(system)
     if system == "Linux":
         bluetoothctl = shutil.which("bluetoothctl")
         if bluetoothctl:
@@ -245,8 +268,8 @@ def bluetooth_pairing_mode_capability(system=None):
             "path": None,
             "message": (
                 f"{platform_name} Bluetooth advertising needs the Mobile Router native "
-                "Bluetooth helper installed, or MOBILE_ROUTER_BLUETOOTH_HELPER set "
-                "to the helper executable."
+                "Bluetooth helper installed beside the app, on PATH, or "
+                "MOBILE_ROUTER_BLUETOOTH_HELPER set to the helper executable."
             ),
         }
     return {
