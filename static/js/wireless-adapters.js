@@ -153,15 +153,24 @@ $(document).ready(function () {
       return `<div class="wireless-band-row ${bandClass(band)}"><span>${escapeHtml(band)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${count}</strong></div>`;
     }).join('');
 
+    const mapNodes = networks.map(function (network) {
+      const ssid = network.ssid || '<Hidden SSID>';
+      const channel = network.channel || network.freq || 'Unknown';
+      const band = network.band || 'Unknown band';
+      const apCount = network.access_points || 1;
+      const signal = signalLabel(network.signal);
+      return `<div class="wireless-map-node"><strong>${escapeHtml(ssid)}</strong><span>Ch ${escapeHtml(channel)} · ${escapeHtml(band)}</span><span>${escapeHtml(apCount)} AP${apCount === 1 ? '' : 's'} · ${escapeHtml(signal)}</span></div>`;
+    }).join('');
+
     return `
-      <section class="wireless-results card shadow-sm wireless-chart-panel">
+      <section class="wireless-results card shadow-sm wireless-chart-panel" role="button" tabindex="0" aria-expanded="false">
         <div class="card-body">
           <div class="wireless-results-header">
             <div>
               <p class="interface-kicker mb-1">Channel & Band Charts</p>
               <h2 class="interface-section-title mb-0">Wireless occupancy</h2>
             </div>
-            <span class="badge badge-info">${networks.length} SSID${networks.length === 1 ? '' : 's'}</span>
+            <span class="badge badge-info">${networks.length} SSID${networks.length === 1 ? '' : 's'} · click to expand</span>
           </div>
           <div class="wireless-chart-grid">
             <article>
@@ -172,6 +181,11 @@ $(document).ready(function () {
               <h3>Bands</h3>
               ${bandRows || '<p class="text-muted">No band data.</p>'}
             </article>
+          </div>
+          <div class="wireless-chart-expanded" aria-label="Interactive wireless map">
+            <h3>Interactive wireless map</h3>
+            <p class="text-muted small">Click network cards below for full details; this map groups each SSID by channel, band, AP count, and signal.</p>
+            <div class="wireless-map-grid">${mapNodes || '<p class="text-muted">No networks to map.</p>'}</div>
           </div>
         </div>
       </section>
@@ -290,6 +304,14 @@ $(document).ready(function () {
       window.location.href = detailUrl;
     }
   }
+
+  $(document).on('click keydown', '.wireless-chart-panel', function (event) {
+    if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+    const panel = $(this);
+    const expanded = !panel.hasClass('is-expanded');
+    panel.toggleClass('is-expanded', expanded);
+    panel.attr('aria-expanded', expanded ? 'true' : 'false');
+  });
 
   $(document).on('click', '.wireless-network-clickable', function (event) {
     if ($(event.target).closest('a, button, input, label, select, textarea, form').length) {

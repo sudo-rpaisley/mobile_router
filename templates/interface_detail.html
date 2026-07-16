@@ -160,6 +160,8 @@
                 <label class="custom-control-label" for="advertise-enabled">Advertise device for phone pairing</label>
               </div>
               <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
+              <div class="alert alert-info py-2 px-3 small d-none" role="status" data-bluetooth-phone-status></div>
+              <p class="text-muted small mb-3">Changes autosave. Toggle advertising off and back on to restart the app-scoped Bluetooth service.</p>
 
               <fieldset>
                 <legend class="h6">Allowed phone features</legend>
@@ -182,9 +184,6 @@
                 </div>
               </fieldset>
 
-              <div class="theme-actions mt-3">
-                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save and apply</button>
-              </div>
             </form>
           </div>
         </article>
@@ -215,6 +214,7 @@
   </main>
 
   <script src="/static/js/interface-power.js"></script>
+  <script src="/static/js/bluetooth-phone-autosave.js"></script>
   {% if interface.interface_type == 'Wireless' %}
     <script src="/static/js/wireless-adapters.js"></script>
   {% elif interface.interface_type == 'Bluetooth' %}

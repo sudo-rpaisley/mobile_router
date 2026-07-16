@@ -318,6 +318,25 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.assertTrue(saved["enabled_features"]["call_history"])
         self.assertFalse(saved["enabled_features"]["messages"])
 
+
+    def test_ajax_post_autosaves_settings(self):
+        response = self.client.post(
+            "/bluetooth-phone",
+            data={
+                "display_name": "Auto Router",
+                "features": ["contacts"],
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "success")
+        self.assertIn("Bluetooth phone settings saved", payload["notice"])
+        saved = load_bluetooth_phone_settings(self.config_path)
+        self.assertEqual(saved["display_name"], "Auto Router")
+        self.assertTrue(saved["enabled_features"]["contacts"])
+
     def test_post_rejects_unknown_feature(self):
         response = self.client.post(
             "/bluetooth-phone",

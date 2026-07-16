@@ -137,6 +137,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'action="/bluetooth-phone"', response.data)
         self.assertIn(b'Phone Integration', response.data)
         self.assertIn(b'id="advertise-enabled"', response.data)
+        self.assertIn(b'Changes autosave', response.data)
+        self.assertIn(b'bluetooth-phone-autosave.js', response.data)
+        self.assertNotIn(b'Save and apply', response.data)
         self.assertIn(b'Pair phones and request authorised contacts', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):
