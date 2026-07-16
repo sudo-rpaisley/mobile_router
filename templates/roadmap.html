@@ -11,6 +11,13 @@
   </div>
 </section>
 
+<section class="theme-card card roadmap-progress-card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Progress</h2>
+    <p class="mb-0 text-muted">{{ roadmap_sections | map(attribute='items') | map('length') | sum - remaining_roadmap_items | length }} completed, {{ remaining_roadmap_items | length }} remaining.</p>
+  </div>
+</section>
+
 <section class="theme-grid roadmap-grid">
   {% for section in roadmap_sections %}
     <article class="theme-card card roadmap-card">
@@ -21,9 +28,16 @@
             <li>
               <div class="roadmap-item-header">
                 <span class="roadmap-item-title">{{ item.title }}</span>
-                <span class="badge badge-{{ item.priority_class }}">{{ item.priority }}</span>
+                {% if item.status == 'Done' %}
+                  <span class="badge badge-success roadmap-status"><i class="fa-solid fa-check"></i> Done</span>
+                {% else %}
+                  <span class="badge badge-{{ item.priority_class }} roadmap-status">{{ item.priority }}</span>
+                {% endif %}
               </div>
               <p class="mb-0 text-muted">{{ item.description }}</p>
+              {% if item.status == 'Done' and item.completed_note %}
+                <p class="roadmap-completed-note mb-0">{{ item.completed_note }}</p>
+              {% endif %}
             </li>
           {% endfor %}
         </ul>

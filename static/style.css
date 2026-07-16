@@ -299,3 +299,72 @@ html[data-theme="dark"] .address-family {
     flex-wrap: wrap;
     gap: 0.35rem;
 }
+
+.inventory-summary-grid {
+    margin-bottom: 1.25rem;
+}
+
+.inventory-stat-card strong {
+    display: block;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.inventory-stat-warning {
+    border-left: 0.35rem solid #ffc107;
+}
+
+.inventory-vendor-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.inventory-vendor-row {
+    align-items: center;
+    background: var(--theme-surface-soft);
+    border: 1px solid var(--theme-border);
+    border-radius: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    padding: 0.85rem 1rem;
+}
+
+.inventory-unknown-vendor,
+.inventory-unknown-row {
+    background: #fff8e1;
+}
+
+.inventory-table-header {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.inventory-table td,
+.inventory-table th {
+    vertical-align: middle;
+}
+
+html[data-theme="dark"] .inventory-unknown-vendor,
+html[data-theme="dark"] .inventory-unknown-row {
+    background: #3a2f12;
+}
+
+.roadmap-progress-card {
+    margin-bottom: 1.25rem;
+}
+
+.roadmap-status {
+    white-space: nowrap;
+}
+
+.roadmap-completed-note {
+    color: #198754;
+    font-size: 0.9rem;
+}
+
+html[data-theme="dark"] .roadmap-completed-note {
+    color: #86efac;
+}

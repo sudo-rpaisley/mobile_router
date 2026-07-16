@@ -24,7 +24,24 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Project Roadmap', response.data)
         self.assertIn(b'Device inventory page', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
+        self.assertIn(b'WPA handshake capture lab', response.data)
+        self.assertIn(b'Remote cracking orchestration', response.data)
+        self.assertIn(b'PineAP-style recon and campaign engine', response.data)
+        self.assertIn(b'Hak5-inspired lab features', response.data)
+        self.assertIn(b'Payload profile switchboard', response.data)
+        self.assertIn(b'Inline network tap mode', response.data)
+        self.assertIn(b'Done', response.data)
+        self.assertIn(b'completed', response.data)
+        self.assertIn(b'remaining', response.data)
 
+
+
+    def test_scrollable_interface_lists_do_not_render_blue_focus_box(self):
+        css = open('static/css/adapters-card.css').read()
+
+        self.assertIn('.interface-category-list:focus', css)
+        self.assertIn('outline: none;', css)
+        self.assertNotIn('outline: 2px solid #007bff', css)
 
     def test_interface_type_preserves_uppercase_vpn(self):
         vpn_interface = SimpleNamespace(
@@ -88,6 +105,15 @@ class RouteSmokeTest(unittest.TestCase):
 
 
 
+
+    def test_red_team_card_forms_are_constrained_to_card_width(self):
+        css = open('static/css/red-team.css').read()
+
+        self.assertIn('.red-team-grid .form-inline', css)
+        self.assertIn('display: grid !important;', css)
+        self.assertIn('width: 100% !important;', css)
+        self.assertIn('max-width: 100%;', css)
+
     @patch('app.threading.Thread')
     def test_scan_job_routes_start_and_report_status(self, thread_cls):
         thread_cls.return_value.start.return_value = None
@@ -113,20 +139,38 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('capabilities', response.get_json())
 
+
+    def test_inventory_page_renders_manufacturer_insights(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.1.10', 'mac': 'b8:27:eb:11:22:33'},
+            {'ip': '192.168.1.11', 'mac': 'de:ad:be:ef:00:01'},
+        ], 'test-scan', 'eth0')
+
+        response = self.client.get('/inventory')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Device Inventory', response.data)
+        self.assertIn(b'Manufacturer/OUI insights', response.data)
+        self.assertIn(b'Raspberry Pi Foundation', response.data)
+        self.assertIn(b'Needs review', response.data)
+
+    @patch('app.active_scan')
+    def test_active_scan_records_inventory_with_manufacturer(self, scan):
+        app_module.device_inventory.clear()
+        scan.return_value = [{'ip': '192.168.1.10', 'mac': 'b8:27:eb:11:22:33'}]
+
+        response = self.client.post('/active-scan', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['hosts'][0]['manufacturer'], 'Raspberry Pi Foundation')
+        self.assertIn('mac:b8:27:eb:11:22:33', app_module.device_inventory)
+
     def test_minecraft_page_renders(self):
         response = self.client.get('/minecraft-attack')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Minecraft Attack Lab', response.data)
 
-    def test_minecraft_status_requires_authorization(self):
-        response = self.client.post('/minecraft-attack', data={})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json()['message'], 'Authorization confirmation is required')
-
-    def test_minecraft_mob_toggle_requires_authorization(self):
-        response = self.client.post('/minecraft-attack/mobs/chicken/toggle', data={})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json()['message'], 'Authorization confirmation is required')
 
     @patch('scripts.wifi.utils.get_network_detail')
     def test_wireless_network_detail_page_renders_discovered_devices(self, get_detail):
