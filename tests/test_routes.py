@@ -26,7 +26,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Bluetooth action checklist', response.data)
         self.assertIn(b'WPA handshake capture lab', response.data)
         self.assertIn(b'Remote cracking orchestration', response.data)
-        self.assertIn(b'PineAP-style recon and campaign concepts', response.data)
+        self.assertIn(b'PineAP-style recon and campaign engine', response.data)
         self.assertIn(b'Hak5-inspired lab features', response.data)
         self.assertIn(b'Payload profile switchboard', response.data)
         self.assertIn(b'Inline network tap mode', response.data)
