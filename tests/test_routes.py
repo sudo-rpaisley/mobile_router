@@ -183,6 +183,18 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertTrue(any(item['id'] == 'wifi-network-scan' for item in registry))
         self.assertTrue(any(item['id'] == 'reports' for item in registry))
 
+    def test_adapter_updates_returns_partial_fragments_when_changed(self):
+        response = self.client.post('/adapters/updates', json={'snapshot': 'stale', 'title': 'Home'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['changed'])
+        self.assertIn('primary_nav_links', payload['fragments'])
+        self.assertIn('interface_categories', payload['fragments'])
+
+        response = self.client.post('/adapters/updates', json={'snapshot': payload['snapshot'], 'title': 'Home'})
+        self.assertFalse(response.get_json()['changed'])
+
     def test_export_routes_return_json(self):
         response = self.client.get('/export/interfaces.json')
         self.assertEqual(response.status_code, 200)

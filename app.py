@@ -114,7 +114,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Demo/simulation mode', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Provide fake adapters, devices, networks, and scan results for demos and UI testing without hardware.'},
             {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
             {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
-            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
+            {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Adapter polling now returns targeted navbar/card fragments for DOM replacement without a full-page reload.', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
         ],
     },
 ]
@@ -757,6 +757,28 @@ def report_as_markdown(report):
         lines.append(f"| {alert.get('display_name', '')} | {alert.get('ip') or ''} | {alert.get('mac') or ''} | {alert.get('source') or ''} | {alert.get('read')} |")
     return '\n'.join(lines) + '\n'
 
+
+def adapter_snapshot(interfaces=None):
+    """Return a stable snapshot for adapter partial-update comparisons."""
+    return json.dumps([
+        {
+            'name': iface.name,
+            'interface_type': iface.interface_type,
+            'state': getattr(iface, 'state', None),
+            'addresses': getattr(iface, 'addresses', []),
+            'manufacturer': getattr(iface, 'manufacturer', None),
+        }
+        for iface in (interfaces or network_interfaces)
+    ], sort_keys=True)
+
+
+def adapter_update_fragments(title='Home'):
+    context = current_context()
+    return {
+        'primary_nav_links': render_template('_primary-nav-links.html', title=title, **context),
+        'interface_categories': render_template('_interface-categories.html', title=title, **context),
+    }
+
 def current_context():
     return {
         'networkTechnologies': networkTechnologies,
@@ -841,6 +863,20 @@ register_blueprints(app, current_context)
 def adapters():
     """Return the available network interfaces as JSON."""
     return jsonify({'interfaces': [iface.to_dict() for iface in network_interfaces]})
+
+
+@app.route('/adapters/updates', methods=['POST'])
+def adapter_updates():
+    """Return adapter data plus replaceable page fragments when adapters changed."""
+    data = request.get_json(silent=True) or {}
+    current_snapshot = adapter_snapshot()
+    changed = data.get('snapshot') != current_snapshot
+    return jsonify({
+        'changed': changed,
+        'snapshot': current_snapshot,
+        'interfaces': [iface.to_dict() for iface in network_interfaces],
+        'fragments': adapter_update_fragments(data.get('title') or 'Home') if changed else {},
+    })
 
 
 
