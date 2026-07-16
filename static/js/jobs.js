@@ -31,8 +31,13 @@ $(document).ready(function () {
       const detail = job.kind === 'port-scan'
         ? `${job.scanned_ports || 0} of ${job.total_ports || 0} ports checked; ${job.open_ports ? job.open_ports.length : 0} open.`
         : (job.message || job.error || 'Adapter scan job.');
+      const details = {};
+      (job.open_port_details || []).forEach(function (item) { details[item.port] = item; });
       const openPorts = job.open_ports && job.open_ports.length
-        ? `<div class="mt-2">${job.open_ports.map((port) => `<span class="badge bg-success mr-1">OPEN ${escapeHtml(port)}</span>`).join('')}</div>`
+        ? `<div class="port-service-grid mt-2">${job.open_ports.map((port) => {
+            const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
+            return `<div class="port-service-card"><div class="port-service-number">${escapeHtml(port)}</div><div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div></div>`;
+          }).join('')}</div>`
         : '';
       const cancel = job.cancelable
         ? `<button class="btn btn-outline-danger btn-sm" data-cancel-job="${escapeHtml(job.id)}">Cancel</button>`

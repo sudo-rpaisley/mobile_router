@@ -8,17 +8,31 @@ $(document).ready(function () {
       .replace(/'/g, '&#039;');
   }
 
-  function renderOpenPorts($panel, ports, previousPorts) {
+  function detailByPort(job) {
+    const details = {};
+    (job.open_port_details || []).forEach(function (item) {
+      details[item.port] = item;
+    });
+    return details;
+  }
+
+  function renderOpenPorts($panel, job, previousPorts) {
+    const ports = job.open_ports || [];
+    const details = detailByPort(job);
     const $list = $panel.find('[data-port-scan-open-ports]');
     if (!ports.length) {
       $list.html('<p class="text-muted mb-0">No open ports discovered yet.</p>');
       return;
     }
 
-    let html = '<div class="port-scan-open-list">';
+    let html = '<div class="port-service-grid">';
     ports.forEach(function (port) {
+      const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
       const isNew = !previousPorts.has(port);
-      html += `<span class="badge ${isNew ? 'bg-success' : 'bg-primary'} mr-2 mb-2">OPEN ${escapeHtml(port)}</span>`;
+      html += `<div class="port-service-card ${isNew ? 'port-service-card-new' : ''}">`;
+      html += `<div class="port-service-number">${escapeHtml(port)}</div>`;
+      html += `<div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div>`;
+      html += '</div>';
     });
     html += '</div>';
     $list.html(html);
@@ -36,7 +50,7 @@ $(document).ready(function () {
     );
     $panel.find('[data-port-scan-progress-bar]').css('width', `${progress}%`).attr('aria-valuenow', progress).text(`${progress}%`);
     $panel.find('[data-port-scan-progress-text]').text(`${scanned} of ${total} ports checked`);
-    renderOpenPorts($panel, job.open_ports || [], previousPorts);
+    renderOpenPorts($panel, job, previousPorts);
   }
 
   function pollJob($panel, jobId, previousPorts) {

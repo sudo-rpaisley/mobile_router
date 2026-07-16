@@ -329,6 +329,7 @@ class RouteSmokeTest(unittest.TestCase):
             'label': 'custom',
             'status': 'queued',
             'open_ports': [],
+            'open_port_details': [],
             'scanned_ports': 0,
             'total_ports': 3,
             'current_port': None,
@@ -352,6 +353,7 @@ class RouteSmokeTest(unittest.TestCase):
         job = app_module.port_scan_jobs[job_id]
         self.assertEqual(job['status'], 'complete')
         self.assertEqual(job['open_ports'], [22])
+        self.assertEqual(job['open_port_details'][0]['service'], 'SSH')
         self.assertEqual(job['scanned_ports'], 3)
         self.assertEqual(job['progress'], 100)
 
@@ -366,6 +368,7 @@ class RouteSmokeTest(unittest.TestCase):
             'label': 'common port scan',
             'status': 'running',
             'open_ports': [22],
+            'open_port_details': [{'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'}],
             'scanned_ports': 20,
             'total_ports': 1024,
             'current_port': 22,
@@ -386,6 +389,7 @@ class RouteSmokeTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload['running_count'], 1)
         self.assertEqual(payload['jobs'][0]['open_ports'], [22])
+        self.assertEqual(payload['jobs'][0]['open_port_details'][0]['service'], 'SSH')
 
     def test_job_cancel_endpoint_cancels_port_scan_job(self):
         app_module.port_scan_jobs.clear()
@@ -397,6 +401,7 @@ class RouteSmokeTest(unittest.TestCase):
             'label': 'common port scan',
             'status': 'running',
             'open_ports': [],
+            'open_port_details': [],
             'scanned_ports': 0,
             'total_ports': 1024,
             'current_port': None,

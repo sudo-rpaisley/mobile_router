@@ -466,6 +466,7 @@ def _port_scan_job_snapshot(job):
         **job,
         'kind': 'port-scan',
         'open_ports': list(job.get('open_ports', [])),
+        'open_port_details': list(job.get('open_port_details', [])),
         'cancelable': job.get('status') in {'queued', 'running'},
     }
 
@@ -506,7 +507,7 @@ def update_port_scan_job(job_id, **updates):
 
 
 def run_port_scan_job(job_id):
-    from scripts.portScanner import PortScanError, scan_ports
+    from scripts.portScanner import PortScanError, describe_open_ports, identify_port_service, scan_ports
 
     with port_scan_jobs_lock:
         job = port_scan_jobs.get(job_id)
@@ -523,6 +524,7 @@ def run_port_scan_job(job_id):
     scanned = 0
 
     def on_open(port):
+        service_detail = identify_port_service(port)
         with port_scan_jobs_lock:
             current = port_scan_jobs.get(job_id)
             if not current:
@@ -530,7 +532,9 @@ def run_port_scan_job(job_id):
             if port not in current['open_ports']:
                 current['open_ports'].append(port)
                 current['open_ports'].sort()
-            current['message'] = f'Open port found: {port}'
+                current.setdefault('open_port_details', []).append(service_detail)
+                current['open_port_details'] = sorted(current['open_port_details'], key=lambda item: item['port'])
+            current['message'] = f"Open port found: {port} ({service_detail['service']})"
             current['updated_at'] = time.time()
 
     def should_cancel():
@@ -558,6 +562,7 @@ def run_port_scan_job(job_id):
             job_id,
             status='complete',
             open_ports=ports,
+            open_port_details=describe_open_ports(ports),
             scanned_ports=total,
             current_port=end,
             progress=100,
@@ -586,6 +591,7 @@ def create_port_scan_job(host, start, end, label=None):
         'label': label or f'{start}-{end}',
         'status': 'queued',
         'open_ports': [],
+        'open_port_details': [],
         'scanned_ports': 0,
         'total_ports': end - start + 1,
         'current_port': None,
@@ -819,14 +825,14 @@ def port_scan_route():
     except ValueError as e:
         return json_error(str(e))
 
-    from scripts.portScanner import PortScanError, scan_ports
+    from scripts.portScanner import PortScanError, describe_open_ports, scan_ports
 
     try:
         ports = scan_ports(data.get('host'), start_port, end_port)
     except PortScanError as e:
         return json_error(str(e))
 
-    return jsonify({'ports': ports})
+    return jsonify({'ports': ports, 'port_details': describe_open_ports(ports)})
 
 
 @app.route('/port-scan-jobs', methods=['POST'])

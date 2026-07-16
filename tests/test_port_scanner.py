@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.portScanner import PortScanError, scan_ports, validate_port_range
+from scripts.portScanner import PortScanError, identify_port_service, scan_ports, validate_port_range
 
 
 class PortScannerValidationTest(unittest.TestCase):
@@ -25,6 +25,10 @@ class PortScannerValidationTest(unittest.TestCase):
     def test_rejects_blank_host(self):
         with self.assertRaisesRegex(PortScanError, "Host is required"):
             scan_ports("   ", 1, 1)
+
+    def test_identifies_common_port_services(self):
+        self.assertEqual(identify_port_service(22)['service'], 'SSH')
+        self.assertEqual(identify_port_service(53)['service'], 'DNS')
 
     def test_scan_ports_stops_when_cancelled(self):
         calls = []
