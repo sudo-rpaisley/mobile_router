@@ -344,17 +344,6 @@ def missing_fields(data, *fields):
     return [field for field in fields if not data.get(field)]
 
 
-def authorization_confirmed(data):
-    """Return whether a red-team action includes explicit authorization confirmation."""
-    return str(data.get('authorizationConfirmed', '')).strip().lower() in {'true', '1', 'yes', 'on'}
-
-
-def require_red_team_authorization(data):
-    if not authorization_confirmed(data):
-        return json_error('Authorization confirmation is required')
-    return None
-
-
 def parse_int(value, error_message):
     """Parse an integer form value and raise ValueError with a route-friendly message."""
     try:
@@ -663,9 +652,6 @@ def interface_detail(interface_type, interface_name):
 @app.route('/syn-flood', methods=['POST'])
 def syn_flood():
     data = request.form
-    auth_error = require_red_team_authorization(data)
-    if auth_error:
-        return auth_error
     if missing_fields(data, 'destinationAddress', 'destinationPort', 'frames', 'selectedInterface'):
         return json_error('Missing required parameters')
 
@@ -684,9 +670,6 @@ def syn_flood():
 @app.route('/syn-flood-broadcast', methods=['POST'])
 def syn_flood_broadcast():
     data = request.form
-    auth_error = require_red_team_authorization(data)
-    if auth_error:
-        return auth_error
     if missing_fields(data, 'frames', 'selectedInterface'):
         return json_error('Missing required parameters')
 
@@ -843,9 +826,6 @@ def spoof_mac_route():
 @app.route('/beacon-advertise', methods=['POST'])
 def beacon_advertise():
     data = request.form
-    auth_error = require_red_team_authorization(data)
-    if auth_error:
-        return auth_error
     selected_interface = data.get('selectedInterface')
     ssid = data.get('ssid')
     src_mac = data.get('srcMac') or '22:22:22:22:22:22'
@@ -870,9 +850,6 @@ def beacon_advertise():
 @app.route('/deauth', methods=['POST'])
 def deauth_route():
     data = request.form
-    auth_error = require_red_team_authorization(data)
-    if auth_error:
-        return auth_error
     selected_interface = data.get('selectedInterface')
     ap_mac = data.get('ap')
     target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'
@@ -896,9 +873,6 @@ def deauth_route():
 @app.route('/aireplay-deauth', methods=['POST'])
 def aireplay_deauth_route():
     data = request.form
-    auth_error = require_red_team_authorization(data)
-    if auth_error:
-        return auth_error
     selected_interface = data.get('selectedInterface')
     ap_mac = data.get('ap')
     target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'

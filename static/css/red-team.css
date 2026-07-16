@@ -61,39 +61,3 @@
 .red-team-grid .input-group .form-control {
   flex: 1 1 0;
 }
-
-.red-team-authorization {
-  margin-bottom: 1.25rem;
-}
-
-.red-team-authorization .card-body {
-  align-items: center;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-}
-
-.red-team-authorization-copy {
-  color: #6c757d;
-  margin: 0;
-}
-
-.red-team-authorization-check {
-  align-items: center;
-  background: var(--theme-surface-soft, #f8f9fa);
-  border: 1px solid var(--theme-border, #dee2e6);
-  border-radius: 0.85rem;
-  display: flex;
-  flex: 0 0 auto;
-  font-weight: 700;
-  gap: 0.6rem;
-  margin: 0;
-  padding: 0.85rem 1rem;
-}
-
-@media (max-width: 767.98px) {
-  .red-team-authorization .card-body {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
