@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Bluetooth</p>
+    <h1 class="page-title">Phone Integration</h1>
+    <p class="page-subtitle">Choose exactly which phone features Mobile Router may request after you pair and authorise a device.</p>
+  </div>
+</section>
+
+{% if notice %}
+  <div class="alert alert-{{ notice_style }}" role="alert">{{ notice }}</div>
+{% endif %}
+
+<form method="post" class="bluetooth-phone-form">
+  <section class="theme-card card">
+    <div class="card-body">
+      <div class="bluetooth-phone-section-header">
+        <div>
+          <h2 class="theme-section-title mb-1">Bluetooth identity</h2>
+          <p class="text-muted mb-0">This is the name used by the Mobile Router phone-integration service.</p>
+        </div>
+        {% if name_capability.available %}
+          <span class="badge badge-success">Adapter rename available</span>
+        {% else %}
+          <span class="badge badge-secondary">Service name only</span>
+        {% endif %}
+      </div>
+
+      <div class="form-group mt-3">
+        <label for="bluetooth-display-name">Bluetooth display name</label>
+        <input
+          id="bluetooth-display-name"
+          class="form-control"
+          type="text"
+          name="display_name"
+          value="{{ settings.display_name }}"
+          maxlength="248"
+          required
+          aria-describedby="bluetooth-name-help">
+        <small id="bluetooth-name-help" class="form-text text-muted">{{ name_capability.message }}</small>
+      </div>
+
+      <div class="custom-control custom-checkbox">
+        <input
+          id="apply-display-name"
+          class="custom-control-input"
+          type="checkbox"
+          name="apply_display_name"
+          value="true"
+          {% if not name_capability.available %}disabled{% endif %}>
+        <label class="custom-control-label" for="apply-display-name">Apply this name to the host Bluetooth adapter now</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="theme-card card">
+    <div class="card-body">
+      <div class="bluetooth-phone-section-header">
+        <div>
+          <h2 class="theme-section-title mb-1">Allowed features</h2>
+          <p class="text-muted mb-0">Each category is independent. Unselected categories will not be requested from the phone.</p>
+        </div>
+        <span class="badge badge-info">Explicit opt-in</span>
+      </div>
+
+      <div class="bluetooth-feature-grid mt-3">
+        {% for feature in feature_options %}
+          <label class="bluetooth-feature-option" for="feature-{{ feature.key }}">
+            <span class="custom-control custom-checkbox">
+              <input
+                id="feature-{{ feature.key }}"
+                class="custom-control-input"
+                type="checkbox"
+                name="features"
+                value="{{ feature.key }}"
+                {% if feature.enabled %}checked{% endif %}>
+              <span class="custom-control-label bluetooth-feature-label">{{ feature.label }}</span>
+            </span>
+            <span class="badge badge-light border">{{ feature.profile }}</span>
+            <span class="bluetooth-feature-description">{{ feature.description }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="theme-card card bluetooth-phone-privacy-card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Permission model</h2>
+      <p class="mb-0">These settings limit what Mobile Router will request. They do not bypass Bluetooth pairing or the permissions shown by Android, iOS, or the host operating system. A phone may also support only some of the selected profiles.</p>
+    </div>
+  </section>
+
+  <section class="theme-card card">
+    <div class="card-body">
+      <div class="bluetooth-phone-section-header">
+        <div>
+          <h2 class="theme-section-title mb-1">Host compatibility</h2>
+          <p class="text-muted mb-0">The data model is portable; the Bluetooth transport is selected for the current host.</p>
+        </div>
+        {% if runtime.backend.connector_ready %}
+          <span class="badge badge-success">Transport ready</span>
+        {% elif runtime.backend.prerequisites_ready %}
+          <span class="badge badge-warning">Connector required</span>
+        {% else %}
+          <span class="badge badge-secondary">Requirements missing</span>
+        {% endif %}
+      </div>
+
+      <dl class="interface-definition-list bluetooth-runtime-list mt-3">
+        <div><dt>Host</dt><dd>{{ runtime.host.label }}</dd></div>
+        <div><dt>Backend</dt><dd>{{ runtime.backend.label }}</dd></div>
+        <div><dt>Transport</dt><dd>{{ runtime.backend.transport }}</dd></div>
+        <div><dt>Limited system</dt><dd>{{ 'Yes' if runtime.host.limited else 'No' }}</dd></div>
+      </dl>
+      <p class="text-muted small mb-2">{{ runtime.backend.note }}</p>
+      {% if runtime.backend.missing %}
+        <div class="alert alert-warning small mb-0" role="alert">
+          <strong>Still required:</strong> {{ runtime.backend.missing | join(', ') }}.
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Phone compatibility</h2>
+      <div class="bluetooth-phone-platform-grid">
+        {% for phone in runtime.phones.values() %}
+          <article class="bluetooth-phone-platform-card">
+            <h3>{{ phone.label }}</h3>
+            <ul class="theme-list bluetooth-profile-list">
+              {% for feature in feature_options %}
+                <li>
+                  <span>{{ feature.label }}</span>
+                  <span class="badge badge-light border">{{ phone.features[feature.key] }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+            <p class="text-muted small mb-0 mt-3">{{ phone.note }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="theme-actions">
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save phone settings</button>
+  </div>
+</form>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="bluetooth-phone-section-header">
+      <div>
+        <h2 class="theme-section-title mb-1">Synchronise phone data</h2>
+        <p class="text-muted mb-0">Download the selected PBAP contacts and call history as a JSON file. Mobile Router does not retain this export.</p>
+      </div>
+      {% if runtime.backend.connector_ready %}
+        <span class="badge badge-success">Connector available</span>
+      {% else %}
+        <span class="badge badge-secondary">Not available</span>
+      {% endif %}
+    </div>
+
+    <form method="post" action="/bluetooth-phone/sync" class="mt-3">
+      <div class="form-group">
+        <label for="bluetooth-phone-device">Paired phone</label>
+        <input
+          id="bluetooth-phone-device"
+          class="form-control"
+          type="text"
+          name="device_id"
+          list="paired-bluetooth-phones"
+          placeholder="AA:BB:CC:DD:EE:FF"
+          required>
+        <datalist id="paired-bluetooth-phones">
+          {% for device in paired_devices %}
+            <option value="{{ device.id }}">{{ device.name }}</option>
+          {% endfor %}
+        </datalist>
+        <small class="form-text text-muted">Pair the phone through the host first, then select it here or enter its Bluetooth address.</small>
+      </div>
+
+      <div class="custom-control custom-checkbox">
+        <input
+          id="confirm-phone-access"
+          class="custom-control-input"
+          type="checkbox"
+          name="confirm_phone_access"
+          value="true"
+          required>
+        <label class="custom-control-label" for="confirm-phone-access">I am authorised to access this phone and approve this one-time download</label>
+      </div>
+
+      <div class="theme-actions mt-3">
+        <button
+          class="btn btn-primary"
+          type="submit"
+          {% if not runtime.backend.connector_ready %}disabled{% endif %}>
+          <i class="fa-solid fa-download"></i> Synchronise and download
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
