@@ -21,6 +21,13 @@ from scripts.interfaceTools import (
     lookup_manufacturer,
     spoof_mac,
 )
+from scripts.bluetooth_phone import (
+    BluetoothPhoneSettingsError,
+    bluetooth_pairing_mode_capability,
+    bluetooth_phone_feature_options,
+    build_settings as build_bluetooth_phone_settings,
+    load_bluetooth_phone_settings,
+)
 from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
@@ -866,6 +873,26 @@ def report_as_markdown(report):
     return '\n'.join(lines) + '\n'
 
 
+
+def bluetooth_phone_card_context():
+    config_path = app.config.get('BLUETOOTH_PHONE_CONFIG')
+    notice = request.args.get('bluetooth_notice')
+    notice_style = request.args.get('bluetooth_notice_style', 'info')
+    try:
+        settings = load_bluetooth_phone_settings(config_path)
+    except BluetoothPhoneSettingsError as exc:
+        app.logger.warning('Unable to load Bluetooth phone settings: %s', exc)
+        settings = build_bluetooth_phone_settings('Mobile Router', [])
+        notice = notice or str(exc)
+        notice_style = 'danger'
+    return {
+        'bluetooth_phone_settings': settings,
+        'bluetooth_phone_feature_options': bluetooth_phone_feature_options(settings),
+        'bluetooth_phone_pairing_capability': bluetooth_pairing_mode_capability(),
+        'bluetooth_phone_notice': notice,
+        'bluetooth_phone_notice_style': notice_style,
+    }
+
 def adapter_snapshot(interfaces=None):
     """Return a stable snapshot for adapter partial-update comparisons."""
     return json.dumps([
@@ -1306,7 +1333,13 @@ def interface_detail(interface_type, interface_name):
     interface_type = interface_type.lower()
     interface = next((iface for iface in network_interfaces if iface.name == interface_name and iface.interface_type.lower() == interface_type), None)
     if interface:
-        return render_template('interface_detail.html', title=interface.name, interface=interface, **current_context())
+        return render_template(
+            'interface_detail.html',
+            title=interface.name,
+            interface=interface,
+            **current_context(),
+            **(bluetooth_phone_card_context() if interface.interface_type == 'Bluetooth' else {}),
+        )
     else:
         return "Interface not found", 404
 

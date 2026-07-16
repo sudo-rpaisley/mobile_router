@@ -1,14 +1,13 @@
 import io
 import json
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
-from flask import Blueprint, current_app, jsonify, render_template, request, send_file
+from flask import Blueprint, current_app, jsonify, redirect, request, send_file
 
 from scripts.bluetooth_phone import (
     BluetoothPairingModeUnavailable,
     BluetoothPhoneSettingsError,
-    bluetooth_pairing_mode_capability,
-    bluetooth_phone_feature_options,
     build_settings,
     disable_bluetooth_pairing_mode,
     load_bluetooth_phone_settings,
@@ -26,33 +25,17 @@ from scripts.bluetooth_phone_connector import (
 def create_bluetooth_phone_blueprint(context_provider):
     blueprint = Blueprint("bluetooth_phone", __name__)
 
-    def render_settings_page(settings, notice=None, notice_style="info", status_code=200):
-        context = context_provider()
-        return (
-            render_template(
-                "bluetooth_phone.html",
-                title="Phone Integration",
-                settings=settings,
-                feature_options=bluetooth_phone_feature_options(settings),
-                pairing_capability=bluetooth_pairing_mode_capability(),
-                notice=notice,
-                notice_style=notice_style,
-                **context,
-            ),
-            status_code,
-        )
+    def redirect_to_return_target(notice, notice_style="success"):
+        target = request.form.get("return_to") or request.referrer or "/bluetooth"
+        separator = "&" if "?" in target else "?"
+        query = urlencode({"bluetooth_notice": notice, "bluetooth_notice_style": notice_style})
+        return redirect(f"{target}{separator}{query}")
 
     @blueprint.route("/bluetooth-phone", methods=["GET", "POST"])
     def bluetooth_phone_page():
         config_path = current_app.config.get("BLUETOOTH_PHONE_CONFIG")
         if request.method == "GET":
-            try:
-                settings = load_bluetooth_phone_settings(config_path)
-            except BluetoothPhoneSettingsError as exc:
-                current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
-                settings = build_settings("Mobile Router", [])
-                return render_settings_page(settings, str(exc), "danger", 500)
-            return render_settings_page(settings)
+            return redirect("/bluetooth")
 
         try:
             settings = build_settings(
@@ -63,16 +46,7 @@ def create_bluetooth_phone_blueprint(context_provider):
             settings = save_bluetooth_phone_settings(settings, config_path)
         except BluetoothPhoneSettingsError as exc:
             current_app.logger.info("Bluetooth phone settings validation failed: %s", exc)
-            fallback_name = request.form.get("display_name") or "Mobile Router"
-            try:
-                submitted_settings = build_settings(
-                    fallback_name,
-                    [feature for feature in request.form.getlist("features") if feature],
-                    request.form.get("advertise_enabled") == "true",
-                )
-            except BluetoothPhoneSettingsError:
-                submitted_settings = build_settings("Mobile Router", [])
-            return render_settings_page(submitted_settings, str(exc), "danger", 400)
+            return redirect_to_return_target(str(exc), "danger")
 
         notice = "Bluetooth phone settings saved."
         notice_style = "success"
@@ -95,7 +69,7 @@ def create_bluetooth_phone_blueprint(context_provider):
             "Bluetooth phone settings saved with %s selected feature(s)",
             sum(settings["enabled_features"].values()),
         )
-        return render_settings_page(settings, notice, notice_style)
+        return redirect_to_return_target(notice, notice_style)
 
 
     @blueprint.route("/bluetooth-phone/pairing-mode", methods=["POST"])
@@ -105,22 +79,19 @@ def create_bluetooth_phone_blueprint(context_provider):
             settings = load_bluetooth_phone_settings(config_path)
         except BluetoothPhoneSettingsError as exc:
             current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
-            settings = build_settings("Mobile Router", [])
-            return render_settings_page(settings, str(exc), "danger", 500)
+            return redirect_to_return_target(str(exc), "danger")
 
         try:
             result = enable_bluetooth_pairing_mode(settings["display_name"])
         except BluetoothPairingModeUnavailable as exc:
-            return render_settings_page(settings, str(exc), "info", 400)
+            return redirect_to_return_target(str(exc), "info")
         except Exception as exc:
             current_app.logger.warning("Unable to enable Bluetooth pairing mode: %s", exc)
-            return render_settings_page(
-                settings,
+            return redirect_to_return_target(
                 f"Bluetooth pairing mode could not be enabled: {exc}",
                 "warning",
-                500,
             )
-        return render_settings_page(settings, result["message"], "success")
+        return redirect_to_return_target(result["message"], "success")
 
     @blueprint.route("/bluetooth-phone/status")
     def bluetooth_phone_status():

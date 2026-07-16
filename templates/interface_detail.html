@@ -25,7 +25,6 @@
           <button id="wlan-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Networks</button>
         {% elif interface.interface_type == 'Bluetooth' %}
           <button id="bluetooth-scan" class="btn btn-primary" value="{{ interface.name }}">Scan for Devices</button>
-          <a class="btn btn-outline-primary" href="/bluetooth-phone">Phone Integration</a>
         {% endif %}
       </div>
     </section>
@@ -64,7 +63,7 @@
               <li><span class="badge badge-info">Optional</span> pywifi/scapy may unlock deeper Wi-Fi actions</li>
             {% elif interface.interface_type == 'Bluetooth' %}
               <li><span class="badge badge-primary">Available</span> Bluetooth device scan</li>
-              <li><span class="badge badge-success">Phone pairing</span> Pair phones and request authorised contacts, call history, messages, controls, media, or tethering from Phone Integration</li>
+              <li><span class="badge badge-success">Phone pairing</span> Pair phones and request authorised contacts, call history, messages, controls, media, or tethering from this page</li>
               <li><span class="badge badge-info">Host tools</span> Actions require BlueZ bluetoothctl or busctl support</li>
             {% else %}
               <li><span class="badge badge-primary">Available</span> Active/passive network scans from the Scan page</li>
@@ -75,9 +74,6 @@
             {% endif %}
           </ul>
           <a class="btn btn-sm btn-outline-primary" href="/capabilities">View capability details</a>
-          {% if interface.interface_type == 'Bluetooth' %}
-            <a class="btn btn-sm btn-outline-primary" href="/bluetooth-phone">Open Phone Integration</a>
-          {% endif %}
         </div>
       </article>
 
@@ -124,6 +120,72 @@
           {% endif %}
         </div>
       </article>
+
+
+      {% if interface.interface_type == 'Bluetooth' and bluetooth_phone_settings is defined %}
+        <article class="card shadow-sm bluetooth-phone-card">
+          <div class="card-body">
+            <h2 class="interface-section-title">Phone Integration</h2>
+            {% if bluetooth_phone_notice %}
+              <div class="alert alert-{{ bluetooth_phone_notice_style }}" role="alert">{{ bluetooth_phone_notice }}</div>
+            {% endif %}
+            <form method="post" action="/bluetooth-phone" class="bluetooth-phone-form">
+              <input type="hidden" name="return_to" value="{{ request.path }}">
+              <div class="form-group">
+                <label for="bluetooth-display-name">Device name</label>
+                <input
+                  id="bluetooth-display-name"
+                  class="form-control"
+                  type="text"
+                  name="display_name"
+                  value="{{ bluetooth_phone_settings.display_name }}"
+                  maxlength="248"
+                  required>
+              </div>
+
+              <div class="custom-control custom-switch mb-3">
+                <input
+                  id="advertise-enabled"
+                  class="custom-control-input"
+                  type="checkbox"
+                  name="advertise_enabled"
+                  value="true"
+                  {% if bluetooth_phone_settings.advertise_enabled %}checked{% endif %}
+                  {% if not bluetooth_phone_pairing_capability.available %}disabled{% endif %}>
+                <label class="custom-control-label" for="advertise-enabled">Advertise device for phone pairing</label>
+              </div>
+              {% if not bluetooth_phone_pairing_capability.available %}
+                <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
+              {% endif %}
+
+              <fieldset>
+                <legend class="h6">Allowed phone features</legend>
+                <div class="bluetooth-feature-grid mt-2">
+                  {% for feature in bluetooth_phone_feature_options %}
+                    <label class="bluetooth-feature-option" for="feature-{{ feature.key }}">
+                      <span class="custom-control custom-checkbox">
+                        <input
+                          id="feature-{{ feature.key }}"
+                          class="custom-control-input"
+                          type="checkbox"
+                          name="features"
+                          value="{{ feature.key }}"
+                          {% if feature.enabled %}checked{% endif %}>
+                        <span class="custom-control-label bluetooth-feature-label">{{ feature.label }}</span>
+                      </span>
+                      <span class="badge badge-light border">{{ feature.profile }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </fieldset>
+
+              <div class="theme-actions mt-3">
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save and apply</button>
+              </div>
+            </form>
+          </div>
+        </article>
+      {% endif %}
 
       {% if interface.interface_type == 'Bridge' or interface.interface_type == 'Bond' or interface.interface_type == 'Station' %}
         <article class="card shadow-sm interface-extra-card">

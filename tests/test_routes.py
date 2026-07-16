@@ -18,8 +18,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertIn(b'Tools', response.data)
-        self.assertIn(b'href="/bluetooth-phone"', response.data)
-        self.assertIn(b'Phone Integration', response.data)
+        self.assertNotIn(b'href="/bluetooth-phone"', response.data)
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
@@ -132,8 +131,9 @@ class RouteSmokeTest(unittest.TestCase):
             response = self.client.get('/bluetooth/hci0')
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'href="/bluetooth-phone"', response.data)
+        self.assertIn(b'action="/bluetooth-phone"', response.data)
         self.assertIn(b'Phone Integration', response.data)
+        self.assertIn(b'id="advertise-enabled"', response.data)
         self.assertIn(b'Pair phones and request authorised contacts', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):

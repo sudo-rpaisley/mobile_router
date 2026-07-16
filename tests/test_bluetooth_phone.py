@@ -161,41 +161,13 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
             app.config["BLUETOOTH_PHONE_CONFIG"] = self.previous_config
         self.temp_dir.cleanup()
 
-    @patch("routes.bluetooth_phone.bluetooth_pairing_mode_capability")
-    def test_page_renders_independent_feature_checkboxes(self, capability):
-        capability.return_value = {
-            "available": False,
-            "tool": None,
-            "path": None,
-            "message": "Service name only",
-        }
-
+    def test_standalone_phone_page_redirects_to_bluetooth_adapters(self):
         response = self.client.get("/bluetooth-phone")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Phone Integration", response.data)
-        self.assertIn(b'id="feature-contacts"', response.data)
-        self.assertIn(b'id="feature-call_history"', response.data)
-        self.assertIn(b'id="feature-messages"', response.data)
-        self.assertIn(b'id="feature-call_controls"', response.data)
-        self.assertIn(b'id="feature-media_controls"', response.data)
-        self.assertIn(b'id="feature-tethering"', response.data)
-        self.assertIn(b"Advertised phone device", response.data)
-        self.assertIn(b'id="advertise-enabled"', response.data)
-        self.assertIn(b"Allowed phone features", response.data)
-        self.assertNotIn(b"Host compatibility", response.data)
-        self.assertNotIn(b"Phone compatibility", response.data)
-        self.assertNotIn(b"Synchronise phone data", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/bluetooth")
 
-    @patch("routes.bluetooth_phone.bluetooth_pairing_mode_capability")
-    def test_post_saves_only_selected_features(self, capability):
-        capability.return_value = {
-            "available": False,
-            "tool": None,
-            "path": None,
-            "message": "Service name only",
-        }
-
+    def test_post_saves_only_selected_features(self):
         response = self.client.post(
             "/bluetooth-phone",
             data={
@@ -204,30 +176,22 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Bluetooth phone settings saved", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("bluetooth_notice=Bluetooth+phone+settings+saved", response.headers["Location"])
         saved = load_bluetooth_phone_settings(self.config_path)
         self.assertEqual(saved["display_name"], "Robert's Mobile Router")
         self.assertTrue(saved["enabled_features"]["contacts"])
         self.assertTrue(saved["enabled_features"]["call_history"])
         self.assertFalse(saved["enabled_features"]["messages"])
 
-    @patch("routes.bluetooth_phone.bluetooth_pairing_mode_capability")
-    def test_post_rejects_unknown_feature(self, capability):
-        capability.return_value = {
-            "available": False,
-            "tool": None,
-            "path": None,
-            "message": "Service name only",
-        }
-
+    def test_post_rejects_unknown_feature(self):
         response = self.client.post(
             "/bluetooth-phone",
             data={"display_name": "Mobile Router", "features": "everything"},
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"Unsupported Bluetooth phone feature", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("Unsupported+Bluetooth+phone+feature", response.headers["Location"])
         self.assertFalse(self.config_path.exists())
 
     @patch("routes.bluetooth_phone.enable_bluetooth_pairing_mode")
@@ -248,9 +212,9 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
         enable_pairing.assert_called_once_with("Camper Router")
-        self.assertIn(b"Bluetooth advertising is on", response.data)
+        self.assertIn("Bluetooth+advertising+is+on", response.headers["Location"])
         saved = load_bluetooth_phone_settings(self.config_path)
         self.assertTrue(saved["advertise_enabled"])
 
@@ -269,9 +233,9 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
 
         response = self.client.post("/bluetooth-phone/pairing-mode")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
         enable_pairing.assert_called_once_with("Camper Router")
-        self.assertIn(b"pairing mode is enabled", response.data)
+        self.assertIn("Bluetooth+pairing+mode+is+enabled", response.headers["Location"])
 
     @patch("routes.bluetooth_phone.build_bluetooth_phone_runtime")
     def test_status_endpoint_reports_runtime_backend(self, build_runtime):
