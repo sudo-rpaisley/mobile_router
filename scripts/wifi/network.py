@@ -7,9 +7,15 @@ class Network:
         self.access_points = []
         self.client_last_seen = {}
 
-    def add_access_point(self, bssid, channel, signal):
-        if not any(ap.bssid == bssid for ap in self.access_points):
-            self.access_points.append(AccessPoint(bssid, channel, signal))
+    def add_access_point(self, bssid, channel, signal, wps=False, wps_status=None):
+        existing = next((ap for ap in self.access_points if ap.bssid == bssid), None)
+        if existing:
+            existing.channel = channel if channel is not None else existing.channel
+            existing.signal = signal if signal is not None else existing.signal
+            existing.wps = existing.wps or wps is True
+            existing.wps_status = wps_status or existing.wps_status
+            return
+        self.access_points.append(AccessPoint(bssid, channel, signal, wps, wps_status))
 
     def add_client(self, bssid, client_mac, signal):
         for ap in self.access_points:

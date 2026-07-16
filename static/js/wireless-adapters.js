@@ -191,6 +191,7 @@ $(document).ready(function () {
       const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
       const isOpen = security === 'Open';
+      const hasWps = network.wps === true;
       const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ssid)}&bssid=${encodeURIComponent(bssid)}`;
       const deauthId = `deauth-${interfaceName}-${bssid}`.replace(/[^A-Za-z0-9_-]/g, '-');
       const canDeauth = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(bssid);
@@ -211,6 +212,7 @@ $(document).ready(function () {
             </div>
             <div class="wireless-network-badges">
               <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
+              ${hasWps ? '<span class="badge badge-warning" title="WPS advertised: review lab router settings and disable WPS where possible">WPS exposed</span>' : ''}
               <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
               <span class="badge badge-info" title="Open the full network detail page for APs, clients, gateway, and radio information"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
             </div>
@@ -219,6 +221,7 @@ $(document).ready(function () {
             <div class="wireless-network-stats" aria-label="Signal strength">
               <span class="${signalClass(signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalText)}</span>
             </div>
+            ${hasWps && network.wps_note ? `<p class="wireless-network-notes text-warning mb-2"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(network.wps_note)}</p>` : ''}
             <div class="wireless-network-actions">
               <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
                 <div class="input-group input-group-sm">

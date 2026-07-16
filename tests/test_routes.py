@@ -29,6 +29,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Project Roadmap', response.data)
         self.assertIn(b'Device inventory page', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
+        self.assertIn(b'WPS exposure checks', response.data)
+        self.assertNotIn(b'Authorization guardrails', response.data)
+        self.assertNotIn(b'Demo/simulation mode', response.data)
         self.assertIn(b'WPA handshake capture lab', response.data)
         self.assertIn(b'Remote cracking orchestration', response.data)
         self.assertIn(b'PineAP-style recon and campaign engine', response.data)
@@ -602,6 +605,10 @@ class RouteSmokeTest(unittest.TestCase):
             'discovered': True,
             'gateway': {'ip': '192.168.1.1', 'mac': '00:11:22:33:44:55', 'manufacturer': 'Training Vendor'},
             'bands': ['5 GHz'],
+            'wps': True,
+            'wps_status': '2 (Configured)',
+            'wps_note': 'WPS is advertised by this AP. Review lab router settings and disable WPS when possible because WPS can weaken credential protection, especially when PIN enrolment is enabled.',
+            'wps_access_points': 1,
             'ap_groups': [
                 {
                     'label': 'AP group 1',
@@ -624,6 +631,8 @@ class RouteSmokeTest(unittest.TestCase):
                     'manufacturer': 'Training Vendor',
                     'signal_quality': 'Strong',
                     'notes': ['DFS channel; may be affected by radar events'],
+                    'wps': True,
+                    'wps_status': '2 (Configured)',
                     'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff', 'manufacturer': 'Client Vendor'}],
                 }
             ],
@@ -638,6 +647,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'AP Identity Hints', response.data)
+        self.assertIn(b'WPS Exposure', response.data)
+        self.assertIn(b'WPS exposed', response.data)
         self.assertIn(b'Training Vendor', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
 

@@ -103,6 +103,8 @@ BSS aa:bb:cc:dd:ee:ff(on wlan0)
 	DS Parameter set: channel 1
 	capability: ESS Privacy ShortSlotTime (0x0411)
 	RSN:
+	WPS:
+	 * Wi-Fi Protected Setup State: 2 (Configured)
 BSS 11:22:33:44:55:66(on wlan0)
 	freq: 2437
 	signal: -61.00 dBm
@@ -126,7 +128,11 @@ BSS 11:22:33:44:55:66(on wlan0)
     assert summary[0]['channel'] == 1
     assert summary[0]['signal'] == -42
     assert summary[0]['security'] == 'WPA2/WPA3'
+    assert summary[0]['wps'] is True
+    assert summary[0]['wps_access_points'] == 1
+    assert 'WPS is advertised' in summary[0]['wps_note']
     assert summary[1]['security'] == 'Open'
+    assert summary[1]['wps'] is False
 
 
 def test_record_observed_device_adds_client_to_matching_access_point():
@@ -246,6 +252,23 @@ def test_network_detail_includes_ap_radio_details(monkeypatch):
     assert detail['access_points'][0]['band'] == '5 GHz'
     assert detail['access_points'][0]['frequency'] == 5180
     assert detail['access_points'][0]['signal_quality'] == 'Excellent'
+
+
+def test_network_detail_includes_wps_exposure(monkeypatch):
+    utils.networks = {}
+    utils._add_network('Office', 'aa:bb:cc:dd:ee:ff', 6, -42, 'WPA2', wps=True, wps_status='2 (Configured)')
+    monkeypatch.setattr(
+        utils,
+        'get_default_gateway',
+        lambda interface_name=None: {'ip': None, 'mac': None},
+    )
+
+    detail = utils.get_network_detail(ssid='Office')
+
+    assert detail['wps'] is True
+    assert detail['wps_access_points'] == 1
+    assert detail['access_points'][0]['wps'] is True
+    assert 'WPS is advertised' in detail['wps_note']
 
 
 def test_network_detail_includes_mac_manufacturers(monkeypatch):
