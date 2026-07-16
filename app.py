@@ -135,6 +135,30 @@ BLUETOOTHCTL_ACTIONS = {
 }
 BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
+DEAUTH_FRAME_LIMIT = 5
+BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff'
+
+
+def normalize_mac(value):
+    """Return a lowercase colon-separated MAC address or raise ValueError."""
+    if not value or not MAC_RE.match(value):
+        raise ValueError('Enter a valid MAC address in the form aa:bb:cc:dd:ee:ff')
+    return value.lower().replace('-', ':')
+
+
+def validate_lab_deauth_request(data):
+    """Validate bounded deauth lab inputs for an authorized classroom exercise."""
+    ap_mac = normalize_mac(data.get('ap'))
+    target_mac = normalize_mac(data.get('target') or BROADCAST_MAC)
+    if ap_mac == BROADCAST_MAC:
+        raise ValueError('AP MAC must be a specific lab access point, not broadcast')
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab network before running deauth')
+    frames = parse_int(data.get('frames'), 'Frames must be an integer')
+    if frames < 1 or frames > DEAUTH_FRAME_LIMIT:
+        raise ValueError(f'Frames must be between 1 and {DEAUTH_FRAME_LIMIT} for first-year labs')
+    return ap_mac, target_mac, frames
+
 
 class BluetoothToolUnavailable(RuntimeError):
     """Raised when host-local Bluetooth actions cannot be executed."""
@@ -897,21 +921,19 @@ def beacon_advertise():
 def deauth_route():
     data = request.form
     selected_interface = data.get('selectedInterface')
-    ap_mac = data.get('ap')
-    target_mac = data.get('target') or 'ff:ff:ff:ff:ff:ff'
 
     if missing_fields(data, 'selectedInterface', 'ap', 'frames'):
         return json_error('Missing required parameters')
 
     try:
-        frames = parse_int(data.get('frames'), 'Frames must be an integer')
+        ap_mac, target_mac, frames = validate_lab_deauth_request(data)
     except ValueError as e:
         return json_error(str(e))
 
     try:
         from scripts.wifi.deauth import deauth
         deauth(ap_mac, target_mac, selected_interface, frames)
-        return json_success(message=f'Sent {frames} deauth frames on {selected_interface}')
+        return json_success(message=f'Sent {frames} authorized lab deauth frames on {selected_interface}')
     except Exception as e:
         return json_error(f'Deauth error: {str(e)}', 500)
 

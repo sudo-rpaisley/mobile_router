@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import app as app_module
 from app import app
@@ -113,6 +113,50 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('display: grid !important;', css)
         self.assertIn('width: 100% !important;', css)
         self.assertIn('max-width: 100%;', css)
+
+
+    def test_deauth_lab_card_requires_authorization_context(self):
+        response = self.client.get('/red-team')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Student Deauth Lab', response.data)
+        self.assertIn(b'id="Deauth-Authorized"', response.data)
+        self.assertIn(b'authorized isolated class lab', response.data)
+
+    def test_deauth_route_requires_authorization_and_frame_limit(self):
+        response = self.client.post('/deauth', data={
+            'selectedInterface': 'wlan0mon',
+            'ap': 'AA:BB:CC:DD:EE:FF',
+            'frames': '6',
+            'authorized': 'on',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('between 1 and 5', response.get_json()['message'])
+
+        response = self.client.post('/deauth', data={
+            'selectedInterface': 'wlan0mon',
+            'ap': 'AA:BB:CC:DD:EE:FF',
+            'frames': '2',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('authorized isolated lab', response.get_json()['message'])
+
+    def test_deauth_route_normalizes_authorized_lab_request(self):
+        deauth = Mock()
+        with patch.dict('sys.modules', {'scripts.wifi.deauth': SimpleNamespace(deauth=deauth)}):
+            response = self.client.post('/deauth', data={
+                'selectedInterface': 'wlan0mon',
+                'ap': 'AA-BB-CC-DD-EE-FF',
+                'target': '11-22-33-44-55-66',
+                'frames': '2',
+                'authorized': 'on',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('authorized lab deauth frames', response.get_json()['message'])
+        deauth.assert_called_once_with('aa:bb:cc:dd:ee:ff', '11:22:33:44:55:66', 'wlan0mon', 2)
 
     @patch('app.threading.Thread')
     def test_scan_job_routes_start_and_report_status(self, thread_cls):
