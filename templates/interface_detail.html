@@ -18,6 +18,11 @@
         </div>
       </div>
       <div class="interface-actions">
+        <div class="btn-group mb-2" role="group" aria-label="Interface power controls">
+          <button class="btn btn-outline-success btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="up">Turn on</button>
+          <button class="btn btn-outline-warning btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="down">Turn off</button>
+        </div>
+        <div class="alert d-none py-2 px-3 small" role="alert" data-interface-power-output></div>
         {% if interface.interface_type == 'Wireless' %}
           <div id="wlan-modes-{{ interface.name }}" class="adapter-mode-switches" data-interface="{{ interface.name }}">
             <p class="adapter-mode-loading mb-2">Loading adapter modes...</p>
@@ -209,6 +214,7 @@
     <div id="bluetooth-devices"></div>
   </main>
 
+  <script src="/static/js/interface-power.js"></script>
   {% if interface.interface_type == 'Wireless' %}
     <script src="/static/js/wireless-adapters.js"></script>
   {% elif interface.interface_type == 'Bluetooth' %}

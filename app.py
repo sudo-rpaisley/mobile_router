@@ -448,6 +448,51 @@ def evidence_as_markdown(records):
     return '\n'.join(lines)
 
 
+
+def set_interface_power_state(interface_name, desired_state, interface_type=None):
+    state = str(desired_state or '').casefold()
+    if state not in {'up', 'down'}:
+        raise ValueError('Interface state must be up or down')
+    system = os.name
+    normalized_type = str(interface_type or '').casefold()
+
+    if system == 'nt':
+        if normalized_type == 'bluetooth':
+            powershell = shutil.which('powershell') or shutil.which('pwsh')
+            if not powershell:
+                raise RuntimeError('PowerShell is required to toggle Bluetooth adapters on Windows')
+            verb = 'Enable-PnpDevice' if state == 'up' else 'Disable-PnpDevice'
+            escaped_name = str(interface_name).replace("'", "''")
+            command = (
+                "$device = Get-PnpDevice -Class Bluetooth -PresentOnly:$false | "
+                f"Where-Object {{ $_.FriendlyName -eq '{escaped_name}' -or $_.Name -eq '{escaped_name}' }} | "
+                "Select-Object -First 1; "
+                "if (-not $device) { throw 'Bluetooth adapter was not found.' }; "
+                f"{verb} -InstanceId $device.InstanceId -Confirm:$false"
+            )
+            result = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-Command', command], capture_output=True, text=True, timeout=20, check=False)
+        else:
+            result = subprocess.run(['netsh', 'interface', 'set', 'interface', f'name={interface_name}', f'admin={"enabled" if state == "up" else "disabled"}'], capture_output=True, text=True, timeout=20, check=False)
+    else:
+        if normalized_type == 'bluetooth':
+            bluetoothctl = shutil.which('bluetoothctl')
+            if bluetoothctl:
+                result = subprocess.run([bluetoothctl, 'power', 'on' if state == 'up' else 'off'], capture_output=True, text=True, timeout=15, check=False)
+            else:
+                ip_tool = shutil.which('ip')
+                if not ip_tool:
+                    raise RuntimeError('Toggling this interface requires bluetoothctl or ip')
+                result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
+        else:
+            ip_tool = shutil.which('ip')
+            if not ip_tool:
+                raise RuntimeError('Toggling interfaces requires the ip command on this host')
+            result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
+
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or 'Interface state change failed').strip())
+    return f'{interface_name} was turned {"on" if state == "up" else "off"}.'
+
 def bluetooth_device_summary(device):
     summary = device.to_dict() if hasattr(device, 'to_dict') else {
         'address': getattr(device, 'address', None),
@@ -1254,6 +1299,7 @@ def client_detail(identifier):
         display_name=display_name,
         is_bluetooth=is_bluetooth,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
+        bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         **current_context(),
     )
 
@@ -1382,6 +1428,23 @@ def wireless_network_detail():
         **current_context(),
     )
 
+
+
+@app.route('/interfaces/<interface_name>/state', methods=['POST'])
+def interface_power_state(interface_name):
+    desired_state = request.form.get('state')
+    interface = next((iface for iface in network_interfaces if iface.name == interface_name), None)
+    try:
+        message = set_interface_power_state(
+            interface_name,
+            desired_state,
+            getattr(interface, 'interface_type', None),
+        )
+        return json_success(message=message)
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except Exception as exc:
+        return json_error(f'Interface power error: {exc}', 500)
 
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):

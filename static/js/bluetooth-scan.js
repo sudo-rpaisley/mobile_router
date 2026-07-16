@@ -47,6 +47,7 @@ $(document).ready(function () {
     const name = device.name || 'Unknown';
     const address = device.address || '';
     const manufacturer = device.manufacturer || 'Unknown manufacturer';
+    const detailUrl = address ? `/clients/${encodeURIComponent(address)}` : '';
     const actionsAvailable = Boolean(actionCapability?.available);
     const disabled = actionsAvailable ? '' : 'disabled';
     const actionButtons = bluetoothActions.map(function (item) {
@@ -58,13 +59,13 @@ $(document).ready(function () {
       <article class="wireless-network-card bluetooth-device-card">
         <div class="wireless-network-main">
           <div>
-            <h3 class="wireless-network-ssid mb-1">${escapeHtml(name)}</h3>
+            <h3 class="wireless-network-ssid mb-1">${detailUrl ? `<a href="${escapeHtml(detailUrl)}">${escapeHtml(name)}</a>` : escapeHtml(name)}</h3>
             <p class="wireless-network-meta mb-0"><i class="fa-brands fa-bluetooth-b"></i> ${escapeHtml(address || 'Unknown address')}</p>
             <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> ${escapeHtml(manufacturer)}</p>
           </div>
           <span class="badge badge-info">Bluetooth</span>
         </div>
-        <div class="bluetooth-action-grid mt-3">${actionButtons}</div>
+        <div class="bluetooth-action-grid mt-3">${detailUrl ? `<a class="btn btn-outline-info btn-sm" href="${escapeHtml(detailUrl)}"><i class="fa-solid fa-up-right-from-square"></i> View device</a>` : ''}${actionButtons}</div>
         <pre class="bluetooth-action-output d-none mt-3 mb-0"></pre>
       </article>
     `;

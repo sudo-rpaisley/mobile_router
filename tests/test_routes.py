@@ -433,8 +433,45 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Status', response.data)
         self.assertIn(b'OK', response.data)
         self.assertNotIn(b'IP Address', response.data)
+        self.assertIn(b'Bluetooth Controls', response.data)
+        self.assertIn(b'data-action="connect"', response.data)
+        self.assertIn(b'data-action="pair"', response.data)
+        self.assertIn(b'bluetooth-scan.js', response.data)
         self.assertNotIn(b'Device Port Scan', response.data)
         self.assertNotIn(b'port_scan_live.js', response.data)
+
+
+    @patch('app.set_interface_power_state')
+    def test_interface_power_endpoint_toggles_interface(self, set_power):
+        set_power.return_value = 'WiFi was turned off.'
+
+        response = self.client.post('/interfaces/WiFi/state', data={'state': 'down'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['message'], 'WiFi was turned off.')
+        set_power.assert_called_once()
+
+    def test_interface_detail_includes_power_controls(self):
+        wireless_interface = SimpleNamespace(
+            name='WiFi',
+            interface_type='Wireless',
+            state='UP',
+            addresses=[],
+            manufacturer='Unknown',
+            extra_info={},
+        )
+
+        with (
+            patch.object(app_module, 'network_interfaces', [wireless_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Wireless'}),
+        ):
+            response = self.client.get('/wireless/WiFi')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-interface-power', response.data)
+        self.assertIn(b'Turn on', response.data)
+        self.assertIn(b'Turn off', response.data)
+        self.assertIn(b'interface-power.js', response.data)
 
     def test_inventory_links_host_devices_to_port_scan(self):
         app_module.device_inventory.clear()

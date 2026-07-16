@@ -78,6 +78,7 @@ SSID 2 : Guest
         stderr = ''
 
     monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
+    monkeypatch.setattr(utils.time, 'sleep', lambda seconds: None)
 
     utils._scan_windows_with_netsh()
     summary = utils.get_networks_summary()
@@ -115,6 +116,7 @@ def test_windows_scan_refreshes_and_falls_back_to_all_interfaces(monkeypatch):
         return Result(all_networks)
 
     monkeypatch.setattr(utils.platform, 'system', lambda: 'Windows')
+    monkeypatch.setattr(utils.time, 'sleep', lambda seconds: None)
     monkeypatch.setattr(utils, '_run_command', fake_run)
     monkeypatch.setattr(utils, '_scan_windows_with_pywifi', lambda interface_name: None)
     monkeypatch.setattr(utils, 'display_all_networks', lambda: None)

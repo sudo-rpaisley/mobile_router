@@ -50,6 +50,34 @@
           <p class="text-muted mb-0">Bluetooth devices do not have IP addresses, so IP-based port scanning is not shown for this device.</p>
         </div>
       </section>
+
+      <section class="theme-card card bluetooth-device-card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Bluetooth Controls</h2>
+          {% if not bluetooth_action_capability.available %}
+            <div class="alert alert-warning small" role="alert">{{ bluetooth_action_capability.message }}</div>
+          {% endif %}
+          {% set actions = [
+            ('info', 'Info', 'outline-secondary', 'circle-info'),
+            ('connect', 'Connect', 'outline-primary', 'link'),
+            ('disconnect', 'Disconnect', 'outline-warning', 'link-slash'),
+            ('pair', 'Pair', 'outline-primary', 'handshake'),
+            ('trust', 'Trust', 'outline-success', 'shield-halved'),
+            ('untrust', 'Untrust', 'outline-secondary', 'shield'),
+            ('block', 'Block', 'outline-danger', 'ban'),
+            ('unblock', 'Unblock', 'outline-success', 'check'),
+            ('remove', 'Remove', 'outline-danger', 'trash')
+          ] %}
+          <div class="bluetooth-action-grid mt-2">
+            {% for action, label, style, icon in actions %}
+              <button type="button" class="btn btn-{{ style }} btn-sm bluetooth-action" data-action="{{ action }}" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
+                <i class="fa-solid fa-{{ icon }}"></i> {{ label }}
+              </button>
+            {% endfor %}
+          </div>
+          <pre class="bluetooth-action-output d-none mt-3 mb-0"></pre>
+        </div>
+      </section>
     {% elif ip %}
       <section class="theme-card card port-scan-panel" data-host="{{ ip }}">
         <div class="card-body">
@@ -90,7 +118,9 @@
       </section>
     {% endif %}
   </main>
-{% if not is_bluetooth %}
+{% if is_bluetooth %}
+<script src="/static/js/bluetooth-scan.js"></script>
+{% else %}
 <script src="/static/js/port_scan_live.js"></script>
 {% endif %}
 </body>

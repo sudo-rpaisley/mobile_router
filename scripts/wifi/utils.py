@@ -336,6 +336,7 @@ def _scan_windows_with_netsh(interface_name=None):
     if interface_name:
         scan_command.append(f'interface={interface_name}')
     _run_command(scan_command, timeout=15)
+    time.sleep(2)
 
     command = ['netsh', 'wlan', 'show', 'networks', 'mode=bssid']
     if interface_name:
@@ -451,16 +452,15 @@ def scan_networks(interface_name=None, timeout=12):
         scan_errors = []
         try:
             _scan_windows_with_netsh(interface_name)
-            if interface_name and _network_count() <= 1:
+            if interface_name:
                 _scan_windows_with_netsh(None)
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
             scan_errors.append(str(exc))
 
-        if _network_count() <= 1:
-            try:
-                _scan_windows_with_pywifi(interface_name)
-            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
-                scan_errors.append(str(exc))
+        try:
+            _scan_windows_with_pywifi(interface_name)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+            scan_errors.append(str(exc))
 
         if _network_count() == 0 and scan_errors:
             raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
