@@ -437,6 +437,78 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="ping-host"', response.data)
         self.assertIn(b'id="route-diagnostics-btn"', response.data)
 
+    def test_service_discovery_page_renders_protocol_controls(self):
+        response = self.client.get('/service-discovery')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Service Discovery', response.data)
+        self.assertIn(b'id="mdns-discovery-btn"', response.data)
+        self.assertIn(b'id="upnp-discovery-btn"', response.data)
+        self.assertIn(b'id="neighbor-discovery-btn"', response.data)
+
+    @patch('app._run_text_command')
+    @patch('app.shutil.which', return_value='/usr/bin/avahi-browse')
+    def test_mdns_discovery_parses_services_and_updates_inventory(self, which, run_command):
+        app_module.device_inventory.clear()
+        run_command.return_value = {
+            'returncode': 0,
+            'output': '=;eth0;IPv4;Office Printer;_ipp._tcp;local;printer.local;192.168.1.40;631;txtvers=1;note=Lab',
+        }
+
+        response = self.client.post('/mdns-discovery', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['services'][0]['hostname'], 'printer.local')
+        self.assertEqual(result['services'][0]['role'], 'Printer')
+        inventory = app_module.find_inventory_device('192.168.1.40')
+        self.assertEqual(inventory['service_metadata']['service_type'], '_ipp._tcp')
+
+    @patch('app.discover_upnp_devices')
+    def test_upnp_discovery_route_returns_devices(self, discover):
+        discover.return_value = {
+            'available': True,
+            'message': 'Discovered 1 UPnP/SSDP device(s).',
+            'devices': [{
+                'friendly_name': 'Lab Gateway',
+                'ip': '192.168.1.1',
+                'manufacturer': 'Training Vendor',
+                'model': 'Router 1',
+                'service_type': 'urn:schemas-upnp-org:device:InternetGatewayDevice:1',
+                'control_url': 'http://192.168.1.1/rootDesc.xml',
+            }],
+        }
+
+        response = self.client.post('/upnp-discovery', data={'timeout': '1'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['result']['devices'][0]['friendly_name'], 'Lab Gateway')
+        discover.assert_called_once_with(timeout=1)
+
+    @patch('app._run_text_command')
+    @patch('app.shutil.which', return_value='/usr/sbin/lldpctl')
+    def test_lldp_neighbor_discovery_parses_ports_vlans_and_management(self, which, run_command):
+        app_module.device_inventory.clear()
+        run_command.return_value = {
+            'returncode': 0,
+            'output': '\n'.join([
+                'lldp.eth0.chassis.name="Lab-Switch"',
+                'lldp.eth0.port.ifname="Gi1/0/1"',
+                'lldp.eth0.mgmt-ip="192.168.1.2"',
+                'lldp.eth0.vlan.1.vid="20"',
+            ]),
+        }
+
+        response = self.client.post('/neighbor-discovery', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        neighbor = response.get_json()['result']['neighbors'][0]
+        self.assertEqual(neighbor['name'], 'Lab-Switch')
+        self.assertEqual(neighbor['port_id'], 'Gi1/0/1')
+        self.assertEqual(neighbor['vlans'], ['20'])
+        inventory = app_module.find_inventory_device('192.168.1.2')
+        self.assertEqual(inventory['device_type'], 'Switch/router neighbor')
+
     @patch('app.subprocess.run')
     def test_ping_route_reports_loss_latency_and_history(self, run):
         run.return_value = SimpleNamespace(

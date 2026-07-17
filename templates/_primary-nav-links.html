@@ -14,9 +14,10 @@
 {% endfor %}
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Network Scan', 'Port Scan', 'Traceroute', 'Diagnostics', 'Red Team', 'Minecraft Attack'] %}active{% endif %}" data-toggle="dropdown">Tools</a>
+  <a href="#" class="nav-link {% if title in ['Network Scan', 'Service Discovery', 'Port Scan', 'Traceroute', 'Diagnostics', 'Red Team', 'Minecraft Attack'] %}active{% endif %}" data-toggle="dropdown">Tools</a>
   <div class="dropdown-menu">
     <a href="/network-scan" class="dropdown-item {% if title == 'Network Scan' %}active{% endif %}">Network Scan</a>
+    <a href="/service-discovery" class="dropdown-item {% if title == 'Service Discovery' %}active{% endif %}">Service Discovery</a>
     <a href="/port-scan" class="dropdown-item {% if title == 'Port Scan' %}active{% endif %}">Port Scan</a>
     <a href="/traceroute" class="dropdown-item {% if title == 'Traceroute' %}active{% endif %}">Traceroute</a>
     <a href="/diagnostics" class="dropdown-item {% if title == 'Diagnostics' %}active{% endif %}">Diagnostics</a>

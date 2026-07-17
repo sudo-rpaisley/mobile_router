@@ -12,6 +12,7 @@ import subprocess
 import csv
 import io
 import ipaddress
+import socket
 from urllib.parse import quote
 from werkzeug.utils import secure_filename
 
@@ -132,9 +133,9 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'TLS certificate inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show certificate subject, issuer, SANs, expiration, self-signed status, hostname mismatch, and chain details.'},
             {'title': 'DHCP lease and server inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Display DHCP lease details, DNS/router options, renewal timing, and warnings for multiple or unexpected DHCP servers.'},
-            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
-            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
-            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
+            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now parses mDNS/Bonjour service records, hostnames, ports, TXT records, roles, and inventory metadata.', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
+            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now performs bounded SSDP discovery and catalogs friendly names, model/manufacturer hints, service types, and control URLs.', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
+            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now surfaces lldpctl neighbor data including switch/router names, ports, VLAN hints, and management addresses when visible.', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
             {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
             {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
             {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
@@ -1303,6 +1304,184 @@ def build_route_diagnostics(target=None):
     }
 
 
+def classify_service_role(service_type, text=''):
+    value = f"{service_type or ''} {text or ''}".lower()
+    if any(term in value for term in ['printer', 'ipp', 'pdl-datastream']):
+        return 'Printer'
+    if any(term in value for term in ['airplay', 'media', 'spotify', 'raop', 'dlna', 'mediarenderer']):
+        return 'Media device'
+    if any(term in value for term in ['router', 'gateway', 'internetgatewaydevice', 'wanipconnection']):
+        return 'Gateway/router'
+    if any(term in value for term in ['workstation', 'smb', 'ssh', 'http']):
+        return 'Host service'
+    return 'Service endpoint'
+
+
+def _parse_mdns_output(output):
+    services = []
+    for line in (output or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [part.strip() for part in line.split(';')]
+        if len(parts) >= 9 and parts[0] == '=':
+            txt = ';'.join(parts[9:]) if len(parts) > 9 else ''
+            services.append({
+                'interface': parts[1],
+                'protocol': parts[2],
+                'name': parts[3],
+                'service_type': parts[4],
+                'domain': parts[5],
+                'hostname': parts[6],
+                'ip': parts[7],
+                'port': parts[8],
+                'txt': txt,
+                'role': classify_service_role(parts[4], txt),
+            })
+    return services
+
+
+def discover_mdns_services(selected_interface=None):
+    avahi = shutil.which('avahi-browse')
+    if not avahi:
+        return {'available': False, 'tool': None, 'services': [], 'message': 'Install avahi-utils or use dns-sd to discover mDNS/Bonjour services.'}
+    command = [avahi, '-artp']
+    result = _run_text_command(command, timeout=8)
+    services = _parse_mdns_output(result['output'])
+    if selected_interface:
+        services = [service for service in services if selected_interface in {service.get('interface'), service.get('interface_name')}]
+    inventory_items = [
+        {
+            'ip': service.get('ip'),
+            'hostname': service.get('hostname'),
+            'name': service.get('name'),
+            'device_type': service.get('role'),
+            'service_metadata': service,
+        }
+        for service in services if service.get('ip')
+    ]
+    record_inventory_devices(inventory_items, 'mdns-discovery', selected_interface)
+    return {'available': True, 'tool': avahi, 'services': services, 'message': f'Discovered {len(services)} mDNS service(s).'}
+
+
+def _parse_ssdp_response(response):
+    headers = {}
+    for line in response.split('\r\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            headers[key.strip().lower()] = value.strip()
+    location = headers.get('location') or ''
+    host = ''
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(location).hostname or ''
+    except Exception:
+        host = ''
+    service_type = headers.get('st') or headers.get('nt') or ''
+    return {
+        'ip': host,
+        'friendly_name': headers.get('server') or headers.get('usn') or 'UPnP device',
+        'manufacturer': headers.get('manufacturer') or headers.get('server') or 'Unknown',
+        'model': headers.get('modelname') or headers.get('server') or '',
+        'service_type': service_type,
+        'control_url': location,
+        'usn': headers.get('usn'),
+        'role': classify_service_role(service_type, headers.get('server')),
+        'headers': headers,
+    }
+
+
+def discover_upnp_devices(timeout=2):
+    request_data = '\r\n'.join([
+        'M-SEARCH * HTTP/1.1',
+        'HOST: 239.255.255.250:1900',
+        'MAN: "ssdp:discover"',
+        'MX: 1',
+        'ST: ssdp:all',
+        '',
+        '',
+    ]).encode('utf-8')
+    devices = []
+    seen = set()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+            sock.settimeout(timeout)
+            sock.sendto(request_data, ('239.255.255.250', 1900))
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    data, _addr = sock.recvfrom(65535)
+                except socket.timeout:
+                    break
+                device = _parse_ssdp_response(data.decode('utf-8', errors='ignore'))
+                key = device.get('usn') or device.get('control_url') or device.get('ip')
+                if key and key not in seen:
+                    seen.add(key)
+                    devices.append(device)
+    except OSError as exc:
+        return {'available': False, 'devices': [], 'message': f'SSDP discovery unavailable: {exc}'}
+    record_inventory_devices([
+        {
+            'ip': device.get('ip'),
+            'name': device.get('friendly_name'),
+            'manufacturer': device.get('manufacturer'),
+            'device_type': device.get('role'),
+            'service_metadata': device,
+        }
+        for device in devices if device.get('ip')
+    ], 'upnp-discovery')
+    return {'available': True, 'devices': devices, 'message': f'Discovered {len(devices)} UPnP/SSDP device(s).'}
+
+
+def _parse_lldpctl_keyvalue(output):
+    neighbors = []
+    current = {}
+    for line in (output or '').splitlines():
+        if '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"')
+        if key.endswith('.chassis.name'):
+            if current:
+                neighbors.append(current)
+            current = {'name': value, 'protocol': 'LLDP/CDP'}
+        elif key.endswith('.port.ifname') or key.endswith('.port.descr'):
+            current['port_id'] = value
+        elif key.endswith('.mgmt-ip'):
+            current['management_address'] = value
+        elif '.vlan.' in key and key.endswith('.vid'):
+            current.setdefault('vlans', []).append(value)
+        elif key.endswith('.chassis.descr'):
+            current['description'] = value
+    if current:
+        neighbors.append(current)
+    for neighbor in neighbors:
+        neighbor['role'] = 'Switch/router neighbor'
+    return neighbors
+
+
+def discover_lldp_neighbors(selected_interface=None):
+    lldpctl = shutil.which('lldpctl')
+    if not lldpctl:
+        return {'available': False, 'tool': None, 'neighbors': [], 'message': 'Install lldpd/lldpctl to reveal LLDP/CDP neighbors.'}
+    command = [lldpctl, '-f', 'keyvalue']
+    if selected_interface:
+        command.append(selected_interface)
+    result = _run_text_command(command, timeout=6)
+    neighbors = _parse_lldpctl_keyvalue(result['output'])
+    record_inventory_devices([
+        {
+            'ip': neighbor.get('management_address'),
+            'name': neighbor.get('name'),
+            'device_type': neighbor.get('role'),
+            'service_metadata': neighbor,
+        }
+        for neighbor in neighbors if neighbor.get('management_address')
+    ], 'lldp-cdp-discovery', selected_interface)
+    return {'available': result['returncode'] == 0, 'tool': lldpctl, 'neighbors': neighbors, 'message': f'Discovered {len(neighbors)} LLDP/CDP neighbor(s).'}
+
+
 def _scan_result_counts(result):
     result = result or {}
     return {
@@ -1949,6 +2128,11 @@ def diagnostics_page():
     return render_template('diagnostics.html', title='Diagnostics', **current_context())
 
 
+@app.route('/service-discovery')
+def service_discovery_page():
+    return render_template('service_discovery.html', title='Service Discovery', **current_context())
+
+
 @app.route('/clients/<identifier>')
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
@@ -2125,6 +2309,28 @@ def ping_sweep_route():
 def route_diagnostics_route():
     diagnostics = build_route_diagnostics(request.form.get('target'))
     return json_success(diagnostics=diagnostics)
+
+
+@app.route('/mdns-discovery', methods=['POST'])
+def mdns_discovery_route():
+    result = discover_mdns_services(request.form.get('selectedInterface'))
+    return json_success(result=result)
+
+
+@app.route('/upnp-discovery', methods=['POST'])
+def upnp_discovery_route():
+    try:
+        timeout = parse_int(request.form.get('timeout') or 2, 'Timeout must be an integer')
+    except ValueError as e:
+        return json_error(str(e))
+    result = discover_upnp_devices(timeout=max(1, min(timeout, 5)))
+    return json_success(result=result)
+
+
+@app.route('/neighbor-discovery', methods=['POST'])
+def neighbor_discovery_route():
+    result = discover_lldp_neighbors(request.form.get('selectedInterface'))
+    return json_success(result=result)
 
 
 @app.route('/wireless/network')
