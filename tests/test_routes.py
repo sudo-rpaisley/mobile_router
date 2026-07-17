@@ -281,6 +281,93 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('do not request, collect, or store credentials', ' '.join(payload['run']['operator_steps']))
         self.assertIn('duplicate SSIDs', payload['run']['detection_guidance'][0])
 
+    def test_pineap_and_handshake_cards_are_available(self):
+        response = self.client.get('/red-team')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'PineAP-Style Lab Console', response.data)
+        self.assertIn(b'id="Pineap-Modules"', response.data)
+        self.assertIn(b'WPA Handshake Capture Lab', response.data)
+        self.assertIn(b'Export handshake catalog JSON', response.data)
+
+    def test_pineap_lab_recon_runs_scoped_scan_and_modules(self):
+        with (
+            patch('scripts.wifi.utils.scan_networks') as scan_networks,
+            patch('scripts.wifi.utils.get_networks_summary', return_value=[{'ssid': 'ClassLab', 'bssid': 'aa:bb:cc:dd:ee:ff'}]),
+        ):
+            response = self.client.post('/pineap-lab', data={
+                'selectedInterface': 'wlan0mon',
+                'action': 'recon',
+                'modules': 'recon,detection-report',
+                'authorized': 'on',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('Recorded recon workflow', payload['message'])
+        self.assertEqual(payload['run']['recon'][0]['ssid'], 'ClassLab')
+        self.assertIn('does not collect credentials', payload['run']['safety'])
+        scan_networks.assert_called_once_with('wlan0mon')
+
+    def test_pineap_lab_requires_authorization_and_known_modules(self):
+        response = self.client.post('/pineap-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'action': 'campaign',
+            'ssid': 'ClassLab',
+            'modules': 'recon,unknown',
+            'authorized': 'on',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown lab module', response.get_json()['message'])
+
+        response = self.client.post('/pineap-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'action': 'campaign',
+            'ssid': 'ClassLab',
+            'modules': 'recon',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('authorized isolated lab', response.get_json()['message'])
+
+    def test_handshake_lab_catalogs_evidence_and_exports(self):
+        response = self.client.post('/handshake-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'ssid': 'ClassLab',
+            'bssid': 'AA-BB-CC-DD-EE-FF',
+            'channel': '6',
+            'captureType': 'pmkid',
+            'validationNotes': 'PMKID observed in authorized lab capture.',
+            'authorized': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['record']['bssid'], 'aa:bb:cc:dd:ee:ff')
+        self.assertEqual(payload['record']['validation_status'], 'cataloged')
+        self.assertIn('password cracking is out of scope', ' '.join(payload['record']['validation_checks']))
+
+        export = self.client.get('/handshake-lab.json')
+        self.assertEqual(export.status_code, 200)
+        self.assertTrue(any(item['ssid'] == 'ClassLab' for item in export.get_json()['handshakes']))
+
+        csv_export = self.client.get('/handshake-lab.csv')
+        self.assertEqual(csv_export.status_code, 200)
+        self.assertIn(b'ClassLab', csv_export.data)
+
+    def test_handshake_lab_requires_authorized_lab_scope(self):
+        response = self.client.post('/handshake-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'ssid': 'ClassLab',
+            'bssid': 'AA:BB:CC:DD:EE:FF',
+            'channel': '6',
+            'captureType': 'wpa-handshake',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('authorized isolated lab', response.get_json()['message'])
+
     @patch('app.threading.Thread')
     def test_scan_job_routes_start_and_report_status(self, thread_cls):
         thread_cls.return_value.start.return_value = None

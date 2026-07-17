@@ -59,6 +59,10 @@ evidence_vault = []
 evidence_vault_lock = threading.Lock()
 evil_twin_lab_runs = []
 evil_twin_lab_lock = threading.Lock()
+pineap_lab_runs = []
+pineap_lab_lock = threading.Lock()
+handshake_lab_records = []
+handshake_lab_lock = threading.Lock()
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -152,10 +156,10 @@ ROADMAP_SECTIONS = [
     {
         'title': 'Wireless risk lab',
         'items': [
-            {'title': 'WPA handshake capture lab', 'priority': 'High', 'priority_class': 'danger', 'description': 'Capture, validate, catalog, and export WPA/WPA2 handshake or PMKID evidence from authorized lab networks.'},
+            {'title': 'WPA handshake capture lab', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Red Team now catalogs authorized WPA/WPA2 handshake or PMKID evidence with validation status, Evidence Vault mirroring, and JSON/CSV exports.', 'description': 'Capture, validate, catalog, and export WPA/WPA2 handshake or PMKID evidence from authorized lab networks.'},
             {'title': 'Scoped deauthentication actions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Run AP-wide or client-specific deauthentication actions against authorized lab networks with targeting controls, rate limits, and clear logs.'},
             {'title': 'Remote cracking orchestration', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Queue authorized handshake material to stronger remote workers such as Spark, track job progress, and import results for password-strength review.'},
-            {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
+            {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Red Team now includes a PineAP-style lab console for authorized recon, campaign, handshake, and module workflow logging.', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
             {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Red Team now records authorized evil-twin/captive-portal lab plans with explicit SSID/BSSID/channel targeting, cleanup steps, and detection guidance.', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
             {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results and network detail pages now flag APs advertising WPS and explain why WPS can weaken credential protection.', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
             {'title': 'Client privacy and probe request monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Monitor probe behavior to show device presence, preferred-network leakage, and tracking risk in authorized training environments.'},
@@ -217,6 +221,9 @@ DEAUTH_FRAME_LIMIT = 5
 BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff'
 EVIL_TWIN_MAX_DURATION_MINUTES = 30
 EVIL_TWIN_ACTIONS = {'plan', 'start', 'cleanup'}
+PINEAP_ACTIONS = {'recon', 'campaign', 'handshake', 'module'}
+PINEAP_MODULES = {'recon', 'evil-twin-lab', 'handshake-capture', 'portal-awareness', 'detection-report'}
+HANDSHAKE_CAPTURE_TYPES = {'wpa-handshake', 'pmkid'}
 
 
 def normalize_mac(value):
@@ -316,6 +323,167 @@ def record_evil_twin_lab_run(selected_interface, lab):
         run['action'], run['ssid'], run['bssid'], run['channel'], selected_interface,
     )
     return run
+
+
+def _split_module_ids(value):
+    modules = []
+    for item in re.split(r'[,\s]+', value or ''):
+        item = item.strip().lower()
+        if item:
+            modules.append(item)
+    return modules
+
+
+def validate_pineap_lab_request(data):
+    """Validate a WiFi Pineapple-style lab controller request."""
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before running a campaign workflow')
+    action = (data.get('action') or 'recon').strip().lower()
+    if action not in PINEAP_ACTIONS:
+        raise ValueError('Choose recon, campaign, handshake, or module')
+    ssid = (data.get('ssid') or '').strip()
+    if ssid and len(ssid) > 32:
+        raise ValueError('SSID must be 32 characters or fewer')
+    bssid = normalize_mac(data.get('bssid')) if data.get('bssid') else None
+    channel = None
+    if data.get('channel'):
+        channel = parse_int(data.get('channel'), 'Channel must be an integer')
+        if channel < 1 or channel > 196:
+            raise ValueError('Channel must be between 1 and 196')
+    modules = _split_module_ids(data.get('modules') or 'recon,detection-report')
+    unknown = [module for module in modules if module not in PINEAP_MODULES]
+    if unknown:
+        raise ValueError(f"Unknown lab module: {', '.join(unknown)}")
+    if action in {'campaign', 'handshake', 'module'} and not ssid:
+        raise ValueError('Enter an explicit lab SSID for campaign, handshake, or module workflows')
+    return {
+        'action': action,
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'modules': modules,
+        'notes': (data.get('notes') or '').strip()[:500],
+    }
+
+
+def build_pineap_lab_result(selected_interface, lab):
+    """Build an auditable, non-destructive PineAP-style lab result."""
+    recon = []
+    if lab['action'] == 'recon':
+        from scripts.wifi import utils as wifi_utils
+        wifi_utils.scan_networks(selected_interface)
+        recon = wifi_utils.get_networks_summary()
+    run = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+        'recon': recon,
+        'campaign_steps': [
+            'Recon: inventory authorized lab SSIDs, BSSIDs, channels, security, and WPS exposure.',
+            'Campaign: select only approved training modules and log operator intent before execution.',
+            'Handshake: capture or upload WPA/WPA2 handshake or PMKID evidence without password cracking.',
+            'Report: export findings, cleanup actions, and detection opportunities for defenders.',
+        ],
+        'module_status': [
+            {'id': module, 'status': 'queued' if lab['action'] != 'recon' else 'available'}
+            for module in lab['modules']
+        ],
+        'safety': 'This controller records authorized lab workflow state and recon output; it does not collect credentials or run cracking jobs.',
+    }
+    with pineap_lab_lock:
+        pineap_lab_runs.insert(0, run)
+        del pineap_lab_runs[100:]
+    app.logger.info('PineAP-style lab %s recorded for SSID %r on %s', run['action'], run['ssid'], selected_interface)
+    return run
+
+
+def validate_handshake_lab_request(data):
+    """Validate handshake/PMKID evidence catalog inputs."""
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before cataloging handshake evidence')
+    ssid = (data.get('ssid') or '').strip()
+    if not ssid or len(ssid) > 32:
+        raise ValueError('Enter the exact lab SSID, up to 32 characters')
+    bssid = normalize_mac(data.get('bssid'))
+    channel = parse_int(data.get('channel'), 'Channel must be an integer')
+    if channel < 1 or channel > 196:
+        raise ValueError('Channel must be between 1 and 196')
+    capture_type = (data.get('captureType') or 'wpa-handshake').strip().lower()
+    if capture_type not in HANDSHAKE_CAPTURE_TYPES:
+        raise ValueError('Capture type must be WPA handshake or PMKID')
+    return {
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'capture_type': capture_type,
+        'client': normalize_mac(data.get('client')) if data.get('client') else '',
+        'validation_notes': (data.get('validationNotes') or '').strip()[:500],
+    }
+
+
+def validate_handshake_evidence(record, uploaded_file=None):
+    """Attach lightweight validation status for uploaded WPA/PMKID evidence."""
+    file_name = uploaded_file.filename if uploaded_file and uploaded_file.filename else ''
+    extension = os.path.splitext(file_name.lower())[1]
+    accepted = {'.cap', '.pcap', '.pcapng', '.hc22000', '.hccapx'}
+    checks = [
+        'SSID/BSSID/channel are explicitly scoped to the authorized lab target.',
+        'Evidence is cataloged for validation/export only; password cracking is out of scope.',
+    ]
+    if file_name:
+        checks.append('Uploaded capture extension is recognized.' if extension in accepted else 'Uploaded capture extension is unusual; verify manually.')
+    else:
+        checks.append('No capture uploaded yet; record is ready for later evidence attachment.')
+    status = 'needs-review' if file_name and extension not in accepted else 'cataloged'
+    return {'validation_status': status, 'validation_checks': checks}
+
+
+def record_handshake_lab_evidence(selected_interface, lab, uploaded_file=None):
+    """Catalog handshake/PMKID lab evidence and mirror it into the evidence vault."""
+    validation = validate_handshake_evidence(lab, uploaded_file=uploaded_file)
+    evidence = create_evidence_record(
+        f"{lab['capture_type'].upper()} evidence for {lab['ssid']}",
+        category='capture',
+        source='WPA handshake capture lab',
+        device=lab['bssid'],
+        notes=lab['validation_notes'],
+        content='\n'.join(validation['validation_checks']),
+        uploaded_file=uploaded_file,
+    )
+    record = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+        **validation,
+        'evidence_id': evidence['id'],
+        'download_url': evidence.get('download_url'),
+        'file_name': evidence.get('file_name'),
+        'file_size': evidence.get('file_size'),
+    }
+    with handshake_lab_lock:
+        handshake_lab_records.insert(0, record)
+        del handshake_lab_records[200:]
+    app.logger.info('Handshake lab evidence %s cataloged for SSID %r BSSID %s', record['capture_type'], record['ssid'], record['bssid'])
+    return record
+
+
+def handshake_lab_export_records():
+    with handshake_lab_lock:
+        records = [dict(item) for item in handshake_lab_records]
+    for item in records:
+        item['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('created_at', 0)))
+    return records
+
+
+def handshake_records_as_csv(records):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SSID', 'BSSID', 'Channel', 'Type', 'Client', 'Status', 'File', 'Created'])
+    for item in records:
+        writer.writerow([item.get('ssid'), item.get('bssid'), item.get('channel'), item.get('capture_type'), item.get('client'), item.get('validation_status'), item.get('file_name'), item.get('created_at_label')])
+    return output.getvalue()
 
 
 class BluetoothToolUnavailable(RuntimeError):
@@ -2094,6 +2262,46 @@ def evil_twin_lab_route():
         'cleanup': 'Logged evil twin lab cleanup checklist; verify rogue AP, DHCP, DNS, and portal services are stopped.',
     }
     return json_success(message=action_messages[run['action']], run=run)
+
+
+@app.route('/pineap-lab', methods=['POST'])
+def pineap_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    if missing_fields(data, 'selectedInterface'):
+        return json_error('Missing required parameters')
+    try:
+        lab = validate_pineap_lab_request(data)
+        run = build_pineap_lab_result(selected_interface, lab)
+    except ValueError as e:
+        return json_error(str(e))
+    except Exception as e:
+        return json_error(f'PineAP-style lab error: {str(e)}', 500)
+    return json_success(message=f"Recorded {run['action']} workflow with {len(run['module_status'])} module(s).", run=run)
+
+
+@app.route('/handshake-lab', methods=['POST'])
+def handshake_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    if missing_fields(data, 'selectedInterface', 'ssid', 'bssid', 'channel'):
+        return json_error('Missing required parameters')
+    try:
+        lab = validate_handshake_lab_request(data)
+        record = record_handshake_lab_evidence(selected_interface, lab, request.files.get('capture'))
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(message='Cataloged WPA handshake/PMKID lab evidence for validation and export.', record=record)
+
+
+@app.route('/handshake-lab.<fmt>')
+def export_handshake_lab(fmt):
+    records = handshake_lab_export_records()
+    if fmt == 'json':
+        return jsonify({'handshakes': records, 'exported_at': time.time()})
+    if fmt == 'csv':
+        return Response(handshake_records_as_csv(records), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=handshake-lab.csv'})
+    return json_error('Unsupported handshake export format', 404)
 
 
 @app.route('/aireplay-deauth', methods=['POST'])

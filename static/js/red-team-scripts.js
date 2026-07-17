@@ -310,6 +310,113 @@ $(document).ready(function () {
         });
     });
 
+    $("#Pineap-Submit").on("click", function(event) {
+        event.preventDefault();
+        var $status = $("#Pineap-Status");
+        var authorized = $("#Pineap-Authorized").is(":checked");
+        if (!authorized) {
+            $("#Pineap-Authorized").addClass("input-error");
+            $status.removeClass("text-success").addClass("text-danger").text("Confirm the isolated authorized lab scope before running a campaign workflow.");
+            return;
+        }
+        var $submitButton = $("#Pineap-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+        $.ajax({
+            url: "/pineap-lab",
+            type: "POST",
+            data: {
+                action: $("#Pineap-Action").val(),
+                ssid: $("#Pineap-SSID").val(),
+                bssid: $("#Pineap-BSSID").val(),
+                channel: $("#Pineap-Channel").val(),
+                modules: $("#Pineap-Modules").val(),
+                notes: $("#Pineap-Notes").val(),
+                authorized: authorized ? "on" : "",
+                selectedInterface: $("#interface-select-Pineap").val()
+            },
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                $("#Pineap-Authorized").removeClass("input-error");
+                $status.removeClass("text-danger text-success").text('');
+            },
+            success: function(response) {
+                var count = response.run && response.run.recon ? response.run.recon.length : 0;
+                $status.removeClass("text-danger").addClass("text-success").text((response.message || "Campaign workflow recorded.") + " Recon networks: " + count + ".");
+            },
+            error: function(error) {
+                var message = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : "Failed to run campaign workflow.";
+                $status.removeClass("text-success").addClass("text-danger").text(message);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
+
+    $("#Handshake-Submit").on("click", function(event) {
+        event.preventDefault();
+        var $status = $("#Handshake-Status");
+        var required = [$("#Handshake-SSID"), $("#Handshake-BSSID"), $("#Handshake-Channel")];
+        var missing = false;
+        required.forEach(function($input) {
+            if (!$input.val()) {
+                $input.addClass("input-error");
+                missing = true;
+            }
+        });
+        if (!$("#Handshake-Authorized").is(":checked")) {
+            $("#Handshake-Authorized").addClass("input-error");
+            missing = true;
+        }
+        if (missing) {
+            $status.removeClass("text-success").addClass("text-danger").text("Complete SSID, BSSID, channel, and authorization confirmation.");
+            return;
+        }
+        var $submitButton = $("#Handshake-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+        var formData = new FormData($(".handshake-lab-card form")[0]);
+        formData.set("authorized", "on");
+        formData.set("selectedInterface", $("#interface-select-Handshake").val());
+        $.ajax({
+            url: "/handshake-lab",
+            type: "POST",
+            data: formData,
+            processData: false,
+            contentType: false,
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                required.forEach(function($input) { $input.removeClass("input-error"); });
+                $("#Handshake-Authorized").removeClass("input-error");
+                $status.removeClass("text-danger text-success").text('');
+            },
+            success: function(response) {
+                var status = response.record && response.record.validation_status ? response.record.validation_status : "cataloged";
+                $status.removeClass("text-danger").addClass("text-success").text((response.message || "Evidence cataloged.") + " Status: " + status + ".");
+            },
+            error: function(error) {
+                var message = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : "Failed to catalog evidence.";
+                $status.removeClass("text-success").addClass("text-danger").text(message);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
+
     $("#Aireplay-Deauth-Submit").on("click", function(event) {
         event.preventDefault();
 

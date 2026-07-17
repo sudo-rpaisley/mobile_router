@@ -90,3 +90,9 @@
 .evil-twin-status {
   min-height: 1.25rem;
 }
+
+.pineap-lab-card textarea,
+.handshake-lab-card textarea,
+.evil-twin-lab-card textarea {
+  resize: vertical;
+}

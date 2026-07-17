@@ -1,0 +1,25 @@
+<div class="card m-3 handshake-lab-card" style="width: 18rem;">
+  <h5 class="card-title">WPA Handshake Capture Lab</h5>
+  <p class="card-text">Catalog WPA/WPA2 handshake or PMKID evidence from authorized lab networks for validation and export.</p>
+  <form class="form-inline" method="post" action="/handshake-lab" enctype="multipart/form-data">
+      <input type="text" class="form-control mb-2" id="Handshake-SSID" placeholder="Exact lab SSID" maxlength="32" name="ssid">
+      <input type="text" class="form-control mb-2" id="Handshake-BSSID" placeholder="Lab AP BSSID" name="bssid">
+      <input type="number" class="form-control mb-2" id="Handshake-Channel" placeholder="Channel" min="1" max="196" name="channel">
+      <input type="text" class="form-control mb-2" id="Handshake-Client" placeholder="Optional client MAC" name="client">
+      <select class="form-control mb-2" id="Handshake-Capture-Type" name="captureType" aria-label="Capture type">
+        <option value="wpa-handshake">WPA/WPA2 handshake</option>
+        <option value="pmkid">PMKID</option>
+      </select>
+      <input type="file" class="form-control mb-2" id="Handshake-Capture" name="capture" accept=".cap,.pcap,.pcapng,.hc22000,.hccapx">
+      <textarea class="form-control mb-2" id="Handshake-Validation-Notes" name="validationNotes" rows="3" placeholder="Validation notes, packet counts, or capture source"></textarea>
+      <label class="form-check deauth-lab-confirm">
+        <input class="form-check-input" type="checkbox" id="Handshake-Authorized" name="authorized">
+        <span class="form-check-label">I confirm this evidence is from an authorized isolated lab and will not be used for cracking here.</span>
+      </label>
+      {% set selectId = 'Handshake' %}
+      {% include '_adapters-list.html' %}
+      <button id="Handshake-Submit" class="btn btn-primary mb-2">Catalog Evidence</button>
+      <div id="Handshake-Status" class="evil-twin-status small" aria-live="polite"></div>
+      <a class="small" href="/handshake-lab.json">Export handshake catalog JSON</a>
+  </form>
+</div>
