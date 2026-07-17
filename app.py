@@ -51,6 +51,8 @@ port_scan_jobs = {}
 port_scan_jobs_lock = threading.Lock()
 device_inventory = {}
 device_inventory_lock = threading.Lock()
+bluetooth_action_histories = {}
+bluetooth_action_histories_lock = threading.Lock()
 new_device_alerts = []
 new_device_alerts_lock = threading.Lock()
 evidence_vault = []
@@ -276,7 +278,7 @@ def _run_busctl_bluetooth_action(busctl, action, address, timeout=15):
     return output or f'busctl Bluetooth {action} completed for {address}'
 
 
-def run_bluetoothctl_action(action, address, timeout=15):
+def run_bluetoothctl_action(action, address, timeout=15, adapter=None):
     """Run a safe local bluetoothctl action against a device visible to this host."""
     command = BLUETOOTHCTL_ACTIONS.get(action)
     if not command:
@@ -291,13 +293,23 @@ def run_bluetoothctl_action(action, address, timeout=15):
     if capability['tool'] == 'busctl':
         return _run_busctl_bluetooth_action(tool, action, address, timeout=timeout)
 
-    result = subprocess.run(
-        [tool, command, address],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    if adapter:
+        result = subprocess.run(
+            [tool],
+            input=f'select {adapter}\n{command} {address}\n',
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    else:
+        result = subprocess.run(
+            [tool, command, address],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
     output = (result.stdout or result.stderr or '').strip()
     if result.returncode != 0:
         raise RuntimeError(output or f'bluetoothctl {command} failed')
@@ -522,6 +534,101 @@ def find_inventory_device(identifier):
     return None
 
 
+
+def _bluetooth_truthy(value):
+    return str(value or '').strip().casefold() in {'1', 'true', 'yes', 'on', 'connected', 'paired', 'trusted', 'blocked'}
+
+
+def bluetooth_device_state(device):
+    device = device or {}
+    status = str(device.get('status') or '').casefold()
+    return {
+        'connected': _bluetooth_truthy(device.get('connected')) or 'connected' in status,
+        'paired': _bluetooth_truthy(device.get('paired')) or 'paired' in status,
+        'trusted': _bluetooth_truthy(device.get('trusted')) or 'trusted' in status,
+        'blocked': _bluetooth_truthy(device.get('blocked')) or 'blocked' in status,
+    }
+
+
+def bluetooth_contextual_actions(device):
+    state = bluetooth_device_state(device)
+    actions = [{'action': 'info', 'label': 'Info', 'style': 'outline-secondary', 'icon': 'circle-info'}]
+    if state['blocked']:
+        actions.append({'action': 'unblock', 'label': 'Unblock', 'style': 'outline-success', 'icon': 'check'})
+    else:
+        if state['connected']:
+            actions.append({'action': 'disconnect', 'label': 'Disconnect', 'style': 'outline-warning', 'icon': 'link-slash'})
+        else:
+            actions.append({'action': 'connect', 'label': 'Connect', 'style': 'outline-primary', 'icon': 'link'})
+        if not state['paired']:
+            actions.append({'action': 'pair', 'label': 'Pair', 'style': 'outline-primary', 'icon': 'handshake'})
+        if state['trusted']:
+            actions.append({'action': 'untrust', 'label': 'Untrust', 'style': 'outline-secondary', 'icon': 'shield'})
+        else:
+            actions.append({'action': 'trust', 'label': 'Trust', 'style': 'outline-success', 'icon': 'shield-halved'})
+        actions.append({'action': 'block', 'label': 'Block', 'style': 'outline-danger', 'icon': 'ban'})
+    actions.append({'action': 'remove', 'label': 'Remove Pairing', 'style': 'outline-danger', 'icon': 'trash'})
+    return actions
+
+
+def bluetooth_adapter_choices():
+    choices = []
+    for iface in network_interfaces:
+        if str(getattr(iface, 'interface_type', '')).casefold() != 'bluetooth':
+            continue
+        adapter_id = None
+        if hasattr(iface, 'get_mac_address'):
+            adapter_id = iface.get_mac_address()
+        adapter_id = adapter_id or getattr(iface, 'name', None)
+        if adapter_id:
+            choices.append({'id': adapter_id, 'name': getattr(iface, 'name', adapter_id), 'state': getattr(iface, 'state', None)})
+    return choices
+
+
+def bluetooth_action_history(address):
+    normalized = normalize_mac(address) if address else None
+    with bluetooth_action_histories_lock:
+        return list(bluetooth_action_histories.get(normalized or address, []))
+
+
+def record_bluetooth_action_history(address, action, status, message, adapter=None):
+    normalized = normalize_mac(address) if address else address
+    if not normalized:
+        return []
+    entry = {
+        'time': time.time(),
+        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+        'action': action,
+        'status': status,
+        'message': message,
+        'adapter': adapter,
+    }
+    with bluetooth_action_histories_lock:
+        history = list(bluetooth_action_histories.get(normalized, []))
+        history.insert(0, entry)
+        bluetooth_action_histories[normalized] = history[:20]
+        return list(bluetooth_action_histories[normalized])
+
+
+def forget_inventory_device(identifier):
+    normalized = normalize_mac(identifier) if identifier else None
+    removed = None
+    with device_inventory_lock:
+        keys = []
+        if normalized:
+            keys.extend([f'mac:{normalized}', normalized])
+        keys.append(identifier)
+        for key in keys:
+            if key in device_inventory:
+                removed = device_inventory.pop(key)
+                break
+        if removed is None and normalized:
+            for key, item in list(device_inventory.items()):
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    removed = device_inventory.pop(key)
+                    break
+    return removed
+
 def bluetooth_detail_fields(device):
     skip = {
         'id', 'name', 'display_name', 'ip', 'mac', 'address', 'manufacturer',
@@ -646,9 +753,9 @@ def manufacturer_insights(records=None):
     }
 
 
-def json_error(message, status=400):
+def json_error(message, status=400, **payload):
     """Return a consistently shaped JSON error response."""
-    return jsonify({'status': 'error', 'message': message}), status
+    return jsonify({'status': 'error', 'message': message, **payload}), status
 
 
 def json_success(**payload):
@@ -1350,6 +1457,9 @@ def client_detail(identifier):
         is_bluetooth=is_bluetooth,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
+        bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
+        bluetooth_adapters=bluetooth_adapter_choices() if is_bluetooth else [],
+        bluetooth_action_history=bluetooth_action_history(mac) if is_bluetooth else [],
         **current_context(),
     )
 
@@ -1668,16 +1778,48 @@ def bluetooth_action():
     data = request.form
     action = data.get('action')
     address = data.get('address')
+    adapter = data.get('adapter')
 
     try:
-        output = run_bluetoothctl_action(action, address)
-        return json_success(message='Bluetooth action completed', output=output)
+        output = run_bluetoothctl_action(action, address, adapter=adapter)
+        history = record_bluetooth_action_history(address, action, 'success', output or 'Action completed.', adapter=adapter)
+        return json_success(message='Bluetooth action completed', output=output, history=history)
     except ValueError as e:
-        return json_error(str(e))
+        history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
+        return json_error(str(e), history=history)
     except BluetoothToolUnavailable as e:
-        return json_error(str(e), 501)
+        history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
+        return json_error(str(e), 501, history=history)
     except Exception as e:
-        return json_error(f'Bluetooth action error: {str(e)}', 500)
+        message = f'Bluetooth action error: {str(e)}'
+        history = record_bluetooth_action_history(address, action, 'error', message, adapter=adapter)
+        return json_error(message, 500, history=history)
+
+
+@app.route('/bluetooth-device/<address>/refresh', methods=['POST'])
+def bluetooth_device_refresh(address):
+    try:
+        output = run_bluetoothctl_action('info', address, adapter=request.form.get('adapter'))
+        history = record_bluetooth_action_history(address, 'refresh', 'success', output or 'Device info refreshed.', adapter=request.form.get('adapter'))
+        return json_success(message='Bluetooth device refreshed', output=output, device=find_inventory_device(address), history=history)
+    except ValueError as e:
+        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
+        return json_error(str(e), history=history)
+    except BluetoothToolUnavailable as e:
+        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
+        return json_error(str(e), 501, history=history)
+    except Exception as e:
+        message = f'Bluetooth refresh error: {str(e)}'
+        history = record_bluetooth_action_history(address, 'refresh', 'error', message, adapter=request.form.get('adapter'))
+        return json_error(message, 500, history=history)
+
+
+@app.route('/inventory/<identifier>/forget', methods=['POST'])
+def forget_inventory_route(identifier):
+    removed = forget_inventory_device(identifier)
+    if not removed:
+        return json_error('Device was not found in inventory', 404)
+    return json_success(message='Device forgotten from Mobile Router inventory')
 
 
 @app.route('/spoof-mac', methods=['POST'])

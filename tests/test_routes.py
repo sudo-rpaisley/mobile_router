@@ -455,10 +455,36 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Bluetooth Controls', response.data)
         self.assertIn(b'data-action="connect"', response.data)
         self.assertIn(b'data-action="pair"', response.data)
+        self.assertIn(b'Refresh This Device', response.data)
+        self.assertIn(b'Forget From Inventory', response.data)
+        self.assertIn(b'Bluetooth Action History', response.data)
+        self.assertIn(b'Default host adapter', response.data)
         self.assertIn(b'bluetooth-scan.js', response.data)
         self.assertNotIn(b'Bluetooth Notes', response.data)
         self.assertNotIn(b'Device Port Scan', response.data)
         self.assertNotIn(b'port_scan_live.js', response.data)
+
+
+    def test_bluetooth_client_detail_uses_contextual_connected_actions(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {
+                'address': '6a:76:8a:0c:36:71',
+                'name': 'Connected Speaker',
+                'manufacturer': 'Audio Lab',
+                'connected': True,
+                'paired': True,
+                'trusted': True,
+            }
+        ], 'bluetooth-scan', 'hci0')
+
+        response = self.client.get('/clients/6a:76:8a:0c:36:71')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-action="disconnect"', response.data)
+        self.assertIn(b'data-action="untrust"', response.data)
+        self.assertNotIn(b'data-action="connect"', response.data)
+        self.assertNotIn(b'data-action="pair"', response.data)
 
 
     @patch('app.set_interface_power_state')
@@ -761,8 +787,29 @@ class RouteSmokeTest(unittest.TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['output'], 'Device disconnected')
-        run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff')
+        payload = response.get_json()
+        self.assertEqual(payload['output'], 'Device disconnected')
+        self.assertEqual(payload['history'][0]['action'], 'disconnect')
+        run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff', adapter=None)
+
+    @patch('app.run_bluetoothctl_action')
+    def test_bluetooth_device_refresh_uses_single_device_info(self, run_action):
+        run_action.return_value = 'Name: Trail Speaker'
+
+        response = self.client.post('/bluetooth-device/aa:bb:cc:dd:ee:ff/refresh', data={'adapter': 'hci0'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Name: Trail Speaker', response.get_json()['output'])
+        run_action.assert_called_once_with('info', 'aa:bb:cc:dd:ee:ff', adapter='hci0')
+
+    def test_forget_inventory_device_removes_only_mobile_router_record(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([{'address': '6a:76:8a:0c:36:72', 'name': 'Old Speaker'}], 'bluetooth-scan', 'hci0')
+
+        response = self.client.post('/inventory/6a:76:8a:0c:36:72/forget')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(app_module.find_inventory_device('6a:76:8a:0c:36:72'))
 
     @patch.object(app_module.shutil, 'which')
     @patch.object(app_module.subprocess, 'run')

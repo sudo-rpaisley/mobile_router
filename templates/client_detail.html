@@ -50,25 +50,39 @@
           {% if not bluetooth_action_capability.available %}
             <div class="alert alert-warning small" role="alert">{{ bluetooth_action_capability.message }}</div>
           {% endif %}
-          {% set actions = [
-            ('info', 'Info', 'outline-secondary', 'circle-info'),
-            ('connect', 'Connect', 'outline-primary', 'link'),
-            ('disconnect', 'Disconnect', 'outline-warning', 'link-slash'),
-            ('pair', 'Pair', 'outline-primary', 'handshake'),
-            ('trust', 'Trust', 'outline-success', 'shield-halved'),
-            ('untrust', 'Untrust', 'outline-secondary', 'shield'),
-            ('block', 'Block', 'outline-danger', 'ban'),
-            ('unblock', 'Unblock', 'outline-success', 'check'),
-            ('remove', 'Remove', 'outline-danger', 'trash')
-          ] %}
+          <div class="form-group mt-3">
+            <label for="bluetooth-action-adapter">Bluetooth Adapter</label>
+            <select class="form-control" id="bluetooth-action-adapter" data-bluetooth-adapter>
+              <option value="">Default host adapter</option>
+              {% for adapter in bluetooth_adapters %}
+                <option value="{{ adapter.id }}">{{ adapter.name }}{% if adapter.state %} — {{ adapter.state }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
           <div class="bluetooth-action-grid mt-2">
-            {% for action, label, style, icon in actions %}
-              <button type="button" class="btn btn-{{ style }} btn-sm bluetooth-action" data-action="{{ action }}" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
-                <i class="fa-solid fa-{{ icon }}"></i> {{ label }}
+            {% for action in bluetooth_actions %}
+              <button type="button" class="btn btn-{{ action.style }} btn-sm bluetooth-action" data-action="{{ action.action }}" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
+                <i class="fa-solid fa-{{ action.icon }}"></i> {{ action.label }}
               </button>
             {% endfor %}
+            <button type="button" class="btn btn-outline-info btn-sm bluetooth-refresh-device" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
+              <i class="fa-solid fa-rotate"></i> Refresh This Device
+            </button>
+            <button type="button" class="btn btn-outline-danger btn-sm bluetooth-forget-device" data-address="{{ mac }}">
+              <i class="fa-solid fa-folder-minus"></i> Forget From Inventory
+            </button>
           </div>
           <pre class="bluetooth-action-output d-none mt-3 mb-0"></pre>
+          <div class="bluetooth-action-history mt-3">
+            <h3 class="theme-subsection-title">Bluetooth Action History</h3>
+            <ol class="bluetooth-action-history-list">
+              {% for entry in bluetooth_action_history %}
+                <li class="{{ 'text-danger' if entry.status == 'error' else 'text-success' }}"><strong>{{ entry.time_label }}</strong> — {{ entry.action }}{% if entry.adapter %} via {{ entry.adapter }}{% endif %}: {{ entry.message }}</li>
+              {% else %}
+                <li class="text-muted">No Bluetooth actions have been run for this device yet.</li>
+              {% endfor %}
+            </ol>
+          </div>
         </div>
       </section>
     {% elif ip %}

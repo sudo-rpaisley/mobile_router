@@ -173,28 +173,76 @@ $(document).ready(function () {
     });
   });
 
-  $(document).on('click', '.bluetooth-action', function () {
-    const button = $(this);
+  function selectedBluetoothAdapter(card) {
+    return card.find('[data-bluetooth-adapter]').val() || '';
+  }
+
+  function renderActionHistory(card, history) {
+    const list = card.find('.bluetooth-action-history-list');
+    if (!list.length || !Array.isArray(history)) return;
+    if (history.length === 0) {
+      list.html('<li class="text-muted">No Bluetooth actions have been run for this device yet.</li>');
+      return;
+    }
+    list.html(history.map(function (entry) {
+      const css = entry.status === 'error' ? 'text-danger' : 'text-success';
+      const adapter = entry.adapter ? ` via ${escapeHtml(entry.adapter)}` : '';
+      return `<li class="${css}"><strong>${escapeHtml(entry.time_label || '')}</strong> — ${escapeHtml(entry.action || 'action')}${adapter}: ${escapeHtml(entry.message || '')}</li>`;
+    }).join(''));
+  }
+
+  function runBluetoothDeviceRequest(button, url, data, runningText) {
     const card = button.closest('.bluetooth-device-card');
     const output = card.find('.bluetooth-action-output');
     $.ajax({
-      url: '/bluetooth-action',
+      url: url,
       type: 'POST',
-      data: { action: button.data('action'), address: button.data('address') },
+      data: data,
       beforeSend: function () {
         button.prop('disabled', true);
-        output.removeClass('d-none text-danger text-success').addClass('text-muted').text('Running action...');
+        output.removeClass('d-none text-danger text-success').addClass('text-muted').text(runningText);
       },
       success: function (response) {
         output.removeClass('text-muted text-danger').addClass('text-success').text(response.output || response.message || 'Action completed.');
+        renderActionHistory(card, response.history);
       },
       error: function (xhr) {
-        const message = xhr.responseJSON?.message || 'Bluetooth action failed';
+        const response = xhr.responseJSON || {};
+        const message = response.message || 'Bluetooth action failed';
         output.removeClass('text-muted text-success').addClass('text-danger').text(message);
+        renderActionHistory(card, response.history);
       },
       complete: function () {
         button.prop('disabled', false);
       }
     });
+  }
+
+  $(document).on('click', '.bluetooth-action', function () {
+    const button = $(this);
+    const card = button.closest('.bluetooth-device-card');
+    runBluetoothDeviceRequest(button, '/bluetooth-action', {
+      action: button.data('action'),
+      address: button.data('address'),
+      adapter: selectedBluetoothAdapter(card)
+    }, 'Running action...');
+  });
+
+  $(document).on('click', '.bluetooth-refresh-device', function () {
+    const button = $(this);
+    const card = button.closest('.bluetooth-device-card');
+    const address = button.data('address');
+    runBluetoothDeviceRequest(button, `/bluetooth-device/${encodeURIComponent(address)}/refresh`, {
+      adapter: selectedBluetoothAdapter(card)
+    }, 'Refreshing this Bluetooth device...');
+  });
+
+  $(document).on('click', '.bluetooth-forget-device', function () {
+    const button = $(this);
+    const address = button.data('address');
+    if (!window.confirm('Forget this device from Mobile Router inventory? This does not unpair it from the host.')) {
+      return;
+    }
+    runBluetoothDeviceRequest(button, `/inventory/${encodeURIComponent(address)}/forget`, {}, 'Forgetting this device from inventory...');
   });
 });
