@@ -446,6 +446,17 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="upnp-discovery-btn"', response.data)
         self.assertIn(b'id="neighbor-discovery-btn"', response.data)
 
+    def test_advanced_diagnostics_page_renders_toolkit_controls(self):
+        response = self.client.get('/advanced-diagnostics')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Advanced Diagnostics', response.data)
+        self.assertIn(b'id="vlan-discovery-btn"', response.data)
+        self.assertIn(b'id="egress-diagnostics-btn"', response.data)
+        self.assertIn(b'id="iperf-client-btn"', response.data)
+        self.assertIn(b'id="snmp-discovery-btn"', response.data)
+        self.assertIn(b'id="ipv6-assessment-btn"', response.data)
+
     @patch('app._run_text_command')
     @patch('app.shutil.which', return_value='/usr/bin/avahi-browse')
     def test_mdns_discovery_parses_services_and_updates_inventory(self, which, run_command):
@@ -508,6 +519,92 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(neighbor['vlans'], ['20'])
         inventory = app_module.find_inventory_device('192.168.1.2')
         self.assertEqual(inventory['device_type'], 'Switch/router neighbor')
+
+    @patch('app._run_text_command')
+    def test_vlan_discovery_tracks_interfaces_and_notes(self, run_command):
+        app_module.vlan_segmentation_notes.clear()
+        run_command.return_value = {
+            'returncode': 0,
+            'output': '5: eth0.20@eth0: <BROADCAST> mtu 1500\n    vlan protocol 802.1Q id 20 <REORDER_HDR>',
+        }
+
+        response = self.client.post('/vlan-discovery', data={'ssid': 'CorpWiFi', 'vlanId': '20', 'notes': 'Guest blocked from admin VLAN'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['vlans'][0]['interface'], 'eth0.20')
+        self.assertEqual(result['created_note']['ssid'], 'CorpWiFi')
+        self.assertIn('inter-VLAN firewall rules', result['created_note']['validation_context'])
+
+    @patch('app.build_route_diagnostics', return_value={'vpn_hints': [{'interface': 'tun0'}]})
+    @patch('app._run_text_command')
+    def test_egress_diagnostics_reports_nat_dns_ipv6_and_proxy(self, run_command, route_diag):
+        run_command.side_effect = [
+            {'output': 'default via fe80::1 dev eth0'},
+            {'output': 'default via 192.168.1.1 dev eth0'},
+        ]
+        with (
+            patch('urllib.request.urlopen') as urlopen,
+            patch('builtins.open', unittest.mock.mock_open(read_data='nameserver 9.9.9.9\n')),
+            patch.dict('os.environ', {'HTTPS_PROXY': 'http://proxy.local:8080'}, clear=False),
+        ):
+            urlopen.return_value.__enter__.return_value.read.return_value = b'203.0.113.5'
+            response = self.client.post('/egress-diagnostics', data={'selectedInterface': 'eth0'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['public_ip'], '203.0.113.5')
+        self.assertEqual(result['dns_resolvers'], ['9.9.9.9'])
+        self.assertEqual(result['vpn_hints'][0]['interface'], 'tun0')
+        self.assertIn('HTTPS_PROXY', result['proxy_hints'])
+
+    @patch('app.subprocess.run')
+    @patch('app.shutil.which', return_value='/usr/bin/iperf3')
+    def test_iperf3_client_runs_bounded_json_test(self, which, run):
+        run.return_value = SimpleNamespace(returncode=0, stdout='{"end":{"sum_received":{"bits_per_second":1000}}}', stderr='')
+
+        response = self.client.post('/iperf3-test', data={'mode': 'client', 'host': '192.168.1.10', 'port': '5201', 'seconds': '3'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['summary']['bits_per_second'], 1000)
+        self.assertIn('-t', result['command'])
+
+    @patch('app.subprocess.run')
+    @patch('app.shutil.which', return_value='/usr/bin/snmpwalk')
+    def test_snmp_discovery_requires_authorization_and_records_inventory(self, which, run):
+        app_module.device_inventory.clear()
+        response = self.client.post('/snmp-discovery', data={'host': '192.168.1.2', 'community': 'public'})
+        self.assertEqual(response.status_code, 400)
+
+        run.return_value = SimpleNamespace(returncode=0, stdout='Lab Switch\nInterface 1\n', stderr='')
+        response = self.client.post('/snmp-discovery', data={'host': '192.168.1.2', 'community': 'public', 'authorized': 'on'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['result']['values'][0], 'Lab Switch')
+        inventory = app_module.find_inventory_device('192.168.1.2')
+        self.assertEqual(inventory['device_type'], 'SNMP device')
+
+    @patch('app.shutil.which', return_value='/usr/bin/traceroute')
+    @patch('app.socket.create_connection')
+    @patch('app.socket.getaddrinfo', return_value=[(None, None, None, None, ('2001:db8::10', 0, 0, 0))])
+    @patch('app._run_text_command')
+    def test_ipv6_assessment_reports_ping_dns_neighbors_and_ports(self, run_command, getaddrinfo, create_connection, which):
+        run_command.side_effect = [
+            {'output': '3 packets transmitted, 3 received'},
+            {'output': 'traceroute to 2001:db8::10'},
+            {'output': 'fe80::1 dev eth0 lladdr 00:11:22:33:44:55 router'},
+            {'output': 'default via fe80::1 dev eth0'},
+        ]
+        create_connection.return_value.__enter__.return_value = None
+
+        response = self.client.post('/ipv6-assessment', data={'host': '2001:db8::10', 'ports': '443'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['dns_aaaa'], ['2001:db8::10'])
+        self.assertIn('fe80::1', result['neighbors'])
+        self.assertEqual(result['ports'][0]['status'], 'open')
 
     @patch('app.subprocess.run')
     def test_ping_route_reports_loss_latency_and_history(self, run):

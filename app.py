@@ -66,6 +66,7 @@ pineap_lab_lock = threading.Lock()
 handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
 ping_history = []
+vlan_segmentation_notes = []
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -136,11 +137,11 @@ ROADMAP_SECTIONS = [
             {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now parses mDNS/Bonjour service records, hostnames, ports, TXT records, roles, and inventory metadata.', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
             {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now performs bounded SSDP discovery and catalogs friendly names, model/manufacturer hints, service types, and control URLs.', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
             {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now surfaces lldpctl neighbor data including switch/router names, ports, VLAN hints, and management addresses when visible.', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
-            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
-            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
-            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
-            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
-            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
+            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now inventories VLAN interfaces/tags and stores SSID-to-VLAN segmentation validation notes.', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
+            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now reports public IP hints, NAT context, DNS resolvers, IPv6 egress, VPN/proxy hints, and per-interface route context.', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
+            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now runs bounded iperf3 client/server checks for LAN throughput baselines when iperf3 is installed.', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
+            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now safely collects SNMP system and interface metadata from authorized targets when credentials are supplied.', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
+            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now includes IPv6 ping, traceroute, neighbor/default-route views, AAAA lookup, and bounded IPv6 TCP checks.', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
         ],
     },
     {
@@ -1482,6 +1483,156 @@ def discover_lldp_neighbors(selected_interface=None):
     return {'available': result['returncode'] == 0, 'tool': lldpctl, 'neighbors': neighbors, 'message': f'Discovered {len(neighbors)} LLDP/CDP neighbor(s).'}
 
 
+def discover_vlan_context(ssid=None, vlan_id=None, notes=None):
+    """Inventory VLAN-like interfaces and store optional SSID-to-VLAN notes."""
+    command_result = _run_text_command(['ip', '-d', 'link', 'show'], timeout=5) if os.name != 'nt' else {'output': '', 'returncode': 1}
+    vlans = []
+    current = None
+    for line in command_result.get('output', '').splitlines():
+        header = re.match(r'\d+:\s+([^:@]+(?:\.\d+)?)(?:@([^:]+))?:', line.strip())
+        if header:
+            name = header.group(1)
+            parent = header.group(2)
+            current = {'interface': name, 'parent': parent, 'vlan_id': None, 'raw': line.strip()}
+            if '.' in name and name.rsplit('.', 1)[-1].isdigit():
+                current['vlan_id'] = name.rsplit('.', 1)[-1]
+                vlans.append(current)
+            continue
+        if current and 'vlan id' in line:
+            match = re.search(r'vlan id\s+(\d+)', line)
+            if match:
+                current['vlan_id'] = match.group(1)
+                if current not in vlans:
+                    vlans.append(current)
+    note_record = None
+    if ssid or vlan_id or notes:
+        note_record = {
+            'id': uuid.uuid4().hex,
+            'ssid': (ssid or '').strip(),
+            'vlan_id': str(vlan_id or '').strip(),
+            'notes': (notes or '').strip()[:500],
+            'created_at': time.time(),
+            'validation_context': 'Confirm client isolation, gateway ACLs, DHCP scope, DNS policy, and inter-VLAN firewall rules.',
+        }
+        vlan_segmentation_notes.insert(0, note_record)
+        del vlan_segmentation_notes[100:]
+    return {'vlans': vlans, 'notes': list(vlan_segmentation_notes), 'created_note': note_record, 'command': command_result}
+
+
+def build_egress_diagnostics(selected_interface=None):
+    """Collect public egress, DNS, NAT, VPN/proxy, and route context."""
+    public_ip = None
+    try:
+        from urllib.request import urlopen
+        with urlopen('https://api.ipify.org', timeout=4) as response:
+            public_ip = response.read().decode('utf-8').strip()
+    except Exception as exc:
+        public_ip = None
+        public_error = str(exc)
+    else:
+        public_error = None
+    resolvers = []
+    try:
+        with open('/etc/resolv.conf', encoding='utf-8') as handle:
+            resolvers = [line.split()[1] for line in handle if line.startswith('nameserver') and len(line.split()) > 1]
+    except OSError:
+        resolvers = []
+    ipv6_default = _run_text_command(['ip', '-6', 'route', 'show', 'default'], timeout=5) if os.name != 'nt' else {'output': ''}
+    interface_route = _run_text_command(['ip', 'route', 'show', 'dev', selected_interface], timeout=5) if selected_interface and os.name != 'nt' else {'output': ''}
+    proxy_hints = {key: value for key, value in os.environ.items() if key.lower() in {'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'}}
+    route_diag = build_route_diagnostics(public_ip) if public_ip else build_route_diagnostics()
+    private_addresses = [iface.to_dict().get('ip_address') for iface in network_interfaces if getattr(iface, 'ip_address', None)]
+    nat_context = 'Likely NAT/private egress' if any(str(ip).startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.2', '172.30.', '172.31.', '192.168.')) for ip in private_addresses) else 'No RFC1918 interface address detected'
+    return {
+        'public_ip': public_ip,
+        'public_ip_error': public_error,
+        'nat_context': nat_context,
+        'dns_resolvers': resolvers,
+        'ipv6_egress': ipv6_default.get('output'),
+        'vpn_hints': route_diag.get('vpn_hints', []),
+        'proxy_hints': proxy_hints,
+        'interface_route_context': interface_route.get('output'),
+        'per_interface': [{'name': iface.name, 'type': iface.interface_type, 'ip_address': getattr(iface, 'ip_address', None)} for iface in network_interfaces],
+    }
+
+
+def run_iperf3_test(mode, host=None, port=5201, seconds=5):
+    """Run a bounded iperf3 client or one-shot server check."""
+    iperf3 = shutil.which('iperf3')
+    if not iperf3:
+        raise ValueError('iperf3 is not installed')
+    mode = (mode or 'client').strip().lower()
+    port = max(1, min(parse_int(port, 'Port must be an integer'), 65535))
+    seconds = max(1, min(parse_int(seconds, 'Seconds must be an integer'), 30))
+    if mode == 'client':
+        if not host:
+            raise ValueError('Host is required for iperf3 client tests')
+        command = [iperf3, '-c', host, '-p', str(port), '-t', str(seconds), '-J']
+    elif mode == 'server':
+        command = [iperf3, '-s', '-1', '-p', str(port), '-J']
+    else:
+        raise ValueError('Mode must be client or server')
+    result = subprocess.run(command, capture_output=True, text=True, timeout=seconds + 10, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    parsed = {}
+    try:
+        parsed = json.loads(output) if output.startswith('{') else {}
+    except json.JSONDecodeError:
+        parsed = {}
+    summary = parsed.get('end', {}).get('sum_received') or parsed.get('end', {}).get('sum_sent') or {}
+    return {'command': command, 'returncode': result.returncode, 'summary': summary, 'json': parsed, 'output': output[-2000:]}
+
+
+def run_snmp_inventory(host, community=None, version='2c', oid='system'):
+    """Collect authorized SNMP identity/interface metadata using supplied credentials."""
+    if not host:
+        raise ValueError('SNMP host is required')
+    if not community:
+        raise ValueError('SNMP community or credential is required')
+    snmpwalk = shutil.which('snmpwalk')
+    if not snmpwalk:
+        raise ValueError('snmpwalk is not installed')
+    oid_map = {'system': '1.3.6.1.2.1.1', 'interfaces': '1.3.6.1.2.1.2.2.1.2'}
+    selected_oid = oid_map.get((oid or 'system').strip().lower(), oid_map['system'])
+    command = [snmpwalk, '-v', version or '2c', '-c', community, '-Oqv', host, selected_oid]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+    lines = [line.strip().strip('"') for line in (result.stdout or '').splitlines() if line.strip()]
+    metadata = {'host': host, 'version': version, 'oid': selected_oid, 'values': lines[:50], 'returncode': result.returncode, 'error': (result.stderr or '').strip()}
+    record_inventory_devices([{'ip': host, 'name': lines[0] if lines else host, 'device_type': 'SNMP device', 'service_metadata': metadata}], 'snmp-discovery')
+    return metadata
+
+
+def run_ipv6_assessment(host=None, ports=None):
+    """Run bounded IPv6 reachability, route, neighbor, DNS, and TCP checks."""
+    host = (host or '').strip()
+    ports = [int(port) for port in re.split(r'[,\s]+', ports or '') if port.strip().isdigit()][:10]
+    ping = None
+    trace = None
+    if host:
+        ping = _run_text_command(['ping', '-6', '-c', '3', host], timeout=8)
+        traceroute_tool = shutil.which('traceroute6') or shutil.which('traceroute')
+        if traceroute_tool:
+            trace = _run_text_command([traceroute_tool, '-6', '-n', '-m', '12', host], timeout=15)
+    neighbors = _run_text_command(['ip', '-6', 'neigh', 'show'], timeout=5) if os.name != 'nt' else {'output': ''}
+    routes = _run_text_command(['ip', '-6', 'route', 'show'], timeout=5) if os.name != 'nt' else {'output': ''}
+    dns_records = []
+    if host:
+        try:
+            dns_records = sorted({item[4][0] for item in socket.getaddrinfo(host, None, socket.AF_INET6)})
+        except socket.gaierror:
+            dns_records = []
+    port_results = []
+    for port in ports:
+        status = 'closed'
+        try:
+            with socket.create_connection((host, port, 0, 0), timeout=1):
+                status = 'open'
+        except OSError:
+            status = 'closed'
+        port_results.append({'port': port, 'status': status})
+    return {'host': host, 'ping': ping, 'traceroute': trace, 'neighbors': neighbors.get('output'), 'router_advertisement_visibility': routes.get('output'), 'dns_aaaa': dns_records, 'ports': port_results}
+
+
 def _scan_result_counts(result):
     result = result or {}
     return {
@@ -2133,6 +2284,11 @@ def service_discovery_page():
     return render_template('service_discovery.html', title='Service Discovery', **current_context())
 
 
+@app.route('/advanced-diagnostics')
+def advanced_diagnostics_page():
+    return render_template('advanced_diagnostics.html', title='Advanced Diagnostics', **current_context())
+
+
 @app.route('/clients/<identifier>')
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
@@ -2330,6 +2486,43 @@ def upnp_discovery_route():
 @app.route('/neighbor-discovery', methods=['POST'])
 def neighbor_discovery_route():
     result = discover_lldp_neighbors(request.form.get('selectedInterface'))
+    return json_success(result=result)
+
+
+@app.route('/vlan-discovery', methods=['POST'])
+def vlan_discovery_route():
+    result = discover_vlan_context(request.form.get('ssid'), request.form.get('vlanId'), request.form.get('notes'))
+    return json_success(result=result)
+
+
+@app.route('/egress-diagnostics', methods=['POST'])
+def egress_diagnostics_route():
+    return json_success(result=build_egress_diagnostics(request.form.get('selectedInterface')))
+
+
+@app.route('/iperf3-test', methods=['POST'])
+def iperf3_test_route():
+    try:
+        result = run_iperf3_test(request.form.get('mode'), request.form.get('host'), request.form.get('port') or 5201, request.form.get('seconds') or 5)
+    except (ValueError, subprocess.TimeoutExpired) as e:
+        return json_error(str(e))
+    return json_success(result=result)
+
+
+@app.route('/snmp-discovery', methods=['POST'])
+def snmp_discovery_route():
+    if request.form.get('authorized') != 'on':
+        return json_error('Confirm this is an authorized SNMP inventory check')
+    try:
+        result = run_snmp_inventory(request.form.get('host'), request.form.get('community'), request.form.get('version') or '2c', request.form.get('oid') or 'system')
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(result=result)
+
+
+@app.route('/ipv6-assessment', methods=['POST'])
+def ipv6_assessment_route():
+    result = run_ipv6_assessment(request.form.get('host'), request.form.get('ports'))
     return json_success(result=result)
 
 
