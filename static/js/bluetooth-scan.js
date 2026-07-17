@@ -23,7 +23,36 @@ $(document).ready(function () {
   ];
 
 
-  function pollScanJob(jobId, onComplete, onError, retryCount = 0) {
+  function renderScanJobDiagnostics(job) {
+    const counts = job.result_counts || {};
+    const events = Array.isArray(job.events) ? job.events.slice(-6) : [];
+    const eventList = events.length
+      ? `<ol class="scan-diagnostics-list mb-0">${events.map(function (event) { return `<li>${escapeHtml(event.message || 'Scan updated')}</li>`; }).join('')}</ol>`
+      : '<p class="text-muted mb-0">Waiting for scan details...</p>';
+    return `
+      <div class="wireless-scan-state card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center mb-3">
+            <div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div>
+            <div>
+              <strong>${escapeHtml(job.message || 'Bluetooth scan running')}</strong>
+              <p class="text-muted mb-0">Job ${escapeHtml(job.id || '')} · ${escapeHtml(job.status || 'running')} · ${Number(job.progress || 0)}%</p>
+            </div>
+          </div>
+          <div class="scan-diagnostics-grid">
+            <span><strong>${Number(counts.devices || 0)}</strong> parsed devices</span>
+            <span><strong>${events.length}</strong> recent events</span>
+          </div>
+          <details class="mt-3" open>
+            <summary>Scan event log</summary>
+            ${eventList}
+          </details>
+        </div>
+      </div>
+    `;
+  }
+
+  function pollScanJob(jobId, onComplete, onError, onUpdate, retryCount = 0) {
     window.setTimeout(function checkJob() {
       $.ajax({
         url: `/scan-jobs/${encodeURIComponent(jobId)}`,
@@ -35,12 +64,15 @@ $(document).ready(function () {
           } else if (job.status === 'failed') {
             onError(job.error || 'Scan job failed');
           } else {
+            if (typeof onUpdate === 'function') {
+              onUpdate(job);
+            }
             window.setTimeout(checkJob, 1000);
           }
         },
         error: function (xhr) {
           if (retryCount < 3) {
-            pollScanJob(jobId, onComplete, onError, retryCount + 1);
+            pollScanJob(jobId, onComplete, onError, onUpdate, retryCount + 1);
             return;
           }
           onError(xhr.responseJSON?.message || 'Unable to check scan job');
@@ -87,7 +119,14 @@ $(document).ready(function () {
       return;
     }
     button.prop('disabled', true).text('Scanning...');
-    result.html(`<div class="wireless-scan-state card shadow-sm"><div class="card-body d-flex align-items-center"><div class="spinner-border text-primary mr-3" role="status" aria-hidden="true"></div><div><strong>Scanning ${escapeHtml(interfaceName)}</strong><p class="text-muted mb-0">Running this Bluetooth scan in the background.</p></div></div></div>`);
+    result.html(renderScanJobDiagnostics({
+      id: 'starting',
+      status: 'queued',
+      progress: 10,
+      message: `Bluetooth scan queued for ${interfaceName}.`,
+      result_counts: { devices: 0 },
+      events: [{ message: `Bluetooth scan queued for ${interfaceName}.` }]
+    }));
 
     function renderScanResult(response) {
       const devices = Array.isArray(response.devices) ? response.devices : [];
@@ -112,6 +151,7 @@ $(document).ready(function () {
       data: { scanType: 'bluetooth', selectedInterface: interfaceName },
       success: function (response) {
         activeScanJobs.set(scanKey, response.job.id);
+        result.html(renderScanJobDiagnostics(response.job || {}));
         pollScanJob(response.job.id, function (scanResult) {
           activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Devices');
@@ -120,6 +160,8 @@ $(document).ready(function () {
           activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Devices');
           result.html(`<div class="alert alert-danger mt-3" role="alert">${escapeHtml(message)} <a href="/capabilities#host-dependencies" class="alert-link">Check Bluetooth requirements</a>.</div>`);
+        }, function (job) {
+          result.html(renderScanJobDiagnostics(job));
         });
       },
       error: function (xhr) {

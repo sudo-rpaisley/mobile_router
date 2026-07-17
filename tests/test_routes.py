@@ -201,10 +201,16 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         job = response.get_json()['job']
         self.assertEqual(job['status'], 'queued')
+        self.assertIn('message', job)
+        self.assertIn('events', job)
+        self.assertEqual(job['result_counts'], {'devices': 0, 'wlans': 0})
 
         response = self.client.get(f"/scan-jobs/{job['id']}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['job']['scan_type'], 'wlan')
+        status_job = response.get_json()['job']
+        self.assertEqual(status_job['scan_type'], 'wlan')
+        self.assertEqual(status_job['progress'], 10)
+        self.assertTrue(status_job['events'])
 
 
     @patch('app.threading.Thread')

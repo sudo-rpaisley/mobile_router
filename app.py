@@ -669,6 +669,30 @@ def parse_int(value, error_message):
         raise ValueError(error_message) from exc
 
 
+def _scan_result_counts(result):
+    result = result or {}
+    return {
+        'devices': len(result.get('devices') or []),
+        'wlans': len(result.get('wlans') or []),
+    }
+
+
+def _append_scan_event(job_id, message, **updates):
+    event = {'time': time.time(), 'message': message}
+    with scan_jobs_lock:
+        job = scan_jobs.get(job_id)
+        if not job:
+            return
+        if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
+            return
+        events = list(job.get('events') or [])
+        events.append(event)
+        job.update(updates)
+        job['message'] = message
+        job['events'] = events[-20:]
+        job['updated_at'] = time.time()
+
+
 def _set_scan_job(job_id, **updates):
     with scan_jobs_lock:
         job = scan_jobs.get(job_id)
@@ -676,35 +700,45 @@ def _set_scan_job(job_id, **updates):
             return
         if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
             return
+        result = updates.get('result')
+        if result is not None:
+            updates.setdefault('result_counts', _scan_result_counts(result))
         job.update(updates)
         job['updated_at'] = time.time()
 
 
 def _run_scan_job(job_id, scan_type, selected_interface):
-    _set_scan_job(job_id, status='running', started_at=time.time(), updated_at=time.time())
+    _append_scan_event(job_id, f'Starting {scan_type} scan on {selected_interface}.', status='running', started_at=time.time())
     try:
         if scan_type == 'wlan':
             from scripts.wifi import utils as wifi_utils
+            _append_scan_event(job_id, 'Refreshing wireless scan data from the selected adapter.')
             wifi_utils.scan_networks(selected_interface)
-            result = {'wlans': wifi_utils.get_networks_summary()}
+            wlans = wifi_utils.get_networks_summary()
+            result = {'wlans': wlans}
+            _append_scan_event(job_id, f'Parsed {len(wlans)} wireless network(s) from scan output.', result_counts=_scan_result_counts(result))
         elif scan_type == 'bluetooth':
+            _append_scan_event(job_id, 'Discovering Bluetooth devices from the host adapter.')
             devices = asyncio.run(get_bluetooth_devices())
+            summaries = [bluetooth_device_summary(dev) for dev in devices]
             result = {
-                'devices': [bluetooth_device_summary(dev) for dev in devices],
+                'devices': summaries,
                 'action_capability': bluetooth_action_capability(),
             }
+            _append_scan_event(job_id, f'Parsed {len(summaries)} Bluetooth device(s) from scan output.', result_counts=_scan_result_counts(result))
         else:
             raise ValueError('Unsupported scan type')
         with scan_jobs_lock:
             cancelled = scan_jobs.get(job_id, {}).get('cancel_requested')
         if cancelled:
-            _set_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Job cancelled.')
+            _append_scan_event(job_id, 'Job cancelled.', status='cancelled', completed_at=time.time())
             return
         if scan_type == 'bluetooth':
             record_inventory_devices(result.get('devices', []), 'bluetooth-scan', selected_interface)
-        _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
+            _append_scan_event(job_id, f'Recorded {len(result.get("devices", []))} Bluetooth device(s) in inventory.', result_counts=_scan_result_counts(result))
+        _append_scan_event(job_id, f'{scan_type.title()} scan complete.', status='completed', completed_at=time.time(), result=result, result_counts=_scan_result_counts(result))
     except Exception as exc:
-        _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
+        _append_scan_event(job_id, f'{scan_type.title()} scan failed: {exc}', status='failed', completed_at=time.time(), error=str(exc))
 
 
 
@@ -719,14 +753,18 @@ def _port_scan_job_snapshot(job):
 
 
 def _scan_job_snapshot(job):
+    status = job.get('status')
+    progress = 100 if status in {'completed', 'failed', 'cancelled'} else (10 if status == 'queued' else 50)
     return {
         **job,
         'kind': 'scan',
         'label': f"{job.get('scan_type', 'scan')} scan",
         'total_ports': None,
         'scanned_ports': None,
-        'progress': 100 if job.get('status') in {'completed', 'failed', 'cancelled'} else 0,
-        'cancelable': job.get('status') in {'queued', 'running'},
+        'progress': progress,
+        'result_counts': dict(job.get('result_counts') or {'devices': 0, 'wlans': 0}),
+        'events': list(job.get('events') or []),
+        'cancelable': status in {'queued', 'running'},
     }
 
 
@@ -875,6 +913,9 @@ def create_scan_job(scan_type, selected_interface):
             'selected_interface': selected_interface,
             'status': 'queued',
             'cancel_requested': False,
+            'message': f'{scan_type.title()} scan queued for {selected_interface}.',
+            'events': [{'time': time.time(), 'message': f'{scan_type.title()} scan queued for {selected_interface}.'}],
+            'result_counts': {'devices': 0, 'wlans': 0},
             'created_at': time.time(),
             'updated_at': time.time(),
         }
@@ -1565,7 +1606,7 @@ def scan_job_status(job_id):
         job = scan_jobs.get(job_id)
         if not job:
             return json_error('Scan job not found', 404)
-        return json_success(job=dict(job))
+        return json_success(job=_scan_job_snapshot(job))
 
 
 @app.route('/wlan-scan', methods=['POST'])

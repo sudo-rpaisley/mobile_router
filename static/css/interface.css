@@ -490,3 +490,22 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   display: block;
   overflow-wrap: anywhere;
 }
+
+.scan-diagnostics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.scan-diagnostics-grid span {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  color: var(--text-muted);
+  padding: 0.35rem 0.75rem;
+}
+
+.scan-diagnostics-list {
+  color: var(--text-muted);
+  padding-left: 1.25rem;
+}
