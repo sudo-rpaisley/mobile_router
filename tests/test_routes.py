@@ -929,9 +929,17 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'port_scan_live.js', response.data)
 
     def test_client_detail_links_to_device_port_scan(self):
+        app_module.device_inventory.clear()
+        app_module.record_device_open_ports('192.168.20.10', [
+            {'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'},
+        ])
+
         response = self.client.get('/clients/192.168.20.10')
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Saved Service Profile', response.data)
+        self.assertIn(b'22/tcp', response.data)
+        self.assertIn(b'SSH', response.data)
         self.assertIn(b'Device Port Scan', response.data)
         self.assertIn(b'Common ports', response.data)
         self.assertIn(b'All ports', response.data)
@@ -1039,8 +1047,24 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/inventory')
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'/clients/192.168.20.10', response.data)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
-        self.assertEqual(response.data.count(b'Check ports'), 1)
+        self.assertEqual(response.data.count(b'Device scan'), 1)
+        self.assertEqual(response.data.count(b'Tools scan'), 1)
+
+    @patch('scripts.portScanner.scan_ports', return_value=[80, 443])
+    def test_port_scan_route_saves_open_ports_to_device_profile(self, _scan_ports):
+        app_module.device_inventory.clear()
+
+        response = self.client.post('/port-scan', data={'host': '192.168.20.44', 'start': '80', 'end': '443'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['ports'], [80, 443])
+        device = app_module.find_inventory_device('192.168.20.44')
+        self.assertEqual(device['open_ports'], [80, 443])
+        self.assertEqual(device['open_port_details'][0]['service'], 'HTTP')
+        self.assertEqual(device['open_port_details'][1]['service'], 'HTTPS')
 
     def test_new_device_alerts_are_created_and_can_be_read(self):
         app_module.device_inventory.clear()
@@ -1172,6 +1196,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(job['open_port_details'][0]['service'], 'SSH')
         self.assertEqual(job['scanned_ports'], 3)
         self.assertEqual(job['progress'], 100)
+        device = app_module.find_inventory_device('192.168.20.10')
+        self.assertEqual(device['open_ports'], [22])
+        self.assertEqual(device['open_port_details'][0]['service'], 'SSH')
 
     def test_jobs_page_and_status_show_running_count(self):
         app_module.scan_jobs.clear()

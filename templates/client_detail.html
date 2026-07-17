@@ -88,6 +88,24 @@
         </div>
       </section>
     {% elif ip %}
+      {% if open_port_details %}
+        <section class="theme-card card">
+          <div class="card-body">
+            <h2 class="theme-section-title">Saved Service Profile</h2>
+            <p class="text-muted">Open ports found on previous scans are saved to this device profile{% if last_port_scan_label %}; last scan {{ last_port_scan_label }}{% endif %}.</p>
+            <div class="port-service-grid">
+              {% for port in open_port_details %}
+                <div class="port-service-card">
+                  <strong>{{ port.port }}/tcp</strong>
+                  <span>{{ port.service }}</span>
+                  <small>{{ port.description }}</small>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       <section class="theme-card card port-scan-panel" data-host="{{ ip }}">
         <div class="card-body">
           <h2 class="theme-section-title">Device Port Scan</h2>

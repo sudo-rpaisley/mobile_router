@@ -1104,6 +1104,47 @@ def record_inventory_devices(devices, source, interface=None):
     return changed_devices
 
 
+def record_device_open_ports(host, port_details, source='port-scan'):
+    """Attach open-port/service findings to a discovered IP device profile."""
+    host = (host or '').strip()
+    if not host:
+        return None
+    details = sorted(
+        [dict(item) for item in (port_details or []) if item.get('port')],
+        key=lambda item: item['port'],
+    )
+    now = time.time()
+    with device_inventory_lock:
+        key = f'ip:{host}'
+        existing_key = key if key in device_inventory else None
+        if existing_key is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == host:
+                    existing_key = candidate_key
+                    break
+        if existing_key is None:
+            existing_key = key
+            device_inventory[existing_key] = {
+                'id': key,
+                'ip': host,
+                'manufacturer': 'Unknown',
+                'first_seen': now,
+                'interfaces': [],
+                'sources': [],
+            }
+        device = device_inventory[existing_key]
+        existing_details = {item.get('port'): dict(item) for item in device.get('open_port_details', []) if item.get('port')}
+        for detail in details:
+            existing_details[detail['port']] = detail
+        device['open_port_details'] = [existing_details[port] for port in sorted(existing_details)]
+        device['open_ports'] = sorted(existing_details)
+        device['last_port_scan'] = now
+        device['last_seen'] = now
+        device['sources'] = sorted(set(device.get('sources', [])) | {source})
+        device_inventory[existing_key] = device
+        return dict(device)
+
+
 def inventory_records():
     """Return inventory entries enriched with display labels and sorted by last seen."""
     interface_devices = []
@@ -1878,6 +1919,7 @@ def run_port_scan_job(job_id):
                 current['open_port_details'] = sorted(current['open_port_details'], key=lambda item: item['port'])
             current['message'] = f"Open port found: {port} ({service_detail['service']})"
             current['updated_at'] = time.time()
+        record_device_open_ports(host, [service_detail], source='port-scan-live')
 
     def should_cancel():
         with port_scan_jobs_lock:
@@ -1900,11 +1942,13 @@ def run_port_scan_job(job_id):
         if should_cancel():
             update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
             return
+        final_details = describe_open_ports(ports)
+        record_device_open_ports(host, final_details, source='port-scan')
         update_port_scan_job(
             job_id,
             status='complete',
             open_ports=ports,
-            open_port_details=describe_open_ports(ports),
+            open_port_details=final_details,
             scanned_ports=total,
             current_port=end,
             progress=100,
@@ -2412,6 +2456,8 @@ def client_detail(identifier):
         or identifier
     )
 
+    last_port_scan = None if is_bluetooth else (inventory_device or {}).get('last_port_scan')
+
     return render_template(
         'client_detail.html',
         title=f'Client {display_name}',
@@ -2420,6 +2466,13 @@ def client_detail(identifier):
         manufacturer=manufacturer,
         display_name=display_name,
         is_bluetooth=is_bluetooth,
+        open_port_details=[] if is_bluetooth else (inventory_device or {}).get('open_port_details', []),
+        open_ports=[] if is_bluetooth else (inventory_device or {}).get('open_ports', []),
+        last_port_scan_label=(
+            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last_port_scan))
+            if last_port_scan
+            else None
+        ),
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
@@ -2482,7 +2535,9 @@ def port_scan_route():
     except PortScanError as e:
         return json_error(str(e))
 
-    return jsonify({'ports': ports, 'port_details': describe_open_ports(ports)})
+    port_details = describe_open_ports(ports)
+    record_device_open_ports(data.get('host'), port_details, source='port-scan')
+    return jsonify({'ports': ports, 'port_details': port_details})
 
 
 @app.route('/port-scan-jobs', methods=['POST'])
