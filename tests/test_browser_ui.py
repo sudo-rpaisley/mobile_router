@@ -41,6 +41,8 @@ def test_wireless_browser_script_contains_dashboard_interactions():
     assert '.wireless-channel-filter' in script
     assert '.wireless-band-filter' in script
     assert '.wireless-map-close' in script
+    assert 'wireless-map-open' in script
+    assert '&times;' in script
     assert "event.key === 'Escape'" in script
     assert 'data-map-band-tab' in script
     assert 'wireless-heatmap-range' in script

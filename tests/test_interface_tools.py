@@ -71,3 +71,21 @@ def test_windows_metadata_includes_disabled_bluetooth_pnp_device(monkeypatch):
     assert metadata['Intel Wireless Bluetooth']['Status'] == 'Disabled'
     assert metadata['Intel Wireless Bluetooth']['PhysicalMediaType'] == 'Bluetooth'
     assert interfaceTools._normalize_interface_state('Disabled', 'Bluetooth') == 'DOWN'
+
+
+def test_load_oui_db_supports_ieee_csv(tmp_path, monkeypatch):
+    csv_path = tmp_path / 'oui_db.csv'
+    csv_path.write_text('Registry,Assignment,Organization Name,Organization Address\nMA-L,AABBCC,Example Bluetooth Inc,Somewhere\n', encoding='utf-8')
+    monkeypatch.setattr(interfaceTools, 'OUI_DB_PATH', str(csv_path))
+
+    db = interfaceTools._load_oui_db()
+
+    assert db['aa:bb:cc'] == 'Example Bluetooth Inc'
+    assert interfaceTools._normalize_oui_prefix('AA-BB-CC-11-22-33') == 'aa:bb:cc'
+
+
+def test_update_oui_db_normalizes_assignments():
+    from scripts import update_oui_db
+
+    assert update_oui_db._normalize_assignment('AA-BB-CC-11') == 'aa:bb:cc'
+    assert update_oui_db._normalize_assignment('bad') is None

@@ -30,17 +30,41 @@ for candidate in [
         OUI_DB_PATH = candidate
         break
 
+def _normalize_oui_prefix(prefix):
+    cleaned = re.sub(r'[^0-9A-Fa-f]', '', str(prefix or ''))
+    if len(cleaned) < 6:
+        return None
+    cleaned = cleaned[:6].lower()
+    return ':'.join(cleaned[index:index + 2] for index in range(0, 6, 2))
+
+
 def _load_oui_db():
-    """Load the OUI database from the detected path if available."""
+    """Load the local OUI database if available.
+
+    Supports the compact project format (prefix,vendor) and the IEEE CSV
+    format downloaded by scripts/update_oui_db.py.
+    """
     db = {}
     if OUI_DB_PATH and os.path.exists(OUI_DB_PATH):
-        with open(OUI_DB_PATH) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                prefix, name = line.split(',', 1)
-                db[prefix.lower()] = name.strip()
+        with open(OUI_DB_PATH, encoding='utf-8') as f:
+            header = f.readline().strip().split(',')
+            f.seek(0)
+            if {'Assignment', 'Organization Name'}.issubset(set(header)):
+                import csv as _csv
+                for row in _csv.DictReader(f):
+                    prefix = _normalize_oui_prefix(row.get('Assignment'))
+                    name = (row.get('Organization Name') or '').strip()
+                    if prefix and name:
+                        db[prefix] = name
+            else:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    prefix, name = line.split(',', 1)
+                    normalized = _normalize_oui_prefix(prefix)
+                    if normalized:
+                        db[normalized] = name.strip()
     return db
 
 OUI_DB = _load_oui_db()
@@ -64,9 +88,9 @@ def lookup_manufacturer(mac):
     if not mac:
         return 'Unknown'
 
-    normalized = ':'.join(mac.lower().split(':')[:3])
+    normalized = _normalize_oui_prefix(mac)
 
-    return OUI_DB.get(normalized, 'Unknown')
+    return OUI_DB.get(normalized, 'Unknown') if normalized else 'Unknown'
 
 class NetworkInterface:
     def __init__(self, name, interface_type):

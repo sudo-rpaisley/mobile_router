@@ -277,7 +277,7 @@ $(document).ready(function () {
               <h2 class="interface-section-title mb-0">Wireless occupancy</h2>
             </div>
             <div class="btn-group btn-group-sm" role="group" aria-label="Wireless occupancy exports">
-              <button class="btn btn-outline-secondary wireless-map-close" type="button">Close</button>
+              <button class="btn btn-outline-secondary wireless-map-close" type="button" aria-label="Close wireless occupancy map">&times;</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="json" type="button">JSON</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="csv" type="button">CSV</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="png" type="button">PNG</button>
@@ -495,6 +495,7 @@ $(document).ready(function () {
 
   function closeWirelessMap() {
     $('.wireless-chart-panel.is-fullscreen-map').removeClass('is-expanded is-fullscreen-map').attr('aria-expanded', 'false');
+    $('body').removeClass('wireless-map-open');
   }
 
   $(document).on('click', '.wireless-channel-filter', function (event) {
@@ -627,6 +628,7 @@ $(document).ready(function () {
     const expanded = !panel.hasClass('is-expanded');
     panel.toggleClass('is-expanded', expanded);
     panel.toggleClass('is-fullscreen-map', expanded);
+    $('body').toggleClass('wireless-map-open', expanded);
     panel.attr('aria-expanded', expanded ? 'true' : 'false');
     if (expanded) applyHeatmapRange(panel);
   });

@@ -41,6 +41,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Central capability registry', response.data)
         self.assertIn(b'Background scan jobs', response.data)
         self.assertIn(b'Layout density and navigation review', response.data)
+        self.assertIn(b'Tabbed interface detail layout', response.data)
         self.assertIn(b'Dedicated wireless occupancy report page', response.data)
         self.assertIn(b'Server-side wireless occupancy history', response.data)
         self.assertIn(b'Bluetooth metadata refresh pipeline', response.data)

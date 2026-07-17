@@ -575,3 +575,15 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   overflow: auto;
   white-space: pre-wrap;
 }
+
+body.wireless-map-open {
+  overflow: hidden;
+}
+
+.wireless-chart-panel.is-fullscreen-map .wireless-map-close {
+  border-radius: 999px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 2.25rem;
+}

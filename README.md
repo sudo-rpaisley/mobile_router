@@ -102,4 +102,13 @@ The application looks for an `oui` directory containing `oui_db.csv`. By
 default this folder lives in the project directory, but the lookup logic also
 checks the parent directory and one level above that. This allows keeping the
 OUI database outside the repository if desired. Lookups rely solely on this
-offline database.
+offline database, including Bluetooth device vendor lookups.
+
+To refresh the local database from the IEEE public OUI CSV listing, run:
+
+```bash
+python scripts/update_oui_db.py
+```
+
+The downloader writes a compact `prefix,vendor` CSV to `oui/oui_db.csv`, which
+keeps runtime lookups offline after the database is downloaded.
