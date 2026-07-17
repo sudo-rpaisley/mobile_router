@@ -437,6 +437,68 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="ping-host"', response.data)
         self.assertIn(b'id="route-diagnostics-btn"', response.data)
 
+    def test_network_scan_page_includes_comprehensive_device_scan(self):
+        response = self.client.get('/network-scan')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Comprehensive Device Scan', response.data)
+        self.assertIn(b'id="sweep-cidr"', response.data)
+        self.assertIn(b'Include mDNS, UPnP/SSDP, and LLDP/CDP', response.data)
+
+    @patch('app.discover_lldp_neighbors')
+    @patch('app.discover_upnp_devices')
+    @patch('app.discover_mdns_services')
+    @patch('app._run_text_command')
+    @patch('app.passive_scan')
+    @patch('app.active_scan')
+    def test_comprehensive_scan_combines_methods_and_inventory(self, active, passive, run_command, mdns, upnp, lldp):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+        active.return_value = [{'ip': '192.168.1.10', 'mac': 'AA:BB:CC:DD:EE:10'}]
+        passive.return_value = [{'ip': '192.168.1.11', 'mac': 'AA:BB:CC:DD:EE:11'}]
+        run_command.side_effect = [
+            {'output': '192.168.1.12 dev eth0 lladdr aa:bb:cc:dd:ee:12 REACHABLE'},
+            {'output': '? (192.168.1.13) at aa:bb:cc:dd:ee:13 [ether] on eth0'},
+        ]
+        mdns.return_value = {'services': [{'ip': '192.168.1.14', 'hostname': 'printer.local', 'name': 'Printer', 'role': 'Printer'}]}
+        upnp.return_value = {'devices': [{'ip': '192.168.1.1', 'friendly_name': 'Gateway', 'manufacturer': 'Training', 'role': 'Gateway/router'}]}
+        lldp.return_value = {'neighbors': [{'management_address': '192.168.1.2', 'name': 'Switch', 'role': 'Switch/router neighbor'}]}
+
+        response = self.client.post('/comprehensive-scan', data={'selectedInterface': 'eth0', 'includePassive': 'on', 'includeServices': 'on'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertEqual(result['summary']['total_devices'], 7)
+        self.assertIn('active-arp', result['methods'])
+        self.assertIn('mdns', result['methods'])
+        self.assertTrue(any('neighbor-table' in item['discovery_methods'] for item in result['devices']))
+        self.assertIsNotNone(app_module.find_inventory_device('192.168.1.14'))
+        self.assertEqual(app_module.alert_records()[0]['alert_type'], 'grouped-discovery')
+
+    @patch('app.discover_lldp_neighbors')
+    @patch('app.discover_upnp_devices')
+    @patch('app.discover_mdns_services')
+    @patch('app._run_text_command')
+    @patch('app.run_ping_sweep')
+    @patch('app.passive_scan')
+    @patch('app.active_scan')
+    def test_comprehensive_scan_can_skip_passive_and_add_ping_sweep(self, active, passive, ping_sweep, run_command, mdns, upnp, lldp):
+        app_module.device_inventory.clear()
+        active.return_value = []
+        run_command.side_effect = [{'output': ''}, {'output': ''}]
+        mdns.return_value = {'services': []}
+        upnp.return_value = {'devices': []}
+        lldp.return_value = {'neighbors': []}
+        ping_sweep.return_value = {'results': [{'host': '192.168.1.20', 'reachable': True}]}
+
+        response = self.client.post('/comprehensive-scan', data={'selectedInterface': 'eth0', 'includePassive': '', 'includeServices': 'on', 'sweepCidr': '192.168.1.0/30'})
+
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()['result']
+        self.assertIn('ping-sweep', result['methods'])
+        self.assertFalse(passive.called)
+        self.assertEqual(result['devices'][0]['ip'], '192.168.1.20')
+
     def test_service_discovery_page_renders_protocol_controls(self):
         response = self.client.get('/service-discovery')
 

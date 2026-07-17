@@ -1633,6 +1633,97 @@ def run_ipv6_assessment(host=None, ports=None):
     return {'host': host, 'ping': ping, 'traceroute': trace, 'neighbors': neighbors.get('output'), 'router_advertisement_visibility': routes.get('output'), 'dns_aaaa': dns_records, 'ports': port_results}
 
 
+def parse_neighbor_table(output):
+    """Parse Linux ip neigh/ARP-like output into device dictionaries."""
+    devices = []
+    for line in (output or '').splitlines():
+        tokens = line.split()
+        if not tokens:
+            continue
+        ip = tokens[0].strip('()')
+        mac = None
+        iface = None
+        arp_match = re.search(r'\(([^)]+)\)\s+at\s+([0-9a-fA-F:.-]+).*\s+on\s+(\S+)', line)
+        if arp_match:
+            ip, mac, iface = arp_match.groups()
+        if 'lladdr' in tokens:
+            mac = tokens[tokens.index('lladdr') + 1]
+        if 'dev' in tokens:
+            iface = tokens[tokens.index('dev') + 1]
+        if mac or ip:
+            devices.append({'ip': ip, 'mac': mac, 'interface': iface, 'discovery_methods': ['neighbor-table'], 'scan_note': 'Observed in local ARP/neighbor table.'})
+    return devices
+
+
+def merge_discovered_devices(groups):
+    """Merge device records from multiple discovery methods by MAC, IP, or name."""
+    merged = {}
+    for method, devices in groups:
+        for raw in devices or []:
+            device = dict(raw)
+            mac = normalize_mac(device.get('mac') or device.get('address') or device.get('bssid'))
+            if mac:
+                device['mac'] = mac
+            key = mac or device.get('ip') or device.get('hostname') or device.get('name') or uuid.uuid4().hex
+            current = merged.setdefault(key, {})
+            methods = set(current.get('discovery_methods') or []) | set(device.get('discovery_methods') or []) | {method}
+            service_metadata = list(current.get('service_metadata_list') or [])
+            if device.get('service_metadata'):
+                service_metadata.append(device.get('service_metadata'))
+            current.update({k: v for k, v in device.items() if v not in (None, '', [])})
+            current['discovery_methods'] = sorted(methods)
+            if service_metadata:
+                current['service_metadata_list'] = service_metadata[-10:]
+    return list(merged.values())
+
+
+def comprehensive_network_device_scan(selected_interface, include_passive=True, include_services=True, sweep_cidr=None):
+    """Combine active, passive, ARP/neighbor, service, and optional ping-sweep discovery."""
+    if not selected_interface:
+        raise ValueError('Missing interface')
+    groups = []
+    errors = []
+    try:
+        groups.append(('active-arp', classify_scan_results(active_scan(selected_interface), selected_interface)))
+    except Exception as exc:
+        errors.append(f'active scan: {exc}')
+    if include_passive:
+        try:
+            groups.append(('passive-observation', classify_scan_results(passive_scan(selected_interface), selected_interface)))
+        except Exception as exc:
+            errors.append(f'passive scan: {exc}')
+    if os.name != 'nt':
+        neigh = _run_text_command(['ip', 'neigh', 'show', 'dev', selected_interface], timeout=5)
+        groups.append(('neighbor-table', parse_neighbor_table(neigh.get('output'))))
+        arp = _run_text_command(['arp', '-an'], timeout=5)
+        groups.append(('arp-cache', parse_neighbor_table(arp.get('output'))))
+    if sweep_cidr:
+        try:
+            sweep = run_ping_sweep(sweep_cidr, count=1, timeout=1)
+            groups.append(('ping-sweep', [{'ip': item.get('host'), 'discovery_methods': ['ping-sweep'], 'reachable': item.get('reachable')} for item in sweep.get('results', []) if item.get('reachable')]))
+        except Exception as exc:
+            errors.append(f'ping sweep: {exc}')
+    if include_services:
+        mdns = discover_mdns_services(selected_interface)
+        groups.append(('mdns', [{'ip': service.get('ip'), 'hostname': service.get('hostname'), 'name': service.get('name'), 'device_type': service.get('role'), 'service_metadata': service, 'discovery_methods': ['mdns']} for service in mdns.get('services', [])]))
+        upnp = discover_upnp_devices(timeout=2)
+        groups.append(('upnp-ssdp', [{'ip': device.get('ip'), 'name': device.get('friendly_name'), 'manufacturer': device.get('manufacturer'), 'device_type': device.get('role'), 'service_metadata': device, 'discovery_methods': ['upnp-ssdp']} for device in upnp.get('devices', [])]))
+        lldp = discover_lldp_neighbors(selected_interface)
+        groups.append(('lldp-cdp', [{'ip': neighbor.get('management_address'), 'name': neighbor.get('name'), 'device_type': neighbor.get('role'), 'service_metadata': neighbor, 'discovery_methods': ['lldp-cdp']} for neighbor in lldp.get('neighbors', [])]))
+    merged = merge_discovered_devices(groups)
+    enriched = record_inventory_devices(merged, 'comprehensive-network-scan', selected_interface)
+    return {
+        'devices': enriched,
+        'methods': [method for method, _devices in groups],
+        'errors': errors,
+        'summary': {
+            'total_devices': len(enriched),
+            'host_like': len([item for item in enriched if not item.get('is_control_traffic')]),
+            'with_services': len([item for item in enriched if item.get('service_metadata') or item.get('service_metadata_list')]),
+        },
+    }
+
+
 def _scan_result_counts(result):
     result = result or {}
     return {
@@ -2355,6 +2446,20 @@ def passive_scan_route():
     devices = classify_scan_results(passive_scan(iface), iface)
     enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
     return jsonify({'devices': enriched_devices})
+
+
+@app.route('/comprehensive-scan', methods=['POST'])
+def comprehensive_scan_route():
+    try:
+        result = comprehensive_network_device_scan(
+            request.form.get('selectedInterface'),
+            include_passive=request.form.get('includePassive', 'on') == 'on',
+            include_services=request.form.get('includeServices', 'on') == 'on',
+            sweep_cidr=(request.form.get('sweepCidr') or '').strip() or None,
+        )
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(result=result)
 
 
 @app.route('/port-scan', methods=['POST'])
