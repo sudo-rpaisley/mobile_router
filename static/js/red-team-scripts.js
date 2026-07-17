@@ -243,6 +243,73 @@ $(document).ready(function () {
         });
     });
 
+    $("#EvilTwin-Submit").on("click", function(event) {
+        event.preventDefault();
+
+        var $ssidInput = $("#EvilTwin-SSID");
+        var $bssidInput = $("#EvilTwin-BSSID");
+        var $channelInput = $("#EvilTwin-Channel");
+        var $authorizedInput = $("#EvilTwin-Authorized");
+        var $status = $("#EvilTwin-Status");
+        var ssid = $ssidInput.val();
+        var bssid = $bssidInput.val();
+        var channel = $channelInput.val();
+        var authorized = $authorizedInput.is(":checked");
+
+        if (!ssid || !bssid || !channel || !authorized) {
+            if (!ssid) { $ssidInput.addClass("input-error"); }
+            if (!bssid) { $bssidInput.addClass("input-error"); }
+            if (!channel) { $channelInput.addClass("input-error"); }
+            if (!authorized) { $authorizedInput.addClass("input-error"); }
+            $status.removeClass("text-success").addClass("text-danger").text("Complete SSID, BSSID, channel, and authorization confirmation.");
+            return;
+        }
+
+        var $submitButton = $("#EvilTwin-Submit");
+        var originalButtonClass = $submitButton.attr('class');
+        var originalButtonStyle = $submitButton.attr('style');
+        var originalButtonText = $submitButton.text();
+
+        $.ajax({
+            url: "/evil-twin-lab",
+            type: "POST",
+            data: {
+                action: $("#EvilTwin-Action").val(),
+                ssid: ssid,
+                bssid: bssid,
+                channel: channel,
+                durationMinutes: $("#EvilTwin-Duration").val(),
+                portalMessage: $("#EvilTwin-Portal-Message").val(),
+                authorized: authorized ? "on" : "",
+                selectedInterface: $("#interface-select-EvilTwin").val()
+            },
+            beforeSend: function() {
+                $submitButton.prop("disabled", true);
+                $submitButton.attr('class', 'spinner-border text-primary');
+                $submitButton.text('');
+                $ssidInput.removeClass("input-error");
+                $bssidInput.removeClass("input-error");
+                $channelInput.removeClass("input-error");
+                $authorizedInput.removeClass("input-error");
+                $status.removeClass("text-danger text-success").text('');
+            },
+            success: function(response) {
+                var guidance = response.run && response.run.detection_guidance ? response.run.detection_guidance[0] : '';
+                $status.removeClass("text-danger").addClass("text-success").text((response.message || "Lab workflow recorded.") + " " + guidance);
+            },
+            error: function(error) {
+                var message = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : "Failed to prepare lab workflow.";
+                $status.removeClass("text-success").addClass("text-danger").text(message);
+            },
+            complete: function() {
+                $submitButton.attr('class', originalButtonClass);
+                $submitButton.attr('style', originalButtonStyle);
+                $submitButton.text(originalButtonText);
+                $submitButton.prop("disabled", false);
+            }
+        });
+    });
+
     $("#Aireplay-Deauth-Submit").on("click", function(event) {
         event.preventDefault();
 

@@ -57,6 +57,8 @@ new_device_alerts = []
 new_device_alerts_lock = threading.Lock()
 evidence_vault = []
 evidence_vault_lock = threading.Lock()
+evil_twin_lab_runs = []
+evil_twin_lab_lock = threading.Lock()
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -154,7 +156,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Scoped deauthentication actions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Run AP-wide or client-specific deauthentication actions against authorized lab networks with targeting controls, rate limits, and clear logs.'},
             {'title': 'Remote cracking orchestration', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Queue authorized handshake material to stronger remote workers such as Spark, track job progress, and import results for password-strength review.'},
             {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
-            {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
+            {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Red Team now records authorized evil-twin/captive-portal lab plans with explicit SSID/BSSID/channel targeting, cleanup steps, and detection guidance.', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
             {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results and network detail pages now flag APs advertising WPS and explain why WPS can weaken credential protection.', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
             {'title': 'Client privacy and probe request monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Monitor probe behavior to show device presence, preferred-network leakage, and tracking risk in authorized training environments.'},
             {'title': 'Rogue DHCP, DNS, and portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run isolated post-association lab workflows for rogue DHCP, DNS manipulation, and portal redirection with validation checks.'},
@@ -213,6 +215,8 @@ BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
 DEAUTH_FRAME_LIMIT = 5
 BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff'
+EVIL_TWIN_MAX_DURATION_MINUTES = 30
+EVIL_TWIN_ACTIONS = {'plan', 'start', 'cleanup'}
 
 
 def normalize_mac(value):
@@ -234,6 +238,84 @@ def validate_lab_deauth_request(data):
     if frames < 1 or frames > DEAUTH_FRAME_LIMIT:
         raise ValueError(f'Frames must be between 1 and {DEAUTH_FRAME_LIMIT} for first-year labs')
     return ap_mac, target_mac, frames
+
+
+def validate_evil_twin_lab_request(data):
+    """Validate a controlled rogue-AP/captive-portal lab workflow request."""
+    action = (data.get('action') or 'plan').strip().lower()
+    if action not in EVIL_TWIN_ACTIONS:
+        raise ValueError('Choose plan, start, or cleanup for the lab workflow')
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before preparing an evil twin lab workflow')
+
+    ssid = (data.get('ssid') or '').strip()
+    if not ssid or len(ssid) > 32:
+        raise ValueError('Enter the exact lab SSID, up to 32 characters')
+
+    bssid = normalize_mac(data.get('bssid'))
+    channel = parse_int(data.get('channel'), 'Channel must be an integer')
+    if channel < 1 or channel > 196:
+        raise ValueError('Channel must be between 1 and 196')
+
+    duration = parse_int(data.get('durationMinutes') or '10', 'Duration must be an integer')
+    if duration < 1 or duration > EVIL_TWIN_MAX_DURATION_MINUTES:
+        raise ValueError(f'Duration must be between 1 and {EVIL_TWIN_MAX_DURATION_MINUTES} minutes')
+
+    portal_message = (data.get('portalMessage') or 'Training portal: do not enter real credentials.').strip()
+    if len(portal_message) > 200:
+        raise ValueError('Portal message must be 200 characters or fewer')
+
+    return {
+        'action': action,
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'duration_minutes': duration,
+        'portal_message': portal_message,
+    }
+
+
+def build_evil_twin_lab_guidance(run):
+    """Return safe operator, cleanup, and defensive guidance for the lab."""
+    return {
+        'operator_steps': [
+            f"Verify the isolated lab AP broadcasting '{run['ssid']}' has BSSID {run['bssid']} on channel {run['channel']}.",
+            'Use a dedicated lab radio and avoid bridging the portal to production networks.',
+            'Display only the training message; do not request, collect, or store credentials.',
+            f"Stop the workflow within {run['duration_minutes']} minutes and confirm clients reconnect to the legitimate lab AP.",
+        ],
+        'cleanup_steps': [
+            'Stop hostapd/dnsmasq or any lab AP service started outside Mobile Router.',
+            'Remove temporary DHCP/DNS/portal configuration files for this SSID.',
+            'Restore interface mode, channel, IP addressing, forwarding, and firewall rules.',
+            'Record the cleanup result in the lab log and evidence notes.',
+        ],
+        'detection_guidance': [
+            'Alert on duplicate SSIDs with a new BSSID, mismatched channel, or weaker security than baseline.',
+            'Compare beacon RSN/capability fields and vendor OUIs against the approved AP inventory.',
+            'Watch DHCP/DNS gateway changes and captive-portal redirects from unknown MAC addresses.',
+            'Train users to report unexpected portal prompts and never enter real credentials in drills.',
+        ],
+    }
+
+
+def record_evil_twin_lab_run(selected_interface, lab):
+    """Record a non-credential evil-twin/captive-portal lab workflow event."""
+    run = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+    }
+    run.update(build_evil_twin_lab_guidance(run))
+    with evil_twin_lab_lock:
+        evil_twin_lab_runs.append(run)
+        del evil_twin_lab_runs[:-25]
+    app.logger.info(
+        'Evil twin lab %s recorded for SSID %r BSSID %s channel %s on %s',
+        run['action'], run['ssid'], run['bssid'], run['channel'], selected_interface,
+    )
+    return run
 
 
 class BluetoothToolUnavailable(RuntimeError):
@@ -1990,6 +2072,28 @@ def deauth_route():
         return json_success(message=f'Sent {frames} authorized lab deauth frames on {selected_interface}')
     except Exception as e:
         return json_error(f'Deauth error: {str(e)}', 500)
+
+
+@app.route('/evil-twin-lab', methods=['POST'])
+def evil_twin_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+
+    if missing_fields(data, 'selectedInterface', 'ssid', 'bssid', 'channel'):
+        return json_error('Missing required parameters')
+
+    try:
+        lab = validate_evil_twin_lab_request(data)
+        run = record_evil_twin_lab_run(selected_interface, lab)
+    except ValueError as e:
+        return json_error(str(e))
+
+    action_messages = {
+        'plan': 'Prepared evil twin and captive portal lab plan; no radio services were started by Mobile Router.',
+        'start': 'Logged authorized evil twin lab start checklist; run AP services only in your isolated lab environment.',
+        'cleanup': 'Logged evil twin lab cleanup checklist; verify rogue AP, DHCP, DNS, and portal services are stopped.',
+    }
+    return json_success(message=action_messages[run['action']], run=run)
 
 
 @app.route('/aireplay-deauth', methods=['POST'])

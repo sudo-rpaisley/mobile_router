@@ -74,3 +74,19 @@
   border-color: #dc3545;
   box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
 }
+
+.evil-twin-guidance {
+  background: #f8f9fa;
+  border-radius: 0.75rem;
+  color: #495057;
+  padding: 0.75rem;
+}
+
+.evil-twin-guidance ul {
+  margin-bottom: 0;
+  padding-left: 1.1rem;
+}
+
+.evil-twin-status {
+  min-height: 1.25rem;
+}

@@ -1,0 +1,32 @@
+<div class="card m-3 evil-twin-lab-card" style="width: 18rem;">
+  <h5 class="card-title">Evil Twin &amp; Captive Portal Lab</h5>
+  <p class="card-text">Prepare controlled rogue-AP and captive-portal drills for an isolated, authorized lab without collecting credentials.</p>
+  <form class="form-inline" method="post" action="/evil-twin-lab">
+      <select class="form-control mb-2" id="EvilTwin-Action" name="action" aria-label="Lab action">
+        <option value="plan">Plan only</option>
+        <option value="start">Start checklist</option>
+        <option value="cleanup">Cleanup checklist</option>
+      </select>
+      <input type="text" class="form-control mb-2" id="EvilTwin-SSID" placeholder="Exact lab SSID" maxlength="32" name="ssid">
+      <input type="text" class="form-control mb-2" id="EvilTwin-BSSID" placeholder="Legitimate lab AP BSSID" name="bssid">
+      <input type="number" class="form-control mb-2" id="EvilTwin-Channel" placeholder="Channel" min="1" max="196" name="channel">
+      <input type="number" class="form-control mb-2" id="EvilTwin-Duration" placeholder="Duration minutes (1-30)" min="1" max="30" name="durationMinutes">
+      <textarea class="form-control mb-2" id="EvilTwin-Portal-Message" maxlength="200" name="portalMessage" rows="3">Training portal: do not enter real credentials.</textarea>
+      <label class="form-check deauth-lab-confirm">
+        <input class="form-check-input" type="checkbox" id="EvilTwin-Authorized" name="authorized">
+        <span class="form-check-label">I confirm this is an authorized isolated class lab and no credentials will be collected.</span>
+      </label>
+      {% set selectId = 'EvilTwin' %}
+      {% include '_adapters-list.html' %}
+      <button id="EvilTwin-Submit" class="btn btn-primary mb-2">Prepare Lab Workflow</button>
+      <div id="EvilTwin-Status" class="evil-twin-status small" aria-live="polite"></div>
+  </form>
+  <div class="evil-twin-guidance mt-3">
+    <strong>Detection guidance:</strong>
+    <ul>
+      <li>Flag duplicate SSIDs with new BSSIDs or channels.</li>
+      <li>Compare RSN/security and OUI details to approved AP inventory.</li>
+      <li>Watch DHCP, DNS, and portal redirects from unknown gateways.</li>
+    </ul>
+  </div>
+</div>

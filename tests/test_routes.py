@@ -226,6 +226,61 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('authorized lab deauth frames', response.get_json()['message'])
         deauth.assert_called_once_with('aa:bb:cc:dd:ee:ff', '11:22:33:44:55:66', 'wlan0mon', 2)
 
+    def test_evil_twin_lab_card_requires_explicit_targeting_and_consent(self):
+        response = self.client.get('/red-team')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Evil Twin &amp; Captive Portal Lab', response.data)
+        self.assertIn(b'id="EvilTwin-SSID"', response.data)
+        self.assertIn(b'id="EvilTwin-BSSID"', response.data)
+        self.assertIn(b'no credentials will be collected', response.data)
+        self.assertIn(b'Detection guidance', response.data)
+
+    def test_evil_twin_lab_route_requires_authorization_and_bounds(self):
+        response = self.client.post('/evil-twin-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'ssid': 'ClassLab',
+            'bssid': 'AA:BB:CC:DD:EE:FF',
+            'channel': '6',
+            'durationMinutes': '45',
+            'action': 'start',
+            'authorized': 'on',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('between 1 and 30', response.get_json()['message'])
+
+        response = self.client.post('/evil-twin-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'ssid': 'ClassLab',
+            'bssid': 'AA:BB:CC:DD:EE:FF',
+            'channel': '6',
+            'durationMinutes': '10',
+            'action': 'plan',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('authorized isolated lab', response.get_json()['message'])
+
+    def test_evil_twin_lab_route_records_safe_guidance(self):
+        response = self.client.post('/evil-twin-lab', data={
+            'selectedInterface': 'wlan0mon',
+            'ssid': 'ClassLab',
+            'bssid': 'AA-BB-CC-DD-EE-FF',
+            'channel': '6',
+            'durationMinutes': '10',
+            'portalMessage': 'Training portal only.',
+            'action': 'cleanup',
+            'authorized': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('cleanup checklist', payload['message'])
+        self.assertEqual(payload['run']['bssid'], 'aa:bb:cc:dd:ee:ff')
+        self.assertIn('do not request, collect, or store credentials', ' '.join(payload['run']['operator_steps']))
+        self.assertIn('duplicate SSIDs', payload['run']['detection_guidance'][0])
+
     @patch('app.threading.Thread')
     def test_scan_job_routes_start_and_report_status(self, thread_cls):
         thread_cls.return_value.start.return_value = None
