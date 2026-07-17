@@ -14,6 +14,8 @@ def test_add_network_groups_access_points_and_sorts_by_signal():
     assert summary[0]['bssid'] == '11:22:33:44:55:66'
     assert summary[0]['signal'] == 85
     assert summary[0]['access_points'] == 2
+    assert len(summary[0]['access_point_details']) == 2
+    assert summary[0]['access_point_details'][0]['channel_width'] == 20
     assert summary[0]['security'] == 'WPA2'
     assert summary[0]['band'] == '2.4 GHz'
     assert summary[0]['frequency'] == 2462
@@ -90,6 +92,8 @@ SSID 2 : Guest
     assert summary[0]['band'] == '2.4 GHz'
     assert summary[0]['security'] == 'WPA2-Personal'
     assert summary[0]['access_points'] == 2
+    assert len(summary[0]['access_point_details']) == 2
+    assert {ap['bssid'] for ap in summary[0]['access_point_details']} == {'aa:bb:cc:dd:ee:ff', '11:22:33:44:55:66'}
     assert summary[1]['ssid'] == 'Guest'
     assert summary[1]['security'] == 'Open'
 

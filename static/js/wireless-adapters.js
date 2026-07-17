@@ -125,27 +125,124 @@ $(document).ready(function () {
     return 'wireless-band-unknown';
   }
 
-  function renderWirelessCharts(networks) {
-    const channelCounts = {};
-    const bandCounts = {};
-    networks.forEach(function (network) {
-      const channel = network.channel || network.freq || 'Unknown';
-      const band = network.band || 'Unknown band';
-      const apCount = Number(network.access_points || 1);
-      channelCounts[channel] = (channelCounts[channel] || 0) + apCount;
-      bandCounts[band] = (bandCounts[band] || 0) + apCount;
-    });
 
-    const maxChannel = Math.max(1, ...Object.values(channelCounts));
-    const channelRows = Object.keys(channelCounts).sort(function (left, right) {
-      const leftNumber = Number(left);
-      const rightNumber = Number(right);
-      if (Number.isNaN(leftNumber) || Number.isNaN(rightNumber)) return String(left).localeCompare(String(right));
+  function allAccessPoints(networks) {
+    const points = [];
+    networks.forEach(function (network) {
+      const details = Array.isArray(network.access_point_details) && network.access_point_details.length ? network.access_point_details : [network];
+      details.forEach(function (ap) {
+        points.push({
+          ssid: ap.ssid || network.ssid || '<Hidden SSID>',
+          bssid: ap.bssid || network.bssid || 'Unknown BSSID',
+          security: ap.security || network.security || 'Unknown',
+          channel: ap.channel || network.channel || network.freq || 'Unknown',
+          band: ap.band || network.band || 'Unknown band',
+          signal: ap.signal ?? network.signal,
+          channel_width: Number(ap.channel_width || network.channel_width || 20),
+          manufacturer: ap.bssid_manufacturer || network.bssid_manufacturer || 'Unknown manufacturer',
+          hidden: !(ap.ssid || network.ssid) || (ap.ssid || network.ssid) === '<Hidden SSID>'
+        });
+      });
+    });
+    return points;
+  }
+
+  function congestionScore(points) {
+    if (!points.length) return 0;
+    const apLoad = points.length * 18;
+    const widthLoad = points.reduce(function (sum, ap) { return sum + Math.max(20, Number(ap.channel_width || 20)); }, 0) / 8;
+    const signalLoad = points.reduce(function (sum, ap) {
+      const signal = Number(ap.signal);
+      if (Number.isNaN(signal)) return sum + 8;
+      return sum + (signal >= 0 ? signal / 8 : Math.max(0, 95 + signal) / 3);
+    }, 0);
+    return Math.min(100, Math.round(apLoad + widthLoad + signalLoad));
+  }
+
+  function occupancyByChannel(networks) {
+    const channels = {};
+    allAccessPoints(networks).forEach(function (ap) {
+      const key = ap.channel || 'Unknown';
+      channels[key] = channels[key] || { channel: key, band: ap.band, aps: [] };
+      channels[key].aps.push(ap);
+    });
+    Object.values(channels).forEach(function (item) {
+      item.score = congestionScore(item.aps);
+      item.widths = Array.from(new Set(item.aps.map(function (ap) { return ap.channel_width || 20; }))).sort(function (a, b) { return a - b; });
+    });
+    return channels;
+  }
+
+  function bestChannelSuggestions(networks) {
+    const grouped = occupancyByChannel(networks);
+    const byBand = {};
+    Object.values(grouped).forEach(function (item) {
+      const band = item.band || 'Unknown band';
+      byBand[band] = byBand[band] || [];
+      byBand[band].push(item);
+    });
+    return Object.keys(byBand).sort().map(function (band) {
+      const best = byBand[band].sort(function (left, right) { return left.score - right.score; })[0];
+      return `${band}: try channel ${best.channel} (${best.score}/100 congestion)`;
+    });
+  }
+
+  function heatmapKey(interfaceName) {
+    return `mobile-router:wlan-occupancy:${interfaceName}`;
+  }
+
+  function saveOccupancyHistory(interfaceName, networks) {
+    try {
+      const history = JSON.parse(window.sessionStorage.getItem(heatmapKey(interfaceName)) || '[]');
+      history.push({ scannedAt: new Date().toISOString(), channels: occupancyByChannel(networks) });
+      window.sessionStorage.setItem(heatmapKey(interfaceName), JSON.stringify(history.slice(-12)));
+    } catch (error) {
+      // Ignore storage failures.
+    }
+  }
+
+  function loadOccupancyHistory(interfaceName) {
+    try {
+      const history = JSON.parse(window.sessionStorage.getItem(heatmapKey(interfaceName)) || '[]');
+      return Array.isArray(history) ? history : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function filteredNetworks(container, networks) {
+    const query = String(container.find('[data-wifi-filter="query"]').val() || '').toLowerCase();
+    const band = container.find('[data-wifi-filter="band"]').val() || '';
+    const security = container.find('[data-wifi-filter="security"]').val() || '';
+    const minSignal = Number(container.find('[data-wifi-filter="signal"]').val() || '-999');
+    return networks.filter(function (network) {
+      const aps = allAccessPoints([network]);
+      const text = `${network.ssid || ''} ${network.bssid || ''} ${aps.map(function (ap) { return ap.bssid; }).join(' ')}`.toLowerCase();
+      const signal = Number(network.signal ?? -999);
+      return (!query || text.includes(query))
+        && (!band || network.band === band || aps.some(function (ap) { return ap.band === band; }))
+        && (!security || network.security === security)
+        && (Number.isNaN(minSignal) || signal >= minSignal);
+    });
+  }
+
+  function renderWirelessCharts(interfaceName, networks) {
+    const channels = occupancyByChannel(networks);
+    const channelItems = Object.values(channels).sort(function (left, right) {
+      const leftNumber = Number(left.channel);
+      const rightNumber = Number(right.channel);
+      if (Number.isNaN(leftNumber) || Number.isNaN(rightNumber)) return String(left.channel).localeCompare(String(right.channel));
       return leftNumber - rightNumber;
-    }).map(function (channel) {
-      const count = channelCounts[channel];
-      const width = Math.max(8, Math.round((count / maxChannel) * 100));
-      return `<div class="wireless-chart-row"><span>Ch ${escapeHtml(channel)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${count}</strong></div>`;
+    });
+    const bandCounts = {};
+    allAccessPoints(networks).forEach(function (ap) { bandCounts[ap.band] = (bandCounts[ap.band] || 0) + 1; });
+    const maxScore = Math.max(1, ...channelItems.map(function (item) { return item.score; }));
+    const channelRows = channelItems.map(function (item) {
+      const width = Math.max(8, Math.round((item.score / maxScore) * 100));
+      const tooltip = item.aps.map(function (ap) {
+        return `${ap.ssid} / ${ap.bssid} / ${ap.security} / ${signalLabel(ap.signal)} / ${ap.channel_width || 20} MHz`;
+      }).join('\n');
+      return `<div class="wireless-chart-row" title="${escapeHtml(tooltip)}"><span>Ch ${escapeHtml(item.channel)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${item.score}/100</strong><small>${escapeHtml(item.widths.join('/'))} MHz</small></div>`;
     }).join('');
 
     const maxBand = Math.max(1, ...Object.values(bandCounts));
@@ -155,39 +252,50 @@ $(document).ready(function () {
       return `<div class="wireless-band-row ${bandClass(band)}"><span>${escapeHtml(band)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${count}</strong></div>`;
     }).join('');
 
-    const mapNodes = networks.map(function (network) {
-      const ssid = network.ssid || '<Hidden SSID>';
-      const channel = network.channel || network.freq || 'Unknown';
-      const band = network.band || 'Unknown band';
-      const apCount = network.access_points || 1;
-      const signal = signalLabel(network.signal);
-      return `<div class="wireless-map-node"><strong>${escapeHtml(ssid)}</strong><span>Ch ${escapeHtml(channel)} · ${escapeHtml(band)}</span><span>${escapeHtml(apCount)} AP${apCount === 1 ? '' : 's'} · ${escapeHtml(signal)}</span></div>`;
+    const suggestions = bestChannelSuggestions(networks).map(function (item) { return `<li>${escapeHtml(item)}</li>`; }).join('');
+    const heatmap = loadOccupancyHistory(interfaceName).map(function (scan) {
+      const cells = Object.values(scan.channels || {}).map(function (channel) {
+        return `<span class="wireless-heatmap-cell" style="opacity:${Math.max(0.2, (channel.score || 0) / 100)}" title="${escapeHtml(scan.scannedAt)} · Ch ${escapeHtml(channel.channel)} · ${Number(channel.score || 0)}/100">${escapeHtml(channel.channel)}</span>`;
+      }).join('');
+      return `<div class="wireless-heatmap-row"><small>${escapeHtml(new Date(scan.scannedAt).toLocaleTimeString())}</small>${cells}</div>`;
+    }).join('');
+
+    const apNodes = allAccessPoints(networks).map(function (ap) {
+      return `<div class="wireless-map-node" title="${escapeHtml(`${ap.ssid}\n${ap.bssid}\n${ap.security}\nCh ${ap.channel} ${ap.band}\n${ap.channel_width || 20} MHz\n${signalLabel(ap.signal)}`)}"><strong>${escapeHtml(ap.ssid || '<Hidden SSID>')}</strong><span>${escapeHtml(ap.bssid)}</span><span>Ch ${escapeHtml(ap.channel)} · ${escapeHtml(ap.band)} · ${escapeHtml(ap.channel_width || 20)} MHz</span><span>${escapeHtml(ap.security)} · ${escapeHtml(signalLabel(ap.signal))}</span></div>`;
     }).join('');
 
     return `
-      <section class="wireless-results card shadow-sm wireless-chart-panel" role="button" tabindex="0" aria-expanded="false">
+      <section class="wireless-results card shadow-sm wireless-chart-panel" data-wireless-map="${escapeHtml(interfaceName)}" role="button" tabindex="0" aria-expanded="false">
         <div class="card-body">
           <div class="wireless-results-header">
             <div>
               <p class="interface-kicker mb-1">Channel & Band Charts</p>
               <h2 class="interface-section-title mb-0">Wireless occupancy</h2>
             </div>
-            <span class="badge badge-info">${networks.length} SSID${networks.length === 1 ? '' : 's'} · click to expand</span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Wireless occupancy exports">
+              <button class="btn btn-outline-secondary wireless-export" data-format="json" type="button">JSON</button>
+              <button class="btn btn-outline-secondary wireless-export" data-format="csv" type="button">CSV</button>
+              <button class="btn btn-outline-secondary wireless-export" data-format="png" type="button">PNG</button>
+            </div>
           </div>
           <div class="wireless-chart-grid">
             <article>
-              <h3>Channels</h3>
+              <h3>Channels / congestion</h3>
               ${channelRows || '<p class="text-muted">No channel data.</p>'}
             </article>
             <article>
               <h3>Bands</h3>
               ${bandRows || '<p class="text-muted">No band data.</p>'}
+              <h3 class="mt-3">Best channel suggestions</h3>
+              <ul class="wireless-suggestion-list">${suggestions || '<li>No suggestions yet.</li>'}</ul>
             </article>
           </div>
           <div class="wireless-chart-expanded" aria-label="Interactive wireless map">
-            <h3>Interactive wireless map</h3>
-            <p class="text-muted small">Click network cards below for full details; this map groups each SSID by channel, band, AP count, and signal.</p>
-            <div class="wireless-map-grid">${mapNodes || '<p class="text-muted">No networks to map.</p>'}</div>
+            <h3>Full-screen interactive wireless map</h3>
+            <p class="text-muted small">Click this panel to expand. Tooltips include SSID, BSSID, security, signal, channel, and channel width. Channel bars include overlap from 20/40/80/160 MHz widths when provided by the scan source.</p>
+            <div class="wireless-map-grid">${apNodes || '<p class="text-muted">No networks to map.</p>'}</div>
+            <h3 class="mt-3">Wireless occupancy heatmap</h3>
+            <div class="wireless-heatmap">${heatmap || '<p class="text-muted">Run repeated scans to build a time-based heatmap.</p>'}</div>
           </div>
         </div>
       </section>
@@ -195,6 +303,10 @@ $(document).ready(function () {
   }
 
   function renderNetworks(interfaceName, networks) {
+    saveOccupancyHistory(interfaceName, networks);
+    const generatedAt = new Date().toISOString();
+    const rawApCount = allAccessPoints(networks).length;
+    const hiddenCount = networks.filter(function (network) { return !network.ssid || network.ssid === '<Hidden SSID>'; }).length;
     const count = networks.length;
     const rows = networks.map(function (network) {
       const ssid = network.ssid || '<Hidden SSID>';
@@ -206,6 +318,7 @@ $(document).ready(function () {
       const signal = network.signal;
       const signalText = signalLabel(signal);
       const apCount = network.access_points || 1;
+      const channelWidth = network.channel_width || 20;
       const isOpen = security === 'Open';
       const hasWps = network.wps === true;
       const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ssid)}&bssid=${encodeURIComponent(bssid)}`;
@@ -215,7 +328,7 @@ $(document).ready(function () {
       const deauthHelp = canDeauth ? 'Authorized isolated lab only · 1 broadcast frame' : 'Deauth requires a discovered AP BSSID';
 
       return `
-        <article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" aria-label="View details for ${escapeHtml(ssid)}">
+        <article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" aria-label="View details for ${escapeHtml(ssid)}" title="SSID: ${escapeHtml(ssid)}\nBSSID: ${escapeHtml(bssid)}\nSecurity: ${escapeHtml(security)}\nSignal: ${escapeHtml(signalText)}\nChannel: ${escapeHtml(channel)}\nWidth: ${escapeHtml(channelWidth)} MHz">
           <div class="wireless-network-main">
             <div class="wireless-network-identity">
               <h3 class="wireless-network-ssid mb-1">${escapeHtml(ssid)}</h3>
@@ -224,6 +337,7 @@ $(document).ready(function () {
                 <span title="Manufacturer"><i class="fa-solid fa-industry"></i> ${escapeHtml(bssidManufacturer)}</span>
                 <span title="Channel"><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(channel)}</span>
                 <span title="Band"><i class="fa-solid fa-tower-broadcast"></i> ${escapeHtml(band)}</span>
+                <span title="Channel width"><i class="fa-solid fa-arrows-left-right"></i> ${escapeHtml(channelWidth)} MHz</span>
               </div>
             </div>
             <div class="wireless-network-badges">
@@ -261,22 +375,58 @@ $(document).ready(function () {
     }).join('');
 
     return `
-      ${renderWirelessCharts(networks)}
-      <section class="wireless-results card shadow-sm">
+      ${renderWirelessCharts(interfaceName, networks)}
+      <section class="wireless-results card shadow-sm" data-wireless-results="${escapeHtml(interfaceName)}" data-networks="${escapeHtml(JSON.stringify(networks))}">
         <div class="card-body">
           <div class="wireless-results-header">
             <div>
               <p class="interface-kicker mb-1">Wireless Scan</p>
               <h2 class="interface-section-title mb-0">Detected Networks</h2>
+              <p class="text-muted small mb-0">Fresh at ${escapeHtml(new Date(generatedAt).toLocaleString())} · raw APs ${rawApCount} · grouped SSIDs ${count} · rendered ${count} · hidden ${hiddenCount}</p>
             </div>
             <span class="badge badge-primary">${count} found</span>
           </div>
+          <div class="wireless-filter-bar">
+            <input class="form-control form-control-sm" data-wifi-filter="query" placeholder="Filter SSID/BSSID">
+            <select class="form-control form-control-sm" data-wifi-filter="band"><option value="">All bands</option><option>2.4 GHz</option><option>5 GHz</option><option>6 GHz</option><option>Unknown band</option></select>
+            <select class="form-control form-control-sm" data-wifi-filter="security"><option value="">All security</option>${Array.from(new Set(networks.map(function (network) { return network.security || 'Unknown'; }))).sort().map(function (securityOption) { return `<option>${escapeHtml(securityOption)}</option>`; }).join('')}</select>
+            <input class="form-control form-control-sm" type="number" data-wifi-filter="signal" placeholder="Min signal">
+            <button class="btn btn-outline-secondary btn-sm wireless-show-bssids" type="button">Show all BSSIDs</button>
+            <button class="btn btn-outline-primary btn-sm wireless-rescan-all" type="button">Rescan all adapters</button>
+          </div>
+          <div class="wireless-source-stats">Scan source stats: raw entries ${rawApCount}, parsed entries ${rawApCount}, rendered entries ${count}, grouped SSIDs ${count}.</div>
           <div class="wireless-network-grid">${rows}</div>
         </div>
       </section>
     `;
   }
 
+
+
+  function downloadText(filename, mime, content) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function networksFromSection(section) {
+    try {
+      return JSON.parse(section.attr('data-networks') || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function renderBssidRows(interfaceName, networks) {
+    return allAccessPoints(networks).map(function (ap) {
+      const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ap.ssid)}&bssid=${encodeURIComponent(ap.bssid)}`;
+      return `<article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" title="SSID: ${escapeHtml(ap.ssid)}\nBSSID: ${escapeHtml(ap.bssid)}\nSecurity: ${escapeHtml(ap.security)}\nSignal: ${escapeHtml(signalLabel(ap.signal))}\nChannel: ${escapeHtml(ap.channel)}\nWidth: ${escapeHtml(ap.channel_width)} MHz"><div class="wireless-network-main"><div class="wireless-network-identity"><h3 class="wireless-network-ssid mb-1">${escapeHtml(ap.ssid || '<Hidden SSID>')}</h3><div class="wireless-network-meta"><span><i class="fa-solid fa-fingerprint"></i> ${escapeHtml(ap.bssid)}</span><span><i class="fa-solid fa-industry"></i> ${escapeHtml(ap.manufacturer)}</span><span><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(ap.channel)}</span><span><i class="fa-solid fa-tower-broadcast"></i> ${escapeHtml(ap.band)}</span><span><i class="fa-solid fa-arrows-left-right"></i> ${escapeHtml(ap.channel_width)} MHz</span></div></div><div class="wireless-network-badges"><span class="badge badge-secondary">${escapeHtml(ap.security)}</span><span class="badge badge-info">BSSID</span></div></div><div class="wireless-network-bottom"><div class="wireless-network-stats"><span class="${signalClass(ap.signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalLabel(ap.signal))}</span></div></div></article>`;
+    }).join('');
+  }
 
   function pollScanJob(jobId, onComplete, onError, retryCount = 0) {
     window.setTimeout(function checkJob() {
@@ -311,11 +461,75 @@ $(document).ready(function () {
     }
   }
 
+  $(document).on('click', '.wireless-export', function (event) {
+    event.stopPropagation();
+    const button = $(this);
+    const panel = button.closest('.wireless-chart-panel');
+    const interfaceName = panel.data('wirelessMap');
+    const resultSection = $(`[data-wireless-results="${interfaceName}"]`).first();
+    const networks = networksFromSection(resultSection);
+    const report = { interface: interfaceName, exportedAt: new Date().toISOString(), occupancy: occupancyByChannel(networks), networks: networks };
+    const format = button.data('format');
+    if (format === 'json') {
+      downloadText(`wireless-occupancy-${interfaceName}.json`, 'application/json', JSON.stringify(report, null, 2));
+    } else if (format === 'csv') {
+      const rows = ['ssid,bssid,security,band,channel,width,signal,congestion'];
+      allAccessPoints(networks).forEach(function (ap) {
+        const channel = occupancyByChannel(networks)[ap.channel] || { score: 0 };
+        rows.push([ap.ssid, ap.bssid, ap.security, ap.band, ap.channel, ap.channel_width, signalLabel(ap.signal), channel.score].map(function (value) { return `"${String(value).replace(/"/g, '""')}"`; }).join(','));
+      });
+      downloadText(`wireless-occupancy-${interfaceName}.csv`, 'text/csv', rows.join('\n'));
+    } else if (format === 'png') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 700;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '28px sans-serif';
+      ctx.fillText(`Wireless Occupancy: ${interfaceName}`, 40, 60);
+      Object.values(occupancyByChannel(networks)).forEach(function (item, index) {
+        const y = 110 + index * 38;
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '18px sans-serif';
+        ctx.fillText(`Ch ${item.channel} · ${item.score}/100 · ${item.aps.length} AP`, 40, y);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(330, y - 18, Math.max(8, item.score * 7), 22);
+      });
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `wireless-occupancy-${interfaceName}.png`;
+      link.click();
+    }
+  });
+
+  $(document).on('input change', '[data-wifi-filter]', function () {
+    const section = $(this).closest('[data-wireless-results]');
+    const interfaceName = section.data('wirelessResults');
+    const networks = filteredNetworks(section, networksFromSection(section));
+    section.find('.wireless-network-grid').html($(renderNetworks(interfaceName, networks)).filter('[data-wireless-results]').find('.wireless-network-grid').html());
+  });
+
+  $(document).on('click', '.wireless-show-bssids', function () {
+    const section = $(this).closest('[data-wireless-results]');
+    const interfaceName = section.data('wirelessResults');
+    const networks = networksFromSection(section);
+    section.find('.wireless-network-grid').html(renderBssidRows(interfaceName, networks));
+    section.find('.wireless-source-stats').text(`Showing all BSSIDs: ${allAccessPoints(networks).length} raw AP entries from ${networks.length} grouped SSIDs.`);
+  });
+
+  $(document).on('click', '.wireless-rescan-all', function () {
+    $('button#wlan-scan').each(function () { $(this).trigger('click'); });
+  });
+
+
   $(document).on('click keydown', '.wireless-chart-panel', function (event) {
     if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
     const panel = $(this);
     const expanded = !panel.hasClass('is-expanded');
     panel.toggleClass('is-expanded', expanded);
+    panel.toggleClass('is-fullscreen-map', expanded);
     panel.attr('aria-expanded', expanded ? 'true' : 'false');
   });
 

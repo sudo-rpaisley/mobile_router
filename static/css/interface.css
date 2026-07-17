@@ -509,3 +509,50 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   color: var(--text-muted);
   padding-left: 1.25rem;
 }
+
+.wireless-chart-panel.is-fullscreen-map {
+  position: fixed;
+  inset: 2rem;
+  z-index: 2000;
+  overflow: auto;
+  background: var(--card-bg);
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.45);
+}
+
+.wireless-chart-row small {
+  min-width: 4rem;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.wireless-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.wireless-source-stats,
+.wireless-suggestion-list,
+.wireless-heatmap {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.wireless-heatmap-row {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.wireless-heatmap-cell {
+  background: #38bdf8;
+  border-radius: 0.35rem;
+  color: #0f172a;
+  display: inline-block;
+  font-size: 0.75rem;
+  min-width: 2rem;
+  padding: 0.2rem 0.35rem;
+  text-align: center;
+}

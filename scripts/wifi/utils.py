@@ -490,6 +490,21 @@ def get_networks_summary():
         wps_aps = [ap for ap in access_points if getattr(ap, 'wps', False)]
         wps_status = next((getattr(ap, 'wps_status', None) for ap in wps_aps if getattr(ap, 'wps_status', None)), None)
         wps_details = _wps_exposure(bool(wps_aps), wps_status)
+        ap_details = []
+        for ap in access_points:
+            ap_radio = _ap_radio_details(ap.channel, ap.signal)
+            ap_details.append({
+                'ssid': network.ssid,
+                'bssid': ap.bssid,
+                'bssid_manufacturer': _mac_manufacturer(ap.bssid),
+                'channel': ap_radio.get('channel'),
+                'frequency': ap_radio.get('frequency'),
+                'band': ap_radio.get('band'),
+                'signal': ap.signal,
+                'security': getattr(network, 'security', 'Unknown'),
+                'channel_width': getattr(ap, 'channel_width', None) or 20,
+                'wps': getattr(ap, 'wps', False),
+            })
         results.append({
             'ssid': network.ssid,
             'bssid': strongest_ap.bssid if strongest_ap else None,
@@ -500,6 +515,8 @@ def get_networks_summary():
             'band': radio.get('band') if strongest_ap else 'Unknown band',
             'signal': strongest_ap.signal if strongest_ap else None,
             'security': getattr(network, 'security', 'Unknown'),
+            'channel_width': 20,
+            'access_point_details': ap_details,
             **wps_details,
             'wps_access_points': len(wps_aps),
             'access_points': len(access_points),
