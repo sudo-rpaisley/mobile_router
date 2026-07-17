@@ -18,6 +18,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertIn(b'Tools', response.data)
+        self.assertNotIn(b'href="/network-scan"', response.data)
         self.assertNotIn(b'href="/bluetooth-phone"', response.data)
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
@@ -143,6 +144,10 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Scan for Networks', response.data)
+        self.assertIn(b'Network Device Scan', response.data)
+        self.assertIn(b'id="comprehensive-scan-btn"', response.data)
+        self.assertIn(b'<option value="WiFi" selected>', response.data)
+        self.assertIn(b'network_scan.js', response.data)
         self.assertIn(b'Action Readiness', response.data)
         self.assertIn(b'id="wlans-WiFi"', response.data)
         self.assertIn(b'data-interface="WiFi"', response.data)
@@ -175,6 +180,32 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'bluetooth-phone-autosave.js', response.data)
         self.assertNotIn(b'Save and apply', response.data)
         self.assertIn(b'Pair phones and request authorised contacts', response.data)
+        self.assertNotIn(b'Network Device Scan', response.data)
+        self.assertNotIn(b'network_scan.js', response.data)
+
+    def test_network_scan_controls_render_on_interface_detail(self):
+        ethernet_interface = SimpleNamespace(
+            name='eth0',
+            interface_type='Ethernet',
+            addresses=[],
+            manufacturer='Unknown',
+            state='UP',
+            extra_info={},
+            get_mac_address=lambda: '00:11:22:33:44:55',
+        )
+        with (
+            patch.object(app_module, 'network_interfaces', [ethernet_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Ethernet'}),
+        ):
+            response = self.client.get('/ethernet/eth0')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Network Device Scan', response.data)
+        self.assertIn(b'id="active-scan-btn"', response.data)
+        self.assertIn(b'id="passive-scan-btn"', response.data)
+        self.assertIn(b'id="comprehensive-scan-btn"', response.data)
+        self.assertIn(b'<option value="eth0" selected>', response.data)
+        self.assertIn(b'network_scan.js', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):
         css = open('static/css/red-team.css').read()
