@@ -822,7 +822,8 @@ def _run_scan_job(job_id, scan_type, selected_interface):
             _append_scan_event(job_id, 'Refreshing wireless scan data from the selected adapter.')
             wifi_utils.scan_networks(selected_interface)
             wlans = wifi_utils.get_networks_summary()
-            result = {'wlans': wlans}
+            diagnostics = wifi_utils.get_scan_diagnostics() if hasattr(wifi_utils, 'get_scan_diagnostics') else {}
+            result = {'wlans': wlans, 'scan_diagnostics': diagnostics}
             _append_scan_event(job_id, f'Parsed {len(wlans)} wireless network(s) from scan output.', result_counts=_scan_result_counts(result))
         elif scan_type == 'bluetooth':
             _append_scan_event(job_id, 'Discovering Bluetooth devices from the host adapter.')

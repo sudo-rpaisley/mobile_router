@@ -556,3 +556,22 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   padding: 0.2rem 0.35rem;
   text-align: center;
 }
+
+.wireless-map-close {
+  display: none;
+}
+
+.wireless-chart-panel.is-fullscreen-map .wireless-map-close {
+  display: inline-block;
+}
+
+.wireless-map-tabs .active {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+.wireless-raw-output pre {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}

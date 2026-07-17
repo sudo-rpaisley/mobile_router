@@ -348,3 +348,30 @@ def test_group_access_points_marks_related_bssids_as_same_physical_ap(monkeypatc
     assert len(detail['ap_groups'][0]['bssids']) == 2
     assert all(ap['physical_ap_group'] == 'AP group 1' for ap in detail['access_points'])
     assert detail['ap_groups'][0]['reasons']
+
+
+def test_parse_channel_width_from_iw_tokens():
+    assert utils._parse_channel_width('* channel width: 1 (40 MHz)')[0] == 40
+    assert utils._parse_channel_width('VHT80')[0] == 80
+    assert utils._parse_channel_width('no width here') == (None, 'inferred')
+
+
+def test_scan_diagnostics_report_backend_and_one_ap_warning(monkeypatch):
+    utils.networks = {}
+
+    class Result:
+        returncode = 0
+        stdout = 'SSID:BSSID:CHAN:SIGNAL:SECURITY\nOffice:aa:bb:cc:dd:ee:ff:6:75:WPA2'
+        stderr = ''
+
+    monkeypatch.setattr(utils.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
+    monkeypatch.setattr(utils, '_scan_linux_with_iw', lambda interface_name: None)
+    monkeypatch.setattr(utils, '_scan_linux_with_scapy', lambda interface_name, timeout: None)
+
+    utils.scan_networks('wlan0')
+    diagnostics = utils.get_scan_diagnostics()
+
+    assert diagnostics['attempts'][0]['tool'] == 'nmcli'
+    assert diagnostics['raw_entry_count'] == 1
+    assert diagnostics['warnings']

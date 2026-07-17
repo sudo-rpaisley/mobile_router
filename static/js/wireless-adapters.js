@@ -215,12 +215,14 @@ $(document).ready(function () {
     const band = container.find('[data-wifi-filter="band"]').val() || '';
     const security = container.find('[data-wifi-filter="security"]').val() || '';
     const minSignal = Number(container.find('[data-wifi-filter="signal"]').val() || '-999');
+    const channelFilter = String(container.data('channelFilter') || '');
     return networks.filter(function (network) {
       const aps = allAccessPoints([network]);
       const text = `${network.ssid || ''} ${network.bssid || ''} ${aps.map(function (ap) { return ap.bssid; }).join(' ')}`.toLowerCase();
       const signal = Number(network.signal ?? -999);
       return (!query || text.includes(query))
         && (!band || network.band === band || aps.some(function (ap) { return ap.band === band; }))
+        && (!channelFilter || String(network.channel || network.freq || '') === channelFilter || aps.some(function (ap) { return String(ap.channel || '') === channelFilter; }))
         && (!security || network.security === security)
         && (Number.isNaN(minSignal) || signal >= minSignal);
     });
@@ -242,26 +244,28 @@ $(document).ready(function () {
       const tooltip = item.aps.map(function (ap) {
         return `${ap.ssid} / ${ap.bssid} / ${ap.security} / ${signalLabel(ap.signal)} / ${ap.channel_width || 20} MHz`;
       }).join('\n');
-      return `<div class="wireless-chart-row" title="${escapeHtml(tooltip)}"><span>Ch ${escapeHtml(item.channel)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${item.score}/100</strong><small>${escapeHtml(item.widths.join('/'))} MHz</small></div>`;
+      return `<div class="wireless-chart-row wireless-channel-filter" data-channel="${escapeHtml(item.channel)}" title="${escapeHtml(tooltip)}"><span>Ch ${escapeHtml(item.channel)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${item.score}/100</strong><small>${escapeHtml(item.widths.join('/'))} MHz</small></div>`;
     }).join('');
 
     const maxBand = Math.max(1, ...Object.values(bandCounts));
     const bandRows = Object.keys(bandCounts).sort().map(function (band) {
       const count = bandCounts[band];
       const width = Math.max(8, Math.round((count / maxBand) * 100));
-      return `<div class="wireless-band-row ${bandClass(band)}"><span>${escapeHtml(band)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${count}</strong></div>`;
+      return `<div class="wireless-band-row ${bandClass(band)} wireless-band-filter" data-band="${escapeHtml(band)}"><span>${escapeHtml(band)}</span><div class="wireless-chart-track"><div class="wireless-chart-bar" style="width: ${width}%"></div></div><strong>${count}</strong></div>`;
     }).join('');
 
     const suggestions = bestChannelSuggestions(networks).map(function (item) { return `<li>${escapeHtml(item)}</li>`; }).join('');
-    const heatmap = loadOccupancyHistory(interfaceName).map(function (scan) {
+    const history = loadOccupancyHistory(interfaceName);
+    const heatmap = history.map(function (scan, index) {
+      const ageMinutes = (Date.now() - new Date(scan.scannedAt).getTime()) / 60000;
       const cells = Object.values(scan.channels || {}).map(function (channel) {
         return `<span class="wireless-heatmap-cell" style="opacity:${Math.max(0.2, (channel.score || 0) / 100)}" title="${escapeHtml(scan.scannedAt)} · Ch ${escapeHtml(channel.channel)} · ${Number(channel.score || 0)}/100">${escapeHtml(channel.channel)}</span>`;
       }).join('');
-      return `<div class="wireless-heatmap-row"><small>${escapeHtml(new Date(scan.scannedAt).toLocaleTimeString())}</small>${cells}</div>`;
+      return `<div class="wireless-heatmap-row" data-heatmap-index="${index}" data-heatmap-age="${ageMinutes}"><small>${escapeHtml(new Date(scan.scannedAt).toLocaleTimeString())}</small>${cells}</div>`;
     }).join('');
 
     const apNodes = allAccessPoints(networks).map(function (ap) {
-      return `<div class="wireless-map-node" title="${escapeHtml(`${ap.ssid}\n${ap.bssid}\n${ap.security}\nCh ${ap.channel} ${ap.band}\n${ap.channel_width || 20} MHz\n${signalLabel(ap.signal)}`)}"><strong>${escapeHtml(ap.ssid || '<Hidden SSID>')}</strong><span>${escapeHtml(ap.bssid)}</span><span>Ch ${escapeHtml(ap.channel)} · ${escapeHtml(ap.band)} · ${escapeHtml(ap.channel_width || 20)} MHz</span><span>${escapeHtml(ap.security)} · ${escapeHtml(signalLabel(ap.signal))}</span></div>`;
+      return `<div class="wireless-map-node" data-map-band="${escapeHtml(ap.band)}" title="${escapeHtml(`${ap.ssid}\n${ap.bssid}\n${ap.security}\nCh ${ap.channel} ${ap.band}\n${ap.channel_width || 20} MHz\n${signalLabel(ap.signal)}`)}"><strong>${escapeHtml(ap.ssid || '<Hidden SSID>')}</strong><span>${escapeHtml(ap.bssid)}</span><span>Ch ${escapeHtml(ap.channel)} · ${escapeHtml(ap.band)} · ${escapeHtml(ap.channel_width || 20)} MHz</span><span>${escapeHtml(ap.security)} · ${escapeHtml(signalLabel(ap.signal))}</span></div>`;
     }).join('');
 
     return `
@@ -273,6 +277,7 @@ $(document).ready(function () {
               <h2 class="interface-section-title mb-0">Wireless occupancy</h2>
             </div>
             <div class="btn-group btn-group-sm" role="group" aria-label="Wireless occupancy exports">
+              <button class="btn btn-outline-secondary wireless-map-close" type="button">Close</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="json" type="button">JSON</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="csv" type="button">CSV</button>
               <button class="btn btn-outline-secondary wireless-export" data-format="png" type="button">PNG</button>
@@ -293,8 +298,10 @@ $(document).ready(function () {
           <div class="wireless-chart-expanded" aria-label="Interactive wireless map">
             <h3>Full-screen interactive wireless map</h3>
             <p class="text-muted small">Click this panel to expand. Tooltips include SSID, BSSID, security, signal, channel, and channel width. Channel bars include overlap from 20/40/80/160 MHz widths when provided by the scan source.</p>
+            <div class="wireless-map-tabs btn-group btn-group-sm mb-3" role="group" aria-label="Wireless map band filter"><button class="btn btn-outline-info active" data-map-band-tab="" type="button">All</button><button class="btn btn-outline-info" data-map-band-tab="2.4 GHz" type="button">2.4 GHz</button><button class="btn btn-outline-info" data-map-band-tab="5 GHz" type="button">5 GHz</button><button class="btn btn-outline-info" data-map-band-tab="6 GHz" type="button">6 GHz</button></div>
             <div class="wireless-map-grid">${apNodes || '<p class="text-muted">No networks to map.</p>'}</div>
             <h3 class="mt-3">Wireless occupancy heatmap</h3>
+            <select class="form-control form-control-sm wireless-heatmap-range mb-2"><option value="5">Last 5 scans</option><option value="30">Last 30 minutes</option><option value="60">Last hour</option></select>
             <div class="wireless-heatmap">${heatmap || '<p class="text-muted">Run repeated scans to build a time-based heatmap.</p>'}</div>
           </div>
         </div>
@@ -302,9 +309,13 @@ $(document).ready(function () {
     `;
   }
 
-  function renderNetworks(interfaceName, networks) {
+  function renderNetworks(interfaceName, networks, diagnostics = {}) {
     saveOccupancyHistory(interfaceName, networks);
     const generatedAt = new Date().toISOString();
+    const attempts = Array.isArray(diagnostics.attempts) ? diagnostics.attempts : [];
+    const fallbackText = Array.isArray(diagnostics.fallbacks) && diagnostics.fallbacks.length ? diagnostics.fallbacks.join(' ') : 'No fallback scan was needed.';
+    const warningText = Array.isArray(diagnostics.warnings) ? diagnostics.warnings.join(' ') : '';
+    const rawOutputs = diagnostics.raw_outputs || {};
     const rawApCount = allAccessPoints(networks).length;
     const hiddenCount = networks.filter(function (network) { return !network.ssid || network.ssid === '<Hidden SSID>'; }).length;
     const count = networks.length;
@@ -376,7 +387,7 @@ $(document).ready(function () {
 
     return `
       ${renderWirelessCharts(interfaceName, networks)}
-      <section class="wireless-results card shadow-sm" data-wireless-results="${escapeHtml(interfaceName)}" data-networks="${escapeHtml(JSON.stringify(networks))}">
+      <section class="wireless-results card shadow-sm" data-wireless-results="${escapeHtml(interfaceName)}" data-networks="${escapeHtml(JSON.stringify(networks))}" data-diagnostics="${escapeHtml(JSON.stringify(diagnostics))}">
         <div class="card-body">
           <div class="wireless-results-header">
             <div>
@@ -394,7 +405,9 @@ $(document).ready(function () {
             <button class="btn btn-outline-secondary btn-sm wireless-show-bssids" type="button">Show all BSSIDs</button>
             <button class="btn btn-outline-primary btn-sm wireless-rescan-all" type="button">Rescan all adapters</button>
           </div>
-          <div class="wireless-source-stats">Scan source stats: raw entries ${rawApCount}, parsed entries ${rawApCount}, rendered entries ${count}, grouped SSIDs ${count}.</div>
+          ${warningText ? `<div class="alert alert-warning small" role="alert">${escapeHtml(warningText)}</div>` : ''}
+          <div class="wireless-source-stats">Scan source stats: backend tools ${escapeHtml(attempts.map(function (attempt) { return `${attempt.tool} (${attempt.scope})`; }).join(', ') || 'unknown')}; freshness ${escapeHtml(diagnostics.freshness || 'unknown')}; fallback ${escapeHtml(fallbackText)} Raw entries ${rawApCount}, parsed entries ${rawApCount}, rendered entries ${count}, grouped SSIDs ${count}.</div>
+          <details class="wireless-raw-output"><summary>Raw scan output</summary>${Object.keys(rawOutputs).map(function (tool) { return `<h4>${escapeHtml(tool)}</h4><pre>${escapeHtml(rawOutputs[tool])}</pre>`; }).join('') || '<p class="text-muted">No raw output captured.</p>'}</details>
           <div class="wireless-network-grid">${rows}</div>
         </div>
       </section>
@@ -461,6 +474,68 @@ $(document).ready(function () {
     }
   }
 
+  function applyHeatmapRange(panel) {
+    const range = panel.find('.wireless-heatmap-range').val() || '5';
+    const rows = panel.find('.wireless-heatmap-row');
+    rows.show();
+    if (range === '5') {
+      rows.each(function (index) { $(this).toggle(index >= Math.max(0, rows.length - 5)); });
+    } else {
+      const minutes = Number(range);
+      rows.each(function () { $(this).toggle(Number($(this).data('heatmapAge')) <= minutes); });
+    }
+  }
+
+  function closeWirelessMap() {
+    $('.wireless-chart-panel.is-fullscreen-map').removeClass('is-expanded is-fullscreen-map').attr('aria-expanded', 'false');
+  }
+
+  $(document).on('click', '.wireless-channel-filter', function (event) {
+    event.stopPropagation();
+    const channel = String($(this).data('channel') || '');
+    const panel = $(this).closest('.wireless-chart-panel');
+    const interfaceName = panel.data('wirelessMap');
+    const section = $(`[data-wireless-results="${interfaceName}"]`).first();
+    section.data('channelFilter', channel);
+    section.find('[data-wifi-filter="query"]').trigger('input');
+    section.find('.wireless-source-stats').prepend(`<div class="badge badge-info mr-2">Filtered channel ${escapeHtml(channel)}</div>`);
+  });
+
+  $(document).on('click', '.wireless-band-filter', function (event) {
+    event.stopPropagation();
+    const band = String($(this).data('band') || '');
+    const panel = $(this).closest('.wireless-chart-panel');
+    const interfaceName = panel.data('wirelessMap');
+    const section = $(`[data-wireless-results="${interfaceName}"]`).first();
+    section.find('[data-wifi-filter="band"]').val(band).trigger('change');
+  });
+
+  $(document).on('click', '.wireless-map-close', function (event) {
+    event.stopPropagation();
+    closeWirelessMap();
+  });
+
+  $(document).on('keydown', function (event) {
+    if (event.key === 'Escape') closeWirelessMap();
+  });
+
+  $(document).on('change', '.wireless-heatmap-range', function () {
+    applyHeatmapRange($(this).closest('.wireless-chart-panel'));
+  });
+
+  $(document).on('click', '[data-map-band-tab]', function (event) {
+    event.stopPropagation();
+    const button = $(this);
+    const band = String(button.data('mapBandTab') || '');
+    const panel = button.closest('.wireless-chart-panel');
+    panel.find('[data-map-band-tab]').removeClass('active');
+    button.addClass('active');
+    panel.find('.wireless-map-node').each(function () {
+      $(this).toggle(!band || String($(this).data('mapBand')) === band);
+    });
+  });
+
+
   $(document).on('click', '.wireless-export', function (event) {
     event.stopPropagation();
     const button = $(this);
@@ -508,7 +583,8 @@ $(document).ready(function () {
     const section = $(this).closest('[data-wireless-results]');
     const interfaceName = section.data('wirelessResults');
     const networks = filteredNetworks(section, networksFromSection(section));
-    section.find('.wireless-network-grid').html($(renderNetworks(interfaceName, networks)).filter('[data-wireless-results]').find('.wireless-network-grid').html());
+    const diagnostics = JSON.parse(section.attr('data-diagnostics') || '{}');
+    section.find('.wireless-network-grid').html($(renderNetworks(interfaceName, networks, diagnostics)).filter('[data-wireless-results]').find('.wireless-network-grid').html());
   });
 
   $(document).on('click', '.wireless-show-bssids', function () {
@@ -531,6 +607,7 @@ $(document).ready(function () {
     panel.toggleClass('is-expanded', expanded);
     panel.toggleClass('is-fullscreen-map', expanded);
     panel.attr('aria-expanded', expanded ? 'true' : 'false');
+    if (expanded) applyHeatmapRange(panel);
   });
 
   $(document).on('click', '.wireless-network-clickable', function (event) {
@@ -580,13 +657,14 @@ $(document).ready(function () {
         pollScanJob(response.job.id, function (result) {
           activeScanJobs.delete(scanKey);
           const networks = Array.isArray(result.wlans) ? result.wlans : [];
+          const diagnostics = result.scan_diagnostics || {};
           button.prop('disabled', false).text('Scan for Networks');
           if (networks.length === 0) {
             resultDiv.html(`<div class="alert alert-info mt-3" role="alert">No wireless networks were found on ${escapeHtml(interfaceName)}. Try moving closer to an access point, scanning again, or checking <a href="/capabilities">capabilities</a>.</div>`);
             return;
           }
           saveCachedNetworks(interfaceName, networks);
-          resultDiv.html(renderNetworks(interfaceName, networks));
+          resultDiv.html(renderNetworks(interfaceName, networks, diagnostics));
         }, function (message) {
           activeScanJobs.delete(scanKey);
           button.prop('disabled', false).text('Scan for Networks');
