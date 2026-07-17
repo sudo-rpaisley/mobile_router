@@ -1326,6 +1326,17 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'WPS exposed', response.data)
         self.assertIn(b'Training Vendor', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
+        self.assertIn(b'href="#network-device-scan"', response.data)
+        self.assertIn(b'Network Device Scan', response.data)
+        self.assertIn(b'id="comprehensive-scan-btn"', response.data)
+        self.assertIn(b'<option value="wlan0" selected>', response.data)
+        self.assertIn(b'network_scan.js', response.data)
+
+    def test_wireless_network_cards_link_to_device_scan_panel(self):
+        js = open('static/js/wireless-adapters.js').read()
+
+        self.assertIn('#network-device-scan', js)
+        self.assertIn('Device scan', js)
 
     def test_bluetooth_scan_includes_manufacturer(self):
         async def fake_get_bluetooth_devices():

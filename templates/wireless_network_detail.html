@@ -21,6 +21,7 @@
         </div>
       </div>
       <div class="interface-actions">
+        {% if network.interface %}<a class="btn btn-primary" href="#network-device-scan">Device scan</a>{% endif %}
         <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>
       </div>
     </section>
@@ -29,6 +30,32 @@
       <div class="alert alert-warning mt-3" role="alert">
         This network was opened from card data, but it is not currently in the in-memory scan cache. Re-scan from the adapter page for live AP/client details.
       </div>
+    {% endif %}
+
+    {% if network.interface %}
+      <section id="network-device-scan" class="card shadow-sm interface-network-scan-card mt-3">
+        <div class="card-body">
+          <h2 class="interface-section-title">Network Device Scan</h2>
+          <p class="text-muted">Scan the adapter that found this SSID for IP devices on the associated local network. Results link to device profiles where port scans and saved service findings can be reviewed.</p>
+          <form id="scan-form" class="theme-form interface-scan-form">
+            <select id="interface-select-Scan" class="d-none" aria-hidden="true">
+              <option value="{{ network.interface }}" selected>{{ network.interface }}</option>
+            </select>
+            <div class="theme-actions">
+              <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
+              <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
+              <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
+            </div>
+            <div class="form-group mb-0">
+              <label for="sweep-cidr">Optional ping sweep CIDR</label>
+              <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
+            </div>
+            <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
+            <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
+          </form>
+          <div id="scan-results" class="theme-results"></div>
+        </div>
+      </section>
     {% endif %}
 
     <section class="interface-detail-grid network-detail-grid">
@@ -160,6 +187,10 @@
       </div>
     </section>
   </main>
+
+  {% if network.interface %}
+    <script src="/static/js/network_scan.js"></script>
+  {% endif %}
 
   {% include '_footer.html' %}
 </body>
