@@ -60,11 +60,13 @@
             </select>
           </div>
           <div class="bluetooth-action-grid mt-2">
+            <div class="bluetooth-contextual-actions">
             {% for action in bluetooth_actions %}
               <button type="button" class="btn btn-{{ action.style }} btn-sm bluetooth-action" data-action="{{ action.action }}" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
                 <i class="fa-solid fa-{{ action.icon }}"></i> {{ action.label }}
               </button>
             {% endfor %}
+            </div>
             <button type="button" class="btn btn-outline-info btn-sm bluetooth-refresh-device" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
               <i class="fa-solid fa-rotate"></i> Refresh This Device
             </button>

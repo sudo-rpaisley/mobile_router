@@ -354,7 +354,7 @@ $(document).ready(function () {
             <div class="wireless-network-badges">
               <span class="badge ${isOpen ? 'badge-success' : 'badge-secondary'}">${escapeHtml(security)}</span>
               ${hasWps ? '<span class="badge badge-warning" title="WPS advertised: review lab router settings and disable WPS where possible">WPS exposed</span>' : ''}
-              <span class="badge badge-light border">${escapeHtml(apCount)} ${apCount === 1 ? 'AP' : 'APs'}</span>
+              <span class="badge badge-light border" title="Grouped BSSID count for this SSID"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(apCount)} ${apCount === 1 ? 'BSSID' : 'BSSIDs'}</span>
               <span class="badge badge-info" title="Open the full network detail page for APs, clients, gateway, and radio information"><i class="fa-solid fa-up-right-from-square"></i> Details</span>
             </div>
           </div>
@@ -402,7 +402,8 @@ $(document).ready(function () {
             <select class="form-control form-control-sm" data-wifi-filter="band"><option value="">All bands</option><option>2.4 GHz</option><option>5 GHz</option><option>6 GHz</option><option>Unknown band</option></select>
             <select class="form-control form-control-sm" data-wifi-filter="security"><option value="">All security</option>${Array.from(new Set(networks.map(function (network) { return network.security || 'Unknown'; }))).sort().map(function (securityOption) { return `<option>${escapeHtml(securityOption)}</option>`; }).join('')}</select>
             <input class="form-control form-control-sm" type="number" data-wifi-filter="signal" placeholder="Min signal">
-            <button class="btn btn-outline-secondary btn-sm wireless-show-bssids" type="button">Show all BSSIDs</button>
+            <select class="form-control form-control-sm" data-wifi-filter="bssid-sort"><option value="signal">Sort BSSIDs by signal</option><option value="channel">Sort BSSIDs by channel</option><option value="band">Sort BSSIDs by band</option><option value="manufacturer">Sort BSSIDs by manufacturer</option></select>
+            <button class="btn btn-outline-secondary btn-sm wireless-show-bssids" type="button" data-mode="grouped">Show all BSSIDs</button>
             <button class="btn btn-outline-primary btn-sm wireless-rescan-all" type="button">Rescan all adapters</button>
           </div>
           ${warningText ? `<div class="alert alert-warning small" role="alert">${escapeHtml(warningText)}</div>` : ''}
@@ -434,8 +435,14 @@ $(document).ready(function () {
     }
   }
 
-  function renderBssidRows(interfaceName, networks) {
-    return allAccessPoints(networks).map(function (ap) {
+  function renderBssidRows(interfaceName, networks, sortBy = 'signal') {
+    const aps = allAccessPoints(networks).sort(function (left, right) {
+      if (sortBy === 'channel') return Number(left.channel || 9999) - Number(right.channel || 9999);
+      if (sortBy === 'band') return String(left.band).localeCompare(String(right.band));
+      if (sortBy === 'manufacturer') return String(left.manufacturer).localeCompare(String(right.manufacturer));
+      return Number(right.signal ?? -999) - Number(left.signal ?? -999);
+    });
+    return aps.map(function (ap) {
       const detailUrl = `/wireless/network?interface=${encodeURIComponent(interfaceName)}&ssid=${encodeURIComponent(ap.ssid)}&bssid=${encodeURIComponent(ap.bssid)}`;
       return `<article class="wireless-network-card wireless-network-clickable" data-detail-url="${escapeHtml(detailUrl)}" role="link" tabindex="0" title="SSID: ${escapeHtml(ap.ssid)}\nBSSID: ${escapeHtml(ap.bssid)}\nSecurity: ${escapeHtml(ap.security)}\nSignal: ${escapeHtml(signalLabel(ap.signal))}\nChannel: ${escapeHtml(ap.channel)}\nWidth: ${escapeHtml(ap.channel_width)} MHz"><div class="wireless-network-main"><div class="wireless-network-identity"><h3 class="wireless-network-ssid mb-1">${escapeHtml(ap.ssid || '<Hidden SSID>')}</h3><div class="wireless-network-meta"><span><i class="fa-solid fa-fingerprint"></i> ${escapeHtml(ap.bssid)}</span><span><i class="fa-solid fa-industry"></i> ${escapeHtml(ap.manufacturer)}</span><span><i class="fa-solid fa-wave-square"></i> Ch ${escapeHtml(ap.channel)}</span><span><i class="fa-solid fa-tower-broadcast"></i> ${escapeHtml(ap.band)}</span><span><i class="fa-solid fa-arrows-left-right"></i> ${escapeHtml(ap.channel_width)} MHz</span></div></div><div class="wireless-network-badges"><span class="badge badge-secondary">${escapeHtml(ap.security)}</span><span class="badge badge-info">BSSID</span></div></div><div class="wireless-network-bottom"><div class="wireless-network-stats"><span class="${signalClass(ap.signal)}"><i class="fa-solid fa-signal"></i> ${escapeHtml(signalLabel(ap.signal))}</span></div></div></article>`;
     }).join('');
@@ -584,15 +591,29 @@ $(document).ready(function () {
     const interfaceName = section.data('wirelessResults');
     const networks = filteredNetworks(section, networksFromSection(section));
     const diagnostics = JSON.parse(section.attr('data-diagnostics') || '{}');
-    section.find('.wireless-network-grid').html($(renderNetworks(interfaceName, networks, diagnostics)).filter('[data-wireless-results]').find('.wireless-network-grid').html());
+    if (section.data('bssidMode') === true) {
+      section.find('.wireless-network-grid').html(renderBssidRows(interfaceName, networks, section.find('[data-wifi-filter="bssid-sort"]').val() || 'signal'));
+    } else {
+      section.find('.wireless-network-grid').html($(renderNetworks(interfaceName, networks, diagnostics)).filter('[data-wireless-results]').find('.wireless-network-grid').html());
+    }
   });
 
   $(document).on('click', '.wireless-show-bssids', function () {
-    const section = $(this).closest('[data-wireless-results]');
+    const button = $(this);
+    const section = button.closest('[data-wireless-results]');
     const interfaceName = section.data('wirelessResults');
-    const networks = networksFromSection(section);
-    section.find('.wireless-network-grid').html(renderBssidRows(interfaceName, networks));
-    section.find('.wireless-source-stats').text(`Showing all BSSIDs: ${allAccessPoints(networks).length} raw AP entries from ${networks.length} grouped SSIDs.`);
+    const networks = filteredNetworks(section, networksFromSection(section));
+    const sortBy = section.find('[data-wifi-filter="bssid-sort"]').val() || 'signal';
+    const bssidMode = section.data('bssidMode') !== true;
+    section.data('bssidMode', bssidMode);
+    if (bssidMode) {
+      button.text('Show grouped SSIDs');
+      section.find('.wireless-network-grid').html(renderBssidRows(interfaceName, networks, sortBy));
+      section.find('.wireless-source-stats').text(`Showing all BSSIDs: ${allAccessPoints(networks).length} raw AP entries from ${networks.length} grouped SSIDs. Filters remain active.`);
+    } else {
+      button.text('Show all BSSIDs');
+      section.find('[data-wifi-filter="query"]').trigger('input');
+    }
   });
 
   $(document).on('click', '.wireless-rescan-all', function () {

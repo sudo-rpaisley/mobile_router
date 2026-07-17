@@ -191,6 +191,28 @@ $(document).ready(function () {
     }).join(''));
   }
 
+
+  function renderContextualActions(card, actions, address) {
+    const container = card.find('.bluetooth-contextual-actions');
+    if (!container.length || !Array.isArray(actions)) return;
+    container.html(actions.map(function (action) {
+      return `<button type="button" class="btn btn-${escapeHtml(action.style || 'outline-secondary')} btn-sm bluetooth-action" data-action="${escapeHtml(action.action)}" data-address="${escapeHtml(address)}"><i class="fa-solid fa-${escapeHtml(action.icon || 'circle-info')}"></i> ${escapeHtml(action.label || action.action)}</button>`;
+    }).join(''));
+  }
+
+  function updateBluetoothStateBadges(card, state) {
+    if (!state) return;
+    let badges = card.find('.bluetooth-state-badges');
+    if (!badges.length) {
+      badges = $('<div class="bluetooth-state-badges mt-2"></div>');
+      card.find('.bluetooth-action-grid').before(badges);
+    }
+    badges.html(['connected', 'paired', 'trusted', 'blocked'].map(function (key) {
+      const enabled = Boolean(state[key]);
+      return `<span class="badge ${enabled ? 'badge-success' : 'badge-secondary'} mr-1">${escapeHtml(key)}: ${enabled ? 'yes' : 'no'}</span>`;
+    }).join(''));
+  }
+
   function runBluetoothDeviceRequest(button, url, data, runningText) {
     const card = button.closest('.bluetooth-device-card');
     const output = card.find('.bluetooth-action-output');
@@ -205,6 +227,8 @@ $(document).ready(function () {
       success: function (response) {
         output.removeClass('text-muted text-danger').addClass('text-success').text(response.output || response.message || 'Action completed.');
         renderActionHistory(card, response.history);
+        renderContextualActions(card, response.actions, data.address || button.data('address'));
+        updateBluetoothStateBadges(card, response.device_state);
       },
       error: function (xhr) {
         const response = xhr.responseJSON || {};

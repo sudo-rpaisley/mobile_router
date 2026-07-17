@@ -610,6 +610,54 @@ def record_bluetooth_action_history(address, action, status, message, adapter=No
         return list(bluetooth_action_histories[normalized])
 
 
+
+def _merge_inventory_device_state(address, updates):
+    normalized = normalize_mac(address) if address else None
+    if not normalized:
+        return find_inventory_device(address)
+    with device_inventory_lock:
+        key = f'mac:{normalized}'
+        existing_key = key if key in device_inventory else None
+        if existing_key is None:
+            for candidate_key, item in device_inventory.items():
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    existing_key = candidate_key
+                    break
+        if existing_key is None:
+            existing_key = key
+            device_inventory[existing_key] = {'id': key, 'mac': normalized, 'address': normalized, 'device_type': 'Bluetooth device', 'sources': ['bluetooth-action'], 'interfaces': []}
+        device_inventory[existing_key].update({k: v for k, v in updates.items() if v is not None})
+        device_inventory[existing_key]['last_seen'] = time.time()
+        return dict(device_inventory[existing_key])
+
+
+def _bluetooth_state_updates_for_action(action):
+    return {
+        'connect': {'connected': True},
+        'disconnect': {'connected': False},
+        'pair': {'paired': True},
+        'trust': {'trusted': True},
+        'untrust': {'trusted': False},
+        'block': {'blocked': True},
+        'unblock': {'blocked': False},
+        'remove': {'paired': False, 'connected': False, 'trusted': False},
+    }.get(action, {})
+
+
+def _parse_bluetooth_info_output(output):
+    updates = {}
+    for line in str(output or '').splitlines():
+        if ':' not in line:
+            continue
+        key, value = [part.strip() for part in line.split(':', 1)]
+        key = key.casefold()
+        value_bool = _bluetooth_truthy(value)
+        if key in {'connected', 'paired', 'trusted', 'blocked'}:
+            updates[key] = value_bool
+        elif key in {'name', 'alias'} and value:
+            updates['name'] = value
+    return updates
+
 def forget_inventory_device(identifier):
     normalized = normalize_mac(identifier) if identifier else None
     removed = None
@@ -1783,8 +1831,12 @@ def bluetooth_action():
 
     try:
         output = run_bluetoothctl_action(action, address, adapter=adapter)
+        updates = _bluetooth_state_updates_for_action(action)
+        if action == 'info':
+            updates.update(_parse_bluetooth_info_output(output))
+        device = _merge_inventory_device_state(address, updates) if updates else find_inventory_device(address)
         history = record_bluetooth_action_history(address, action, 'success', output or 'Action completed.', adapter=adapter)
-        return json_success(message='Bluetooth action completed', output=output, history=history)
+        return json_success(message='Bluetooth action completed', output=output, history=history, actions=bluetooth_contextual_actions(device), device_state=bluetooth_device_state(device))
     except ValueError as e:
         history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
         return json_error(str(e), history=history)
@@ -1801,8 +1853,9 @@ def bluetooth_action():
 def bluetooth_device_refresh(address):
     try:
         output = run_bluetoothctl_action('info', address, adapter=request.form.get('adapter'))
+        device = _merge_inventory_device_state(address, _parse_bluetooth_info_output(output))
         history = record_bluetooth_action_history(address, 'refresh', 'success', output or 'Device info refreshed.', adapter=request.form.get('adapter'))
-        return json_success(message='Bluetooth device refreshed', output=output, device=find_inventory_device(address), history=history)
+        return json_success(message='Bluetooth device refreshed', output=output, device=device, history=history, actions=bluetooth_contextual_actions(device), device_state=bluetooth_device_state(device))
     except ValueError as e:
         history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
         return json_error(str(e), history=history)
