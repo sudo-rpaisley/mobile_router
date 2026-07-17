@@ -872,10 +872,22 @@ class RouteSmokeTest(unittest.TestCase):
         ])
 
     @patch('scripts.networkScan._get_ipv4_cidr', return_value='10.0.0.1/20')
-    def test_active_scan_skips_overly_large_subnets(self, _cidr):
+    @patch('scripts.networkScan._parse_proc_arp', return_value=[])
+    @patch('scripts.networkScan._parse_arp_command', return_value=[])
+    def test_active_scan_skips_overly_large_subnets(self, _arp_command, _proc_arp, _cidr):
         from scripts.networkScan import active_scan
 
         self.assertEqual(active_scan('eth0'), [])
+
+    @patch('scripts.networkScan._parse_arp_command', return_value=[])
+    @patch('scripts.networkScan._parse_proc_arp')
+    @patch('scripts.networkScan._get_ipv4_cidr', return_value=None)
+    def test_active_scan_falls_back_to_arp_cache_when_cidr_unknown(self, _cidr, proc_arp, _arp_command):
+        from scripts.networkScan import active_scan
+
+        proc_arp.side_effect = [[], [{'ip': '192.168.20.40', 'mac': 'aa:bb:cc:dd:ee:40'}]]
+
+        self.assertEqual(active_scan('WiFi'), [{'ip': '192.168.20.40', 'mac': 'aa:bb:cc:dd:ee:40'}])
 
     def test_port_scan_page_mentions_device_prefill(self):
         response = self.client.get('/port-scan?host=192.168.20.10')
