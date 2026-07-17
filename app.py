@@ -75,6 +75,15 @@ ROADMAP_SECTIONS = [
         ],
     },
     {
+        'title': 'Guided modes and progression',
+        'items': [
+            {'title': 'Full and training mode switch', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add a mode selector where Full mode exposes every available feature and Training mode starts with a limited guided toolset.'},
+            {'title': 'Progressive training unlocks', 'priority': 'High', 'priority_class': 'danger', 'description': 'In Training mode, unlock the next control only after the learner completes the current step, such as scanning before connection, diagnostics, exports, or advanced actions.'},
+            {'title': 'Guided focus overlay', 'priority': 'High', 'priority_class': 'danger', 'description': 'Guide learners by dimming the layout and spotlighting/circling the next control, with step instructions and progress state.'},
+            {'title': 'Training trophies and milestones', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award trophies for milestones such as 20 completed scans, first Bluetooth refresh, first OUI lookup, first export, and completion of each guided module.'},
+        ],
+    },
+    {
         'title': 'Network visibility',
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
@@ -82,6 +91,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
         ],
     },
     {
