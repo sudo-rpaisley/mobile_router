@@ -429,6 +429,66 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('capabilities', response.get_json())
 
+    def test_diagnostics_page_and_nav_render(self):
+        response = self.client.get('/diagnostics')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Ping &amp; Route Diagnostics', response.data)
+        self.assertIn(b'id="ping-host"', response.data)
+        self.assertIn(b'id="route-diagnostics-btn"', response.data)
+
+    @patch('app.subprocess.run')
+    def test_ping_route_reports_loss_latency_and_history(self, run):
+        run.return_value = SimpleNamespace(
+            returncode=0,
+            stdout='4 packets transmitted, 4 received, 0% packet loss\nrtt min/avg/max/mdev = 1.1/2.2/3.3/0.1 ms',
+            stderr='',
+        )
+        app_module.ping_history.clear()
+
+        response = self.client.post('/ping', data={'host': '192.0.2.10', 'count': '4', 'timeout': '1'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['result']['packet_loss_percent'], 0.0)
+        self.assertEqual(payload['result']['latency']['avg_ms'], 2.2)
+        self.assertTrue(payload['history'])
+
+    @patch('app.run_ping_check')
+    def test_ping_sweep_limits_and_summarizes_hosts(self, ping_check):
+        ping_check.side_effect = lambda host, count=1, timeout=1: {
+            'host': host,
+            'reachable': host.endswith('.1'),
+            'packet_loss_percent': 0.0 if host.endswith('.1') else 100.0,
+            'latency': {},
+            'checked_at': 1,
+        }
+
+        response = self.client.post('/ping-sweep', data={'cidr': '192.168.1.0/30'})
+
+        self.assertEqual(response.status_code, 200)
+        sweep = response.get_json()['sweep']
+        self.assertEqual(sweep['total_hosts'], 2)
+        self.assertEqual(sweep['reachable_hosts'], 1)
+
+    @patch('app.subprocess.run')
+    def test_route_diagnostics_reports_gateways_vpn_and_scan_path(self, run):
+        def fake_run(command, **kwargs):
+            if command == ['ip', '-4', 'route', 'show']:
+                return SimpleNamespace(returncode=0, stdout='default via 192.168.1.1 dev eth0 proto dhcp metric 100\n10.8.0.0/24 dev tun0 proto kernel metric 50', stderr='')
+            if command == ['ip', '-6', 'route', 'show']:
+                return SimpleNamespace(returncode=0, stdout='default via fe80::1 dev eth0 metric 1024', stderr='')
+            return SimpleNamespace(returncode=0, stdout='1.1.1.1 via 192.168.1.1 dev eth0 src 192.168.1.20', stderr='')
+        run.side_effect = fake_run
+
+        response = self.client.post('/route-diagnostics', data={'target': '1.1.1.1'})
+
+        self.assertEqual(response.status_code, 200)
+        diagnostics = response.get_json()['diagnostics']
+        self.assertEqual(diagnostics['default_gateways'][0]['gateway'], '192.168.1.1')
+        self.assertEqual(diagnostics['vpn_hints'][0]['interface'], 'tun0')
+        self.assertIn('1.1.1.1 via 192.168.1.1', diagnostics['scan_path_context'])
+
 
 
     def test_port_scan_pages_include_cancel_controls(self):
@@ -726,6 +786,34 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.post(f'/alerts/{alert_id}/read')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['unread_count'], 0)
+
+    def test_grouped_discovery_alerts_batch_active_scan_devices(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '192.168.20.11', 'mac': 'b8:27:eb:11:22:33'},
+        ], 'active-scan', 'eth0')
+
+        alerts = app_module.alert_records()
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]['alert_type'], 'grouped-discovery')
+        self.assertEqual(alerts[0]['device_count'], 2)
+        self.assertEqual(alerts[0]['device_url'], '/inventory')
+
+    def test_passive_discovery_keeps_individual_later_alerts(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2'},
+            {'ip': '192.168.20.11', 'mac': 'b8:27:eb:11:22:33'},
+        ], 'passive-scan', 'eth0')
+
+        alerts = app_module.alert_records()
+        self.assertEqual(len(alerts), 2)
+        self.assertTrue(all(alert.get('alert_type') != 'grouped-discovery' for alert in alerts))
 
     def test_alerts_page_and_nav_indicator_render(self):
         app_module.new_device_alerts.clear()

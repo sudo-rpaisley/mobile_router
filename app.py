@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import csv
 import io
+import ipaddress
 from urllib.parse import quote
 from werkzeug.utils import secure_filename
 
@@ -63,6 +64,7 @@ pineap_lab_runs = []
 pineap_lab_lock = threading.Lock()
 handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
+ping_history = []
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -107,16 +109,16 @@ ROADMAP_SECTIONS = [
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
-            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
+            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory discovery now creates one grouped alert for multi-device active/job scans while preserving individual passive-scan alerts.', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
         ],
     },
     {
         'title': 'Core network tools',
         'items': [
-            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
+            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Diagnostics now includes single-host ping, bounded subnet sweeps, packet loss, latency parsing, and recent reachability history.', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
             {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
             {'title': 'DNS lookup and diagnostics toolkit', 'priority': 'High', 'priority_class': 'danger', 'description': 'Support A, AAAA, PTR, MX, TXT, NS, and CNAME lookups, resolver comparison, timing, and split-horizon troubleshooting.'},
-            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
+            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Diagnostics now reports default gateways, parsed IPv4/IPv6 routes, per-interface metrics, VPN route hints, and target scan-path context.', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
             {'title': 'Connectivity health check', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Check gateway, DNS, HTTP, HTTPS, NTP, IPv4, IPv6, captive portal state, and explain which layer is failing.'},
             {'title': 'Packet capture and protocol summary', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Start and stop scoped packet captures, export PCAP files, summarize protocols/top talkers, and attach captures to evidence.'},
             {'title': 'Live traffic monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show bandwidth, packets per second, top talkers, protocol mix, and short history per interface.'},
@@ -672,6 +674,39 @@ def create_new_device_alert(device, source, interface=None):
     return alert
 
 
+def create_grouped_device_alert(devices, source, interface=None):
+    """Record one unread alert for a batch of newly observed devices."""
+    devices = [dict(device) for device in devices or []]
+    alert = {
+        'id': uuid.uuid4().hex,
+        'alert_type': 'grouped-discovery',
+        'display_name': f"{len(devices)} new devices discovered",
+        'ip': None,
+        'mac': None,
+        'manufacturer': 'Multiple',
+        'device_url': '/inventory',
+        'source': source,
+        'interface': interface,
+        'created_at': time.time(),
+        'read': False,
+        'device_count': len(devices),
+        'devices': [
+            {
+                'id': device.get('id'),
+                'display_name': device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device',
+                'ip': device.get('ip'),
+                'mac': device.get('mac') or device.get('bssid'),
+                'manufacturer': device.get('manufacturer') or 'Unknown',
+            }
+            for device in devices[:10]
+        ],
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
 
 def evidence_records():
     """Return evidence vault records with display labels."""
@@ -1027,6 +1062,7 @@ def record_inventory_devices(devices, source, interface=None):
     """Merge discovered devices into the in-memory inventory with OUI metadata."""
     now = time.time()
     changed_devices = []
+    new_devices = []
     with device_inventory_lock:
         for raw_device in devices or []:
             device = dict(raw_device)
@@ -1055,8 +1091,13 @@ def record_inventory_devices(devices, source, interface=None):
             is_new_device = not existing
             device_inventory[key] = merged
             if is_new_device and not merged.get('is_control_traffic'):
-                create_new_device_alert(merged, source, interface)
+                new_devices.append(dict(merged))
             changed_devices.append(dict(merged))
+    if source == 'passive-scan' or len(new_devices) <= 1:
+        for device in new_devices:
+            create_new_device_alert(device, source, interface)
+    else:
+        create_grouped_device_alert(new_devices, source, interface)
     return changed_devices
 
 
@@ -1129,6 +1170,137 @@ def parse_int(value, error_message):
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(error_message) from exc
+
+
+def _ping_command(host, count=4, timeout=2):
+    if os.name == 'nt':
+        return ['ping', '-n', str(count), '-w', str(timeout * 1000), host]
+    return ['ping', '-c', str(count), '-W', str(timeout), host]
+
+
+def _parse_ping_output(output):
+    """Return packet-loss and latency details from common ping output."""
+    loss = None
+    transmitted = received = None
+    packet_match = re.search(r'(\d+)\s+packets transmitted,\s+(\d+)\s+(?:packets )?received,\s+([\d.]+)% packet loss', output)
+    if packet_match:
+        transmitted = int(packet_match.group(1))
+        received = int(packet_match.group(2))
+        loss = float(packet_match.group(3))
+    windows_match = re.search(r'Packets: Sent = (\d+), Received = (\d+), Lost = (\d+) \((\d+)% loss\)', output)
+    if windows_match:
+        transmitted = int(windows_match.group(1))
+        received = int(windows_match.group(2))
+        loss = float(windows_match.group(4))
+    stats_match = re.search(r'(?:rtt|round-trip).*?=\s*([\d.]+)/([\d.]+)/([\d.]+)/(?:[\d.]+)', output)
+    windows_stats = re.search(r'Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms', output)
+    latency = {}
+    if stats_match:
+        latency = {'min_ms': float(stats_match.group(1)), 'avg_ms': float(stats_match.group(2)), 'max_ms': float(stats_match.group(3))}
+    elif windows_stats:
+        latency = {'min_ms': float(windows_stats.group(1)), 'avg_ms': float(windows_stats.group(3)), 'max_ms': float(windows_stats.group(2))}
+    return {'transmitted': transmitted, 'received': received, 'packet_loss_percent': loss, 'latency': latency}
+
+
+def run_ping_check(host, count=4, timeout=2):
+    host = (host or '').strip()
+    if not host:
+        raise ValueError('Host is required')
+    count = max(1, min(parse_int(count, 'Count must be an integer'), 10))
+    timeout = max(1, min(parse_int(timeout, 'Timeout must be an integer'), 10))
+    started = time.time()
+    result = subprocess.run(_ping_command(host, count=count, timeout=timeout), capture_output=True, text=True, timeout=(count * timeout) + 5, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    parsed = _parse_ping_output(output)
+    history = {
+        'host': host,
+        'reachable': result.returncode == 0,
+        'returncode': result.returncode,
+        'duration_ms': round((time.time() - started) * 1000, 2),
+        'output': output,
+        **parsed,
+        'checked_at': time.time(),
+    }
+    ping_history.append(history)
+    del ping_history[:-100]
+    return history
+
+
+def run_ping_sweep(cidr, count=1, timeout=1):
+    network = ipaddress.ip_network((cidr or '').strip(), strict=False)
+    hosts = list(network.hosts())
+    if network.version == 6 and network.prefixlen < 120:
+        raise ValueError('IPv6 sweeps are limited to /120 or smaller ranges')
+    if len(hosts) > 64:
+        raise ValueError('Subnet sweeps are limited to 64 hosts')
+    results = []
+    for host in hosts:
+        try:
+            results.append(run_ping_check(str(host), count=count, timeout=timeout))
+        except subprocess.TimeoutExpired:
+            results.append({'host': str(host), 'reachable': False, 'packet_loss_percent': 100.0, 'latency': {}, 'output': 'Timed out', 'checked_at': time.time()})
+    return {
+        'cidr': str(network),
+        'total_hosts': len(results),
+        'reachable_hosts': len([item for item in results if item.get('reachable')]),
+        'results': results,
+    }
+
+
+def _run_text_command(command, timeout=5):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {'command': command, 'returncode': 1, 'output': str(exc)}
+    return {'command': command, 'returncode': result.returncode, 'output': (result.stdout or result.stderr or '').strip()}
+
+
+def _parse_route_lines(output):
+    routes = []
+    for line in (output or '').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        route = {'raw': line, 'destination': None, 'gateway': None, 'interface': None, 'metric': None, 'family': 'IPv6' if ':' in line.split()[0] else 'IPv4'}
+        tokens = line.split()
+        if tokens:
+            route['destination'] = tokens[0]
+        if 'via' in tokens:
+            route['gateway'] = tokens[tokens.index('via') + 1]
+        if 'dev' in tokens:
+            route['interface'] = tokens[tokens.index('dev') + 1]
+        if 'metric' in tokens:
+            route['metric'] = tokens[tokens.index('metric') + 1]
+        routes.append(route)
+    return routes
+
+
+def build_route_diagnostics(target=None):
+    commands = []
+    if os.name == 'nt':
+        commands.append(['route', 'print'])
+        if target:
+            commands.append(['tracert', '-d', '-h', '1', target])
+    else:
+        commands.extend([['ip', '-4', 'route', 'show'], ['ip', '-6', 'route', 'show']])
+        if target:
+            commands.append(['ip', 'route', 'get', target])
+    command_results = [_run_text_command(command) for command in commands]
+    routes = []
+    for result in command_results:
+        if result['command'][:2] in (['ip', '-4'], ['ip', '-6']) or result['command'][:1] == ['ip']:
+            routes.extend(_parse_route_lines(result['output']))
+    default_gateways = [route for route in routes if route.get('destination') == 'default']
+    vpn_hints = [route for route in routes if re.search(r'\b(tun|tap|wg|vpn|ppp|utun)\w*\b', route.get('interface') or '', re.I)]
+    scan_path = next((result['output'] for result in command_results if result['command'][:3] == ['ip', 'route', 'get']), '')
+    return {
+        'default_gateways': default_gateways,
+        'routes': routes,
+        'vpn_hints': vpn_hints,
+        'scan_path_context': scan_path,
+        'commands': command_results,
+        'checked_at': time.time(),
+    }
 
 
 def _scan_result_counts(result):
@@ -1772,6 +1944,11 @@ def traceroute_page():
     return render_template('traceroute.html', title='Traceroute', **current_context())
 
 
+@app.route('/diagnostics')
+def diagnostics_page():
+    return render_template('diagnostics.html', title='Diagnostics', **current_context())
+
+
 @app.route('/clients/<identifier>')
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
@@ -1922,6 +2099,32 @@ def traceroute_route():
     from scripts.traceroute import traceroute
     hops = traceroute(host)
     return jsonify({'hops': hops})
+
+
+@app.route('/ping', methods=['POST'])
+def ping_route():
+    try:
+        result = run_ping_check(request.form.get('host'), request.form.get('count') or 4, request.form.get('timeout') or 2)
+    except ValueError as e:
+        return json_error(str(e))
+    except subprocess.TimeoutExpired:
+        return json_error('Ping timed out', 504)
+    return json_success(result=result, history=ping_history[-10:])
+
+
+@app.route('/ping-sweep', methods=['POST'])
+def ping_sweep_route():
+    try:
+        sweep = run_ping_sweep(request.form.get('cidr'), request.form.get('count') or 1, request.form.get('timeout') or 1)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(sweep=sweep, history=ping_history[-10:])
+
+
+@app.route('/route-diagnostics', methods=['POST'])
+def route_diagnostics_route():
+    diagnostics = build_route_diagnostics(request.form.get('target'))
+    return json_success(diagnostics=diagnostics)
 
 
 @app.route('/wireless/network')
