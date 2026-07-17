@@ -84,6 +84,16 @@ ROADMAP_SECTIONS = [
         ],
     },
     {
+        'title': 'Training trophies',
+        'items': [
+            {'title': 'Scan milestone trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first Wi-Fi scan, first Bluetooth scan, 10 scans, 20 scans, first scan with more than five networks, first multi-BSSID SSID, and first hidden network discovered.'},
+            {'title': 'Wireless analysis trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award channel congestion review, 2.4/5 GHz comparison, occupancy export, BSSID drill-down, OUI/vendor lookup, WPS exposure finding, and best-channel recommendation review.'},
+            {'title': 'Bluetooth workflow trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first Bluetooth device discovery, metadata refresh, state interpretation, vendor identification, action history entry, and inventory-only forget action.'},
+            {'title': 'Reporting and evidence trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first report export, evidence note, saved scan evidence, complete training report, and explain-this-finding write-up.'},
+            {'title': 'Training completion trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award Wireless Basics, Bluetooth Basics, Diagnostics, Reports, and Full Training Path completion trophies as learners finish guided modules.'},
+        ],
+    },
+    {
         'title': 'Network visibility',
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
