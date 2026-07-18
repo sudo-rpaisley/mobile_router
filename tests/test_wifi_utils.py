@@ -14,6 +14,8 @@ def test_add_network_groups_access_points_and_sorts_by_signal():
     assert summary[0]['bssid'] == '11:22:33:44:55:66'
     assert summary[0]['signal'] == 85
     assert summary[0]['access_points'] == 2
+    assert len(summary[0]['access_point_details']) == 2
+    assert summary[0]['access_point_details'][0]['channel_width'] == 20
     assert summary[0]['security'] == 'WPA2'
     assert summary[0]['band'] == '2.4 GHz'
     assert summary[0]['frequency'] == 2462
@@ -77,7 +79,8 @@ SSID 2 : Guest
         stdout = output
         stderr = ''
 
-    monkeypatch.setattr(utils, '_run_command', lambda command: Result())
+    monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
+    monkeypatch.setattr(utils.time, 'sleep', lambda seconds: None)
 
     utils._scan_windows_with_netsh()
     summary = utils.get_networks_summary()
@@ -89,9 +92,45 @@ SSID 2 : Guest
     assert summary[0]['band'] == '2.4 GHz'
     assert summary[0]['security'] == 'WPA2-Personal'
     assert summary[0]['access_points'] == 2
+    assert len(summary[0]['access_point_details']) == 2
+    assert {ap['bssid'] for ap in summary[0]['access_point_details']} == {'aa:bb:cc:dd:ee:ff', '11:22:33:44:55:66'}
     assert summary[1]['ssid'] == 'Guest'
     assert summary[1]['security'] == 'Open'
 
+
+def test_windows_scan_refreshes_and_falls_back_to_all_interfaces(monkeypatch):
+    utils.networks = {}
+    calls = []
+
+    class Result:
+        def __init__(self, stdout=''):
+            self.returncode = 0
+            self.stdout = stdout
+            self.stderr = ''
+
+    connected_only = '\nSSID 1 : Home\n    Authentication          : WPA2-Personal\n    BSSID 1                 : aa:bb:cc:dd:ee:ff\n         Signal             : 72%\n         Channel            : 6\n'
+    all_networks = '\nSSID 1 : Home\n    Authentication          : WPA2-Personal\n    BSSID 1                 : aa:bb:cc:dd:ee:ff\n         Signal             : 72%\n         Channel            : 6\nSSID 2 : Cafe\n    Authentication          : Open\n    BSSID 1                 : 11:22:33:44:55:66\n         Signal             : 41%\n         Channel            : 11\n'
+
+    def fake_run(command, timeout=20):
+        calls.append(command)
+        if command[:3] == ['netsh', 'wlan', 'scan']:
+            return Result()
+        if any(part == 'interface=Wi-Fi' for part in command):
+            return Result(connected_only)
+        return Result(all_networks)
+
+    monkeypatch.setattr(utils.platform, 'system', lambda: 'Windows')
+    monkeypatch.setattr(utils.time, 'sleep', lambda seconds: None)
+    monkeypatch.setattr(utils, '_run_command', fake_run)
+    monkeypatch.setattr(utils, '_scan_windows_with_pywifi', lambda interface_name: None)
+    monkeypatch.setattr(utils, 'display_all_networks', lambda: None)
+    monkeypatch.setattr(utils, 'send_alerts', lambda: None)
+
+    utils.scan_networks('Wi-Fi')
+
+    assert ['netsh', 'wlan', 'scan', 'interface=Wi-Fi'] in calls
+    assert ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'] in calls
+    assert [network['ssid'] for network in utils.get_networks_summary()] == ['Home', 'Cafe']
 
 def test_scan_linux_with_iw_parses_multiple_bss_results(monkeypatch):
     utils.networks = {}
@@ -309,3 +348,30 @@ def test_group_access_points_marks_related_bssids_as_same_physical_ap(monkeypatc
     assert len(detail['ap_groups'][0]['bssids']) == 2
     assert all(ap['physical_ap_group'] == 'AP group 1' for ap in detail['access_points'])
     assert detail['ap_groups'][0]['reasons']
+
+
+def test_parse_channel_width_from_iw_tokens():
+    assert utils._parse_channel_width('* channel width: 1 (40 MHz)')[0] == 40
+    assert utils._parse_channel_width('VHT80')[0] == 80
+    assert utils._parse_channel_width('no width here') == (None, 'inferred')
+
+
+def test_scan_diagnostics_report_backend_and_one_ap_warning(monkeypatch):
+    utils.networks = {}
+
+    class Result:
+        returncode = 0
+        stdout = 'SSID:BSSID:CHAN:SIGNAL:SECURITY\nOffice:aa:bb:cc:dd:ee:ff:6:75:WPA2'
+        stderr = ''
+
+    monkeypatch.setattr(utils.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(utils, '_run_command', lambda command, timeout=20: Result())
+    monkeypatch.setattr(utils, '_scan_linux_with_iw', lambda interface_name: None)
+    monkeypatch.setattr(utils, '_scan_linux_with_scapy', lambda interface_name, timeout: None)
+
+    utils.scan_networks('wlan0')
+    diagnostics = utils.get_scan_diagnostics()
+
+    assert diagnostics['attempts'][0]['tool'] == 'nmcli'
+    assert diagnostics['raw_entry_count'] == 1
+    assert diagnostics['warnings']

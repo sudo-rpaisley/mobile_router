@@ -25,7 +25,12 @@ from scripts.bluetooth_phone_connector import (
 def create_bluetooth_phone_blueprint(context_provider):
     blueprint = Blueprint("bluetooth_phone", __name__)
 
-    def redirect_to_return_target(notice, notice_style="success"):
+    def wants_json_response():
+        return request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json"
+
+    def bluetooth_phone_response(notice, notice_style="success", status_code=200):
+        if wants_json_response():
+            return jsonify({"status": "success" if status_code < 400 else "error", "notice": notice, "notice_style": notice_style}), status_code
         target = request.form.get("return_to") or request.referrer or "/bluetooth"
         separator = "&" if "?" in target else "?"
         query = urlencode({"bluetooth_notice": notice, "bluetooth_notice_style": notice_style})
@@ -46,7 +51,7 @@ def create_bluetooth_phone_blueprint(context_provider):
             settings = save_bluetooth_phone_settings(settings, config_path)
         except BluetoothPhoneSettingsError as exc:
             current_app.logger.info("Bluetooth phone settings validation failed: %s", exc)
-            return redirect_to_return_target(str(exc), "danger")
+            return bluetooth_phone_response(str(exc), "danger", 400)
 
         notice = "Bluetooth phone settings saved."
         notice_style = "success"
@@ -69,7 +74,7 @@ def create_bluetooth_phone_blueprint(context_provider):
             "Bluetooth phone settings saved with %s selected feature(s)",
             sum(settings["enabled_features"].values()),
         )
-        return redirect_to_return_target(notice, notice_style)
+        return bluetooth_phone_response(notice, notice_style)
 
 
     @blueprint.route("/bluetooth-phone/pairing-mode", methods=["POST"])
@@ -79,19 +84,19 @@ def create_bluetooth_phone_blueprint(context_provider):
             settings = load_bluetooth_phone_settings(config_path)
         except BluetoothPhoneSettingsError as exc:
             current_app.logger.warning("Unable to load Bluetooth phone settings: %s", exc)
-            return redirect_to_return_target(str(exc), "danger")
+            return bluetooth_phone_response(str(exc), "danger", 400)
 
         try:
             result = enable_bluetooth_pairing_mode(settings["display_name"])
         except BluetoothPairingModeUnavailable as exc:
-            return redirect_to_return_target(str(exc), "info")
+            return bluetooth_phone_response(str(exc), "info")
         except Exception as exc:
             current_app.logger.warning("Unable to enable Bluetooth pairing mode: %s", exc)
-            return redirect_to_return_target(
+            return bluetooth_phone_response(
                 f"Bluetooth pairing mode could not be enabled: {exc}",
                 "warning",
             )
-        return redirect_to_return_target(result["message"], "success")
+        return bluetooth_phone_response(result["message"], "success")
 
     @blueprint.route("/bluetooth-phone/status")
     def bluetooth_phone_status():

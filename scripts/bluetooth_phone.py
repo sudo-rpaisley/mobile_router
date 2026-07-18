@@ -239,6 +239,7 @@ def _configured_bluetooth_helper(system=None):
             return str(candidate)
     return None
 
+
 def bluetooth_pairing_mode_capability(system=None):
     system = system or platform.system()
     helper = _configured_bluetooth_helper(system)
@@ -270,7 +271,10 @@ def bluetooth_pairing_mode_capability(system=None):
                 "available": True,
                 "tool": "native-helper",
                 "path": helper,
-                "message": "Mobile Router can ask the configured native Bluetooth helper to advertise this adapter for phones.",
+                "message": (
+                    "Mobile Router can ask the configured native Bluetooth helper to advertise an app-scoped "
+                    "Bluetooth service/profile for phones."
+                ),
             }
         platform_name = "Windows" if system == "Windows" else "macOS"
         return {
@@ -402,7 +406,7 @@ def bluetooth_display_name_capability(system=None):
             "available": False,
             "tool": None,
             "path": None,
-            "message": "The name will be saved for the Mobile Router service. Windows uses the computer name as its system Bluetooth name.",
+            "message": "The name will be saved for Mobile Router. Windows system Bluetooth names are not changed; the bundled helper advertises an app-scoped Mobile Router Bluetooth LE service instead.",
         }
     return {
         "available": False,

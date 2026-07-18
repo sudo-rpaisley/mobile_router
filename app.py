@@ -51,6 +51,8 @@ port_scan_jobs = {}
 port_scan_jobs_lock = threading.Lock()
 device_inventory = {}
 device_inventory_lock = threading.Lock()
+bluetooth_action_histories = {}
+bluetooth_action_histories_lock = threading.Lock()
 new_device_alerts = []
 new_device_alerts_lock = threading.Lock()
 evidence_vault = []
@@ -67,7 +69,28 @@ ROADMAP_SECTIONS = [
             {'title': 'Adapter health badges', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Shows Ready/state, No address, and adapter type directly on adapter cards.', 'description': 'Show Ready, Missing tools, Down, No address, monitor-mode, and action availability directly on adapter cards.'},
             {'title': 'Adapter action readiness panel', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Interface detail pages include an Action Readiness panel with available actions and dependency guidance.', 'description': 'Summarize exactly what each adapter can do and why unavailable actions are disabled.'},
             {'title': 'Better empty and error states', 'priority': 'High', 'priority_class': 'danger', 'description': 'Replace generic scan failures with actionable install/setup guidance and links to capabilities.'},
+            {'title': 'Layout density and navigation review', 'priority': 'High', 'priority_class': 'danger', 'description': 'Compare tabs, accordions, split panels, compact/advanced modes, and dashboard drill-downs before adding more controls to dense pages.'},
+            {'title': 'Tabbed interface detail layout', 'priority': 'High', 'priority_class': 'danger', 'description': 'Adopt option A: organize dense interface pages into tabs such as Overview, Scan Results, Charts, Actions, Diagnostics, and History.'},
             {'title': 'Export reports', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Reports page exports inventory, interfaces, capabilities, jobs, alerts, and evidence as JSON, CSV, Markdown, or HTML.', 'description': 'Export interfaces, scan results, capabilities, and discovered devices as JSON, CSV, Markdown, or HTML.'},
+        ],
+    },
+    {
+        'title': 'Guided modes and progression',
+        'items': [
+            {'title': 'Full and training mode switch', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add a mode selector where Full mode exposes every available feature and Training mode starts with a limited guided toolset.'},
+            {'title': 'Progressive training unlocks', 'priority': 'High', 'priority_class': 'danger', 'description': 'In Training mode, unlock the next control only after the learner completes the current step, such as scanning before connection, diagnostics, exports, or advanced actions.'},
+            {'title': 'Guided focus overlay', 'priority': 'High', 'priority_class': 'danger', 'description': 'Guide learners by dimming the layout and spotlighting/circling the next control, with step instructions and progress state.'},
+            {'title': 'Training trophies and milestones', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award trophies for milestones such as 20 completed scans, first Bluetooth refresh, first OUI lookup, first export, and completion of each guided module.'},
+        ],
+    },
+    {
+        'title': 'Training trophies',
+        'items': [
+            {'title': 'Scan milestone trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first Wi-Fi scan, first Bluetooth scan, 10 scans, 20 scans, first scan with more than five networks, first multi-BSSID SSID, and first hidden network discovered.'},
+            {'title': 'Wireless analysis trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award channel congestion review, 2.4/5 GHz comparison, occupancy export, BSSID drill-down, OUI/vendor lookup, WPS exposure finding, and best-channel recommendation review.'},
+            {'title': 'Bluetooth workflow trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first Bluetooth device discovery, metadata refresh, state interpretation, vendor identification, action history entry, and inventory-only forget action.'},
+            {'title': 'Reporting and evidence trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award first report export, evidence note, saved scan evidence, complete training report, and explain-this-finding write-up.'},
+            {'title': 'Training completion trophies', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Award Wireless Basics, Bluetooth Basics, Diagnostics, Reports, and Full Training Path completion trophies as learners finish guided modules.'},
         ],
     },
     {
@@ -75,8 +98,40 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
+            {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
+            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
+        ],
+    },
+    {
+        'title': 'Core network tools',
+        'items': [
+            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
+            {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
+            {'title': 'DNS lookup and diagnostics toolkit', 'priority': 'High', 'priority_class': 'danger', 'description': 'Support A, AAAA, PTR, MX, TXT, NS, and CNAME lookups, resolver comparison, timing, and split-horizon troubleshooting.'},
+            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
+            {'title': 'Connectivity health check', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Check gateway, DNS, HTTP, HTTPS, NTP, IPv4, IPv6, captive portal state, and explain which layer is failing.'},
+            {'title': 'Packet capture and protocol summary', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Start and stop scoped packet captures, export PCAP files, summarize protocols/top talkers, and attach captures to evidence.'},
+            {'title': 'Live traffic monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show bandwidth, packets per second, top talkers, protocol mix, and short history per interface.'},
+            {'title': 'Local socket and listener inventory', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'List local listening ports and established connections with process names where available and highlight externally exposed listeners.'},
+            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
+            {'title': 'HTTP service inspector', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Inspect HTTP/HTTPS services for status, redirects, page title, server headers, login forms, TLS details, and basic security headers.'},
+        ],
+    },
+    {
+        'title': 'Extended network tools',
+        'items': [
+            {'title': 'TLS certificate inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show certificate subject, issuer, SANs, expiration, self-signed status, hostname mismatch, and chain details.'},
+            {'title': 'DHCP lease and server inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Display DHCP lease details, DNS/router options, renewal timing, and warnings for multiple or unexpected DHCP servers.'},
+            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
+            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
+            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
+            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
+            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
+            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
+            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
+            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
         ],
     },
     {
@@ -84,6 +139,9 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'Wi-Fi channel and band charts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results include channel and band occupancy charts.', 'description': 'Chart 2.4/5 GHz occupancy, overlapping channels, security, and signal strength.'},
             {'title': 'Wireless network timelines', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track signal, channel, security, AP count, and seen timestamps per SSID/BSSID.'},
+            {'title': 'Server-side wireless occupancy history', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Persist repeated scan occupancy by adapter so heatmaps, channel recommendations, and reports survive browser sessions and server restarts.'},
+            {'title': 'Bluetooth metadata refresh pipeline', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Parse single-device Bluetooth refresh output into inventory fields, update contextual controls, and show last-refreshed timestamps without a full page reload.'},
+            {'title': 'Bluetooth destructive-action confirmations', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add clearer confirmation modals, host-stack vs inventory-only explanations, and undo for inventory-only forget actions.'},
             {'title': 'Known network labels', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users mark SSIDs as trusted, lab, suspicious, or ignored.'},
             {'title': 'Bluetooth action checklist', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Bluetooth scans report action capability and show host-tool guidance for bluetoothctl or BlueZ D-Bus support.', 'description': 'Show bluetoothctl, busctl, BlueZ D-Bus, adapter power, pairing, trust, and action readiness.'},
         ],
@@ -124,6 +182,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Central capability registry', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Capabilities now come from a central registry with required commands, packages, platforms, runtime checks, install hints, UI rendering, and JSON export.', 'description': 'Describe each feature once with required commands, packages, platforms, checks, and install hints.'},
             {'title': 'Background scan jobs', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless, Bluetooth, and port scans now use tracked background jobs with live status polling and cancellation controls.', 'description': 'Move long-running scans into cancellable jobs with progress updates over Socket.IO.'},
             {'title': 'Partial adapter updates', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Adapter polling now returns targeted navbar/card fragments for DOM replacement without a full-page reload.', 'description': 'Update adapter cards and navbar content without full-page reloads when interfaces change.'},
+            {'title': 'Browser-level UI smoke tests', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Browser-oriented tests now assert the Bluetooth contextual controls, AJAX re-render hooks, Wi-Fi dashboard controls, BSSID mode, export buttons, and full-screen map hooks.', 'description': 'Cover high-value template and JavaScript behavior so richer UI controls do not regress.'},
         ],
     },
 ]
@@ -276,7 +335,7 @@ def _run_busctl_bluetooth_action(busctl, action, address, timeout=15):
     return output or f'busctl Bluetooth {action} completed for {address}'
 
 
-def run_bluetoothctl_action(action, address, timeout=15):
+def run_bluetoothctl_action(action, address, timeout=15, adapter=None):
     """Run a safe local bluetoothctl action against a device visible to this host."""
     command = BLUETOOTHCTL_ACTIONS.get(action)
     if not command:
@@ -291,13 +350,23 @@ def run_bluetoothctl_action(action, address, timeout=15):
     if capability['tool'] == 'busctl':
         return _run_busctl_bluetooth_action(tool, action, address, timeout=timeout)
 
-    result = subprocess.run(
-        [tool, command, address],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    if adapter:
+        result = subprocess.run(
+            [tool],
+            input=f'select {adapter}\n{command} {address}\n',
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    else:
+        result = subprocess.run(
+            [tool, command, address],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
     output = (result.stdout or result.stderr or '').strip()
     if result.returncode != 0:
         raise RuntimeError(output or f'bluetoothctl {command} failed')
@@ -447,6 +516,250 @@ def evidence_as_markdown(records):
         lines.append('')
     return '\n'.join(lines)
 
+
+
+def set_interface_power_state(interface_name, desired_state, interface_type=None):
+    state = str(desired_state or '').casefold()
+    if state not in {'up', 'down'}:
+        raise ValueError('Interface state must be up or down')
+    system = os.name
+    normalized_type = str(interface_type or '').casefold()
+
+    if system == 'nt':
+        if normalized_type == 'bluetooth':
+            powershell = shutil.which('powershell') or shutil.which('pwsh')
+            if not powershell:
+                raise RuntimeError('PowerShell is required to toggle Bluetooth adapters on Windows')
+            verb = 'Enable-PnpDevice' if state == 'up' else 'Disable-PnpDevice'
+            escaped_name = str(interface_name).replace("'", "''")
+            command = (
+                "$device = Get-PnpDevice -Class Bluetooth -PresentOnly:$false | "
+                f"Where-Object {{ $_.FriendlyName -eq '{escaped_name}' -or $_.Name -eq '{escaped_name}' }} | "
+                "Select-Object -First 1; "
+                "if (-not $device) { throw 'Bluetooth adapter was not found.' }; "
+                f"{verb} -InstanceId $device.InstanceId -Confirm:$false"
+            )
+            result = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-Command', command], capture_output=True, text=True, timeout=20, check=False)
+        else:
+            result = subprocess.run(['netsh', 'interface', 'set', 'interface', f'name={interface_name}', f'admin={"enabled" if state == "up" else "disabled"}'], capture_output=True, text=True, timeout=20, check=False)
+    else:
+        if normalized_type == 'bluetooth':
+            bluetoothctl = shutil.which('bluetoothctl')
+            if bluetoothctl:
+                result = subprocess.run([bluetoothctl, 'power', 'on' if state == 'up' else 'off'], capture_output=True, text=True, timeout=15, check=False)
+            else:
+                ip_tool = shutil.which('ip')
+                if not ip_tool:
+                    raise RuntimeError('Toggling this interface requires bluetoothctl or ip')
+                result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
+        else:
+            ip_tool = shutil.which('ip')
+            if not ip_tool:
+                raise RuntimeError('Toggling interfaces requires the ip command on this host')
+            result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
+
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or 'Interface state change failed').strip())
+    return f'{interface_name} was turned {"on" if state == "up" else "off"}.'
+
+def bluetooth_device_summary(device):
+    summary = device.to_dict() if hasattr(device, 'to_dict') else {
+        'address': getattr(device, 'address', None),
+        'name': getattr(device, 'name', None),
+    }
+    address = summary.get('address')
+    summary['address'] = address
+    summary['mac'] = normalize_mac(address) if address else None
+    summary['manufacturer'] = summary.get('manufacturer') or lookup_manufacturer(address)
+    summary['device_type'] = 'Bluetooth device'
+    return {key: value for key, value in summary.items() if value not in (None, '')}
+
+
+def find_inventory_device(identifier):
+    normalized = normalize_mac(identifier) if identifier else None
+    with device_inventory_lock:
+        if normalized:
+            for key in (f'mac:{normalized}', normalized):
+                if key in device_inventory:
+                    return dict(device_inventory[key])
+            for item in device_inventory.values():
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    return dict(item)
+        for item in device_inventory.values():
+            if item.get('ip') == identifier or item.get('id') == identifier:
+                return dict(item)
+    return None
+
+
+
+def _bluetooth_truthy(value):
+    return str(value or '').strip().casefold() in {'1', 'true', 'yes', 'on', 'connected', 'paired', 'trusted', 'blocked'}
+
+
+def bluetooth_device_state(device):
+    device = device or {}
+    status = str(device.get('status') or '').casefold()
+    return {
+        'connected': _bluetooth_truthy(device.get('connected')) or 'connected' in status,
+        'paired': _bluetooth_truthy(device.get('paired')) or 'paired' in status,
+        'trusted': _bluetooth_truthy(device.get('trusted')) or 'trusted' in status,
+        'blocked': _bluetooth_truthy(device.get('blocked')) or 'blocked' in status,
+    }
+
+
+def bluetooth_contextual_actions(device):
+    state = bluetooth_device_state(device)
+    actions = [{'action': 'info', 'label': 'Info', 'style': 'outline-secondary', 'icon': 'circle-info'}]
+    if state['blocked']:
+        actions.append({'action': 'unblock', 'label': 'Unblock', 'style': 'outline-success', 'icon': 'check'})
+    else:
+        if state['connected']:
+            actions.append({'action': 'disconnect', 'label': 'Disconnect', 'style': 'outline-warning', 'icon': 'link-slash'})
+        else:
+            actions.append({'action': 'connect', 'label': 'Connect', 'style': 'outline-primary', 'icon': 'link'})
+        if not state['paired']:
+            actions.append({'action': 'pair', 'label': 'Pair', 'style': 'outline-primary', 'icon': 'handshake'})
+        if state['trusted']:
+            actions.append({'action': 'untrust', 'label': 'Untrust', 'style': 'outline-secondary', 'icon': 'shield'})
+        else:
+            actions.append({'action': 'trust', 'label': 'Trust', 'style': 'outline-success', 'icon': 'shield-halved'})
+        actions.append({'action': 'block', 'label': 'Block', 'style': 'outline-danger', 'icon': 'ban'})
+    actions.append({'action': 'remove', 'label': 'Remove Pairing', 'style': 'outline-danger', 'icon': 'trash'})
+    return actions
+
+
+def bluetooth_adapter_choices():
+    choices = []
+    for iface in network_interfaces:
+        if str(getattr(iface, 'interface_type', '')).casefold() != 'bluetooth':
+            continue
+        adapter_id = None
+        if hasattr(iface, 'get_mac_address'):
+            adapter_id = iface.get_mac_address()
+        adapter_id = adapter_id or getattr(iface, 'name', None)
+        if adapter_id:
+            choices.append({'id': adapter_id, 'name': getattr(iface, 'name', adapter_id), 'state': getattr(iface, 'state', None)})
+    return choices
+
+
+def bluetooth_action_history(address):
+    normalized = normalize_mac(address) if address else None
+    with bluetooth_action_histories_lock:
+        return list(bluetooth_action_histories.get(normalized or address, []))
+
+
+def record_bluetooth_action_history(address, action, status, message, adapter=None):
+    normalized = normalize_mac(address) if address else address
+    if not normalized:
+        return []
+    entry = {
+        'time': time.time(),
+        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+        'action': action,
+        'status': status,
+        'message': message,
+        'adapter': adapter,
+    }
+    with bluetooth_action_histories_lock:
+        history = list(bluetooth_action_histories.get(normalized, []))
+        history.insert(0, entry)
+        bluetooth_action_histories[normalized] = history[:20]
+        return list(bluetooth_action_histories[normalized])
+
+
+
+def _merge_inventory_device_state(address, updates):
+    normalized = normalize_mac(address) if address else None
+    if not normalized:
+        return find_inventory_device(address)
+    with device_inventory_lock:
+        key = f'mac:{normalized}'
+        existing_key = key if key in device_inventory else None
+        if existing_key is None:
+            for candidate_key, item in device_inventory.items():
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    existing_key = candidate_key
+                    break
+        if existing_key is None:
+            existing_key = key
+            device_inventory[existing_key] = {'id': key, 'mac': normalized, 'address': normalized, 'device_type': 'Bluetooth device', 'sources': ['bluetooth-action'], 'interfaces': []}
+        device_inventory[existing_key].update({k: v for k, v in updates.items() if v is not None})
+        device_inventory[existing_key]['last_seen'] = time.time()
+        return dict(device_inventory[existing_key])
+
+
+def _bluetooth_state_updates_for_action(action):
+    return {
+        'connect': {'connected': True},
+        'disconnect': {'connected': False},
+        'pair': {'paired': True},
+        'trust': {'trusted': True},
+        'untrust': {'trusted': False},
+        'block': {'blocked': True},
+        'unblock': {'blocked': False},
+        'remove': {'paired': False, 'connected': False, 'trusted': False},
+    }.get(action, {})
+
+
+def _parse_bluetooth_info_output(output):
+    updates = {}
+    for line in str(output or '').splitlines():
+        if ':' not in line:
+            continue
+        key, value = [part.strip() for part in line.split(':', 1)]
+        key = key.casefold()
+        value_bool = _bluetooth_truthy(value)
+        if key in {'connected', 'paired', 'trusted', 'blocked'}:
+            updates[key] = value_bool
+        elif key in {'name', 'alias'} and value:
+            updates['name'] = value
+    return updates
+
+def forget_inventory_device(identifier):
+    normalized = normalize_mac(identifier) if identifier else None
+    removed = None
+    with device_inventory_lock:
+        keys = []
+        if normalized:
+            keys.extend([f'mac:{normalized}', normalized])
+        keys.append(identifier)
+        for key in keys:
+            if key in device_inventory:
+                removed = device_inventory.pop(key)
+                break
+        if removed is None and normalized:
+            for key, item in list(device_inventory.items()):
+                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
+                    removed = device_inventory.pop(key)
+                    break
+    return removed
+
+def bluetooth_detail_fields(device):
+    skip = {
+        'id', 'name', 'display_name', 'ip', 'mac', 'address', 'manufacturer',
+        'first_seen', 'last_seen', 'sources', 'interfaces', 'is_unknown_manufacturer',
+    }
+    labels = {
+        'status': 'Status',
+        'instance_id': 'Windows Instance ID',
+        'device_class': 'Device Class',
+        'service': 'Service',
+        'pnp_manufacturer': 'PnP Manufacturer',
+        'rssi': 'RSSI',
+        'details': 'Adapter Details',
+        'device_type': 'Device Type',
+    }
+    fields = []
+    for key, value in sorted((device or {}).items()):
+        if key in skip or value in (None, ''):
+            continue
+        if isinstance(value, (list, tuple, set)):
+            value = ', '.join(str(item) for item in value if item not in (None, ''))
+        elif isinstance(value, dict):
+            value = json.dumps(value, sort_keys=True)
+        fields.append({'label': labels.get(key, key.replace('_', ' ').title()), 'value': value})
+    return fields
+
 def alert_records():
     """Return alert records with display labels."""
     with new_device_alerts_lock:
@@ -545,9 +858,9 @@ def manufacturer_insights(records=None):
     }
 
 
-def json_error(message, status=400):
+def json_error(message, status=400, **payload):
     """Return a consistently shaped JSON error response."""
-    return jsonify({'status': 'error', 'message': message}), status
+    return jsonify({'status': 'error', 'message': message, **payload}), status
 
 
 def json_success(**payload):
@@ -568,6 +881,30 @@ def parse_int(value, error_message):
         raise ValueError(error_message) from exc
 
 
+def _scan_result_counts(result):
+    result = result or {}
+    return {
+        'devices': len(result.get('devices') or []),
+        'wlans': len(result.get('wlans') or []),
+    }
+
+
+def _append_scan_event(job_id, message, **updates):
+    event = {'time': time.time(), 'message': message}
+    with scan_jobs_lock:
+        job = scan_jobs.get(job_id)
+        if not job:
+            return
+        if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
+            return
+        events = list(job.get('events') or [])
+        events.append(event)
+        job.update(updates)
+        job['message'] = message
+        job['events'] = events[-20:]
+        job['updated_at'] = time.time()
+
+
 def _set_scan_job(job_id, **updates):
     with scan_jobs_lock:
         job = scan_jobs.get(job_id)
@@ -575,38 +912,46 @@ def _set_scan_job(job_id, **updates):
             return
         if job.get('status') == 'cancelled' and updates.get('status') in {'completed', 'failed'}:
             return
+        result = updates.get('result')
+        if result is not None:
+            updates.setdefault('result_counts', _scan_result_counts(result))
         job.update(updates)
         job['updated_at'] = time.time()
 
 
 def _run_scan_job(job_id, scan_type, selected_interface):
-    _set_scan_job(job_id, status='running', started_at=time.time(), updated_at=time.time())
+    _append_scan_event(job_id, f'Starting {scan_type} scan on {selected_interface}.', status='running', started_at=time.time())
     try:
         if scan_type == 'wlan':
             from scripts.wifi import utils as wifi_utils
+            _append_scan_event(job_id, 'Refreshing wireless scan data from the selected adapter.')
             wifi_utils.scan_networks(selected_interface)
-            result = {'wlans': wifi_utils.get_networks_summary()}
+            wlans = wifi_utils.get_networks_summary()
+            diagnostics = wifi_utils.get_scan_diagnostics() if hasattr(wifi_utils, 'get_scan_diagnostics') else {}
+            result = {'wlans': wlans, 'scan_diagnostics': diagnostics}
+            _append_scan_event(job_id, f'Parsed {len(wlans)} wireless network(s) from scan output.', result_counts=_scan_result_counts(result))
         elif scan_type == 'bluetooth':
+            _append_scan_event(job_id, 'Discovering Bluetooth devices from the host adapter.')
             devices = asyncio.run(get_bluetooth_devices())
+            summaries = [bluetooth_device_summary(dev) for dev in devices]
             result = {
-                'devices': [
-                    {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
-                    for dev in devices
-                ],
+                'devices': summaries,
                 'action_capability': bluetooth_action_capability(),
             }
+            _append_scan_event(job_id, f'Parsed {len(summaries)} Bluetooth device(s) from scan output.', result_counts=_scan_result_counts(result))
         else:
             raise ValueError('Unsupported scan type')
         with scan_jobs_lock:
             cancelled = scan_jobs.get(job_id, {}).get('cancel_requested')
         if cancelled:
-            _set_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Job cancelled.')
+            _append_scan_event(job_id, 'Job cancelled.', status='cancelled', completed_at=time.time())
             return
         if scan_type == 'bluetooth':
             record_inventory_devices(result.get('devices', []), 'bluetooth-scan', selected_interface)
-        _set_scan_job(job_id, status='completed', completed_at=time.time(), result=result)
+            _append_scan_event(job_id, f'Recorded {len(result.get("devices", []))} Bluetooth device(s) in inventory.', result_counts=_scan_result_counts(result))
+        _append_scan_event(job_id, f'{scan_type.title()} scan complete.', status='completed', completed_at=time.time(), result=result, result_counts=_scan_result_counts(result))
     except Exception as exc:
-        _set_scan_job(job_id, status='failed', completed_at=time.time(), error=str(exc))
+        _append_scan_event(job_id, f'{scan_type.title()} scan failed: {exc}', status='failed', completed_at=time.time(), error=str(exc))
 
 
 
@@ -621,14 +966,18 @@ def _port_scan_job_snapshot(job):
 
 
 def _scan_job_snapshot(job):
+    status = job.get('status')
+    progress = 100 if status in {'completed', 'failed', 'cancelled'} else (10 if status == 'queued' else 50)
     return {
         **job,
         'kind': 'scan',
         'label': f"{job.get('scan_type', 'scan')} scan",
         'total_ports': None,
         'scanned_ports': None,
-        'progress': 100 if job.get('status') in {'completed', 'failed', 'cancelled'} else 0,
-        'cancelable': job.get('status') in {'queued', 'running'},
+        'progress': progress,
+        'result_counts': dict(job.get('result_counts') or {'devices': 0, 'wlans': 0}),
+        'events': list(job.get('events') or []),
+        'cancelable': status in {'queued', 'running'},
     }
 
 
@@ -760,6 +1109,14 @@ def create_scan_job(scan_type, selected_interface):
         raise ValueError('Unsupported scan type')
     if not selected_interface:
         raise ValueError('Missing selected interface')
+    with scan_jobs_lock:
+        for existing_job in scan_jobs.values():
+            if (
+                existing_job.get('scan_type') == scan_type
+                and existing_job.get('selected_interface') == selected_interface
+                and existing_job.get('status') in {'queued', 'running'}
+            ):
+                return _scan_job_snapshot(existing_job)
     job_id = uuid.uuid4().hex
     with scan_jobs_lock:
         scan_jobs[job_id] = {
@@ -769,11 +1126,15 @@ def create_scan_job(scan_type, selected_interface):
             'selected_interface': selected_interface,
             'status': 'queued',
             'cancel_requested': False,
+            'message': f'{scan_type.title()} scan queued for {selected_interface}.',
+            'events': [{'time': time.time(), 'message': f'{scan_type.title()} scan queued for {selected_interface}.'}],
+            'result_counts': {'devices': 0, 'wlans': 0},
             'created_at': time.time(),
             'updated_at': time.time(),
         }
     threading.Thread(target=_run_scan_job, args=(job_id, scan_type, selected_interface), daemon=True).start()
-    return scan_jobs[job_id]
+    with scan_jobs_lock:
+        return _scan_job_snapshot(scan_jobs[job_id])
 
 
 
@@ -1165,27 +1526,46 @@ def traceroute_page():
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
     mac_re = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+    inventory_device = find_inventory_device(identifier)
 
     mac = None
     ip = None
 
     if mac_re.match(identifier):
-        # Identifier is a MAC address
-        mac = identifier
-        ip = get_ip_by_mac(mac)
+        mac = normalize_mac(identifier)
+        ip = (inventory_device or {}).get('ip') or get_ip_by_mac(mac)
     else:
-        # Identifier is likely an IP address
         ip = identifier
-        mac = get_mac_by_ip(ip)
+        mac = (inventory_device or {}).get('mac') or get_mac_by_ip(ip)
 
-    manufacturer = lookup_manufacturer(mac) if mac else 'Unknown'
+    sources = set((inventory_device or {}).get('sources', []))
+    device_type = str((inventory_device or {}).get('device_type') or '').casefold()
+    is_bluetooth = 'bluetooth-scan' in sources or 'bluetooth' in device_type
+    if is_bluetooth:
+        ip = None
+
+    manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
+    display_name = (
+        (inventory_device or {}).get('name')
+        or (inventory_device or {}).get('display_name')
+        or mac
+        or ip
+        or identifier
+    )
 
     return render_template(
         'client_detail.html',
-        title=f'Client {identifier}',
+        title=f'Client {display_name}',
         ip=ip,
         mac=mac,
         manufacturer=manufacturer,
+        display_name=display_name,
+        is_bluetooth=is_bluetooth,
+        bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
+        bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
+        bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
+        bluetooth_adapters=bluetooth_adapter_choices() if is_bluetooth else [],
+        bluetooth_action_history=bluetooth_action_history(mac) if is_bluetooth else [],
         **current_context(),
     )
 
@@ -1315,6 +1695,23 @@ def wireless_network_detail():
     )
 
 
+
+@app.route('/interfaces/<interface_name>/state', methods=['POST'])
+def interface_power_state(interface_name):
+    desired_state = request.form.get('state')
+    interface = next((iface for iface in network_interfaces if iface.name == interface_name), None)
+    try:
+        message = set_interface_power_state(
+            interface_name,
+            desired_state,
+            getattr(interface, 'interface_type', None),
+        )
+        return json_success(message=message)
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except Exception as exc:
+        return json_error(f'Interface power error: {exc}', 500)
+
 @app.route('/<interface_type>')
 def interfaces_by_type(interface_type):
     requested_type = interface_type.lower()
@@ -1425,7 +1822,7 @@ def scan_job_status(job_id):
         job = scan_jobs.get(job_id)
         if not job:
             return json_error('Scan job not found', 404)
-        return json_success(job=dict(job))
+        return json_success(job=_scan_job_snapshot(job))
 
 
 @app.route('/wlan-scan', methods=['POST'])
@@ -1476,10 +1873,7 @@ def bluetooth_scan():
 
     try:
         devices = asyncio.run(get_bluetooth_devices())
-        devices_summary = [
-            {'address': dev.address, 'name': dev.name, 'manufacturer': lookup_manufacturer(dev.address)}
-            for dev in devices
-        ]
+        devices_summary = [bluetooth_device_summary(dev) for dev in devices]
         return json_success(devices=devices_summary, action_capability=bluetooth_action_capability())
     except Exception as e:
         return json_error(f'Bluetooth scan error: {str(e)}', 500)
@@ -1490,16 +1884,53 @@ def bluetooth_action():
     data = request.form
     action = data.get('action')
     address = data.get('address')
+    adapter = data.get('adapter')
 
     try:
-        output = run_bluetoothctl_action(action, address)
-        return json_success(message='Bluetooth action completed', output=output)
+        output = run_bluetoothctl_action(action, address, adapter=adapter)
+        updates = _bluetooth_state_updates_for_action(action)
+        if action == 'info':
+            updates.update(_parse_bluetooth_info_output(output))
+        device = _merge_inventory_device_state(address, updates) if updates else find_inventory_device(address)
+        history = record_bluetooth_action_history(address, action, 'success', output or 'Action completed.', adapter=adapter)
+        return json_success(message='Bluetooth action completed', output=output, history=history, actions=bluetooth_contextual_actions(device), device_state=bluetooth_device_state(device))
     except ValueError as e:
-        return json_error(str(e))
+        history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
+        return json_error(str(e), history=history)
     except BluetoothToolUnavailable as e:
-        return json_error(str(e), 501)
+        history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
+        return json_error(str(e), 501, history=history)
     except Exception as e:
-        return json_error(f'Bluetooth action error: {str(e)}', 500)
+        message = f'Bluetooth action error: {str(e)}'
+        history = record_bluetooth_action_history(address, action, 'error', message, adapter=adapter)
+        return json_error(message, 500, history=history)
+
+
+@app.route('/bluetooth-device/<address>/refresh', methods=['POST'])
+def bluetooth_device_refresh(address):
+    try:
+        output = run_bluetoothctl_action('info', address, adapter=request.form.get('adapter'))
+        device = _merge_inventory_device_state(address, _parse_bluetooth_info_output(output))
+        history = record_bluetooth_action_history(address, 'refresh', 'success', output or 'Device info refreshed.', adapter=request.form.get('adapter'))
+        return json_success(message='Bluetooth device refreshed', output=output, device=device, history=history, actions=bluetooth_contextual_actions(device), device_state=bluetooth_device_state(device))
+    except ValueError as e:
+        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
+        return json_error(str(e), history=history)
+    except BluetoothToolUnavailable as e:
+        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
+        return json_error(str(e), 501, history=history)
+    except Exception as e:
+        message = f'Bluetooth refresh error: {str(e)}'
+        history = record_bluetooth_action_history(address, 'refresh', 'error', message, adapter=request.form.get('adapter'))
+        return json_error(message, 500, history=history)
+
+
+@app.route('/inventory/<identifier>/forget', methods=['POST'])
+def forget_inventory_route(identifier):
+    removed = forget_inventory_device(identifier)
+    if not removed:
+        return json_error('Device was not found in inventory', 404)
+    return json_success(message='Device forgotten from Mobile Router inventory')
 
 
 @app.route('/spoof-mac', methods=['POST'])

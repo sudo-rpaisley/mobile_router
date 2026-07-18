@@ -3,9 +3,15 @@
   <main class="page-shell">
     <section class="page-hero">
       <div class="page-hero-copy">
-        <p class="page-kicker">Client</p>
-        <h1 class="page-title">{{ mac if mac else ip }}</h1>
-        <p class="page-subtitle">Device identity and manufacturer details discovered from scan results.</p>
+        <p class="page-kicker">{{ 'Bluetooth Device' if is_bluetooth else 'Client' }}</p>
+        <h1 class="page-title">{{ display_name }}</h1>
+        <p class="page-subtitle">
+          {% if is_bluetooth %}
+            Bluetooth identity and device details discovered from scan results. The MAC address remains the unique device ID.
+          {% else %}
+            Device identity and manufacturer details discovered from scan results.
+          {% endif %}
+        </p>
       </div>
     </section>
 
@@ -13,23 +19,75 @@
       <div class="card-body">
         <h2 class="theme-section-title">Overview</h2>
         <dl class="interface-definition-list">
+          {% if not is_bluetooth %}
+            <div>
+              <dt>IP Address</dt>
+              <dd>{{ ip if ip else 'Unknown' }}</dd>
+            </div>
+          {% endif %}
           <div>
-            <dt>IP Address</dt>
-            <dd>{{ ip if ip else 'Unknown' }}</dd>
-          </div>
-          <div>
-            <dt>MAC Address</dt>
+            <dt>{{ 'Bluetooth Address' if is_bluetooth else 'MAC Address' }}</dt>
             <dd>{{ mac if mac else 'Unknown' }}</dd>
           </div>
           <div>
             <dt>Manufacturer</dt>
             <dd>{{ manufacturer }}</dd>
           </div>
+          {% for field in bluetooth_fields %}
+            <div>
+              <dt>{{ field.label }}</dt>
+              <dd>{{ field.value }}</dd>
+            </div>
+          {% endfor %}
         </dl>
       </div>
     </section>
 
-    {% if ip %}
+    {% if is_bluetooth %}
+      <section class="theme-card card bluetooth-device-card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Bluetooth Controls</h2>
+          {% if not bluetooth_action_capability.available %}
+            <div class="alert alert-warning small" role="alert">{{ bluetooth_action_capability.message }}</div>
+          {% endif %}
+          <div class="form-group mt-3">
+            <label for="bluetooth-action-adapter">Bluetooth Adapter</label>
+            <select class="form-control" id="bluetooth-action-adapter" data-bluetooth-adapter>
+              <option value="">Default host adapter</option>
+              {% for adapter in bluetooth_adapters %}
+                <option value="{{ adapter.id }}">{{ adapter.name }}{% if adapter.state %} — {{ adapter.state }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="bluetooth-action-grid mt-2">
+            <div class="bluetooth-contextual-actions">
+            {% for action in bluetooth_actions %}
+              <button type="button" class="btn btn-{{ action.style }} btn-sm bluetooth-action" data-action="{{ action.action }}" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
+                <i class="fa-solid fa-{{ action.icon }}"></i> {{ action.label }}
+              </button>
+            {% endfor %}
+            </div>
+            <button type="button" class="btn btn-outline-info btn-sm bluetooth-refresh-device" data-address="{{ mac }}" {% if not bluetooth_action_capability.available %}disabled{% endif %}>
+              <i class="fa-solid fa-rotate"></i> Refresh This Device
+            </button>
+            <button type="button" class="btn btn-outline-danger btn-sm bluetooth-forget-device" data-address="{{ mac }}">
+              <i class="fa-solid fa-folder-minus"></i> Forget From Inventory
+            </button>
+          </div>
+          <pre class="bluetooth-action-output d-none mt-3 mb-0"></pre>
+          <div class="bluetooth-action-history mt-3">
+            <h3 class="theme-subsection-title">Bluetooth Action History</h3>
+            <ol class="bluetooth-action-history-list">
+              {% for entry in bluetooth_action_history %}
+                <li class="{{ 'text-danger' if entry.status == 'error' else 'text-success' }}"><strong>{{ entry.time_label }}</strong> — {{ entry.action }}{% if entry.adapter %} via {{ entry.adapter }}{% endif %}: {{ entry.message }}</li>
+              {% else %}
+                <li class="text-muted">No Bluetooth actions have been run for this device yet.</li>
+              {% endfor %}
+            </ol>
+          </div>
+        </div>
+      </section>
+    {% elif ip %}
       <section class="theme-card card port-scan-panel" data-host="{{ ip }}">
         <div class="card-body">
           <h2 class="theme-section-title">Device Port Scan</h2>
@@ -69,7 +127,11 @@
       </section>
     {% endif %}
   </main>
+{% if is_bluetooth %}
+<script src="/static/js/bluetooth-scan.js"></script>
+{% else %}
 <script src="/static/js/port_scan_live.js"></script>
+{% endif %}
 </body>
 {% include '_footer.html' %}
 </html>

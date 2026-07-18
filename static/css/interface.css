@@ -416,3 +416,174 @@ html[data-theme="dark"] .interface-hero-icon .col-md-3 {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* Horizontal interface overview and address layouts. */
+.interface-summary-card .interface-definition-list {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.interface-address-card {
+  grid-column: 1 / -1;
+}
+
+.interface-address-card .address-card-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.interface-address-card .address-card {
+  flex: 0 0 min(19rem, 85vw);
+}
+
+@media (max-width: 767.98px) {
+  .interface-summary-card .interface-definition-list {
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  }
+}
+
+/* Wider overview row so interface details fit across one line on desktop. */
+.interface-detail-page {
+  width: min(1440px, calc(100% - 2rem));
+}
+
+.interface-summary-card {
+  grid-column: 1 / -1;
+}
+
+.interface-summary-card .interface-definition-list {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.wireless-chart-panel {
+  cursor: pointer;
+}
+
+.wireless-chart-expanded {
+  border-top: 1px solid #e9eef5;
+  display: none;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.wireless-chart-panel.is-expanded .wireless-chart-expanded {
+  display: block;
+}
+
+.wireless-map-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.wireless-map-node {
+  border: 1px solid #dce8f8;
+  border-radius: 0.85rem;
+  background: #f8fbff;
+  padding: 0.75rem;
+}
+
+.wireless-map-node strong,
+.wireless-map-node span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.scan-diagnostics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.scan-diagnostics-grid span {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  color: var(--text-muted);
+  padding: 0.35rem 0.75rem;
+}
+
+.scan-diagnostics-list {
+  color: var(--text-muted);
+  padding-left: 1.25rem;
+}
+
+.wireless-chart-panel.is-fullscreen-map {
+  position: fixed;
+  inset: 2rem;
+  z-index: 2000;
+  overflow: auto;
+  background: var(--card-bg);
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.45);
+}
+
+.wireless-chart-row small {
+  min-width: 4rem;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.wireless-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.wireless-source-stats,
+.wireless-suggestion-list,
+.wireless-heatmap {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.wireless-heatmap-row {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.wireless-heatmap-cell {
+  background: #38bdf8;
+  border-radius: 0.35rem;
+  color: #0f172a;
+  display: inline-block;
+  font-size: 0.75rem;
+  min-width: 2rem;
+  padding: 0.2rem 0.35rem;
+  text-align: center;
+}
+
+.wireless-map-close {
+  display: none;
+}
+
+.wireless-chart-panel.is-fullscreen-map .wireless-map-close {
+  display: inline-block;
+}
+
+.wireless-map-tabs .active {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+.wireless-raw-output pre {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+body.wireless-map-open {
+  overflow: hidden;
+}
+
+.wireless-chart-panel.is-fullscreen-map .wireless-map-close {
+  border-radius: 999px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 2.25rem;
+}

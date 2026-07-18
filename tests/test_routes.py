@@ -40,6 +40,38 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Inline network tap mode', response.data)
         self.assertIn(b'Central capability registry', response.data)
         self.assertIn(b'Background scan jobs', response.data)
+        self.assertIn(b'Layout density and navigation review', response.data)
+        self.assertIn(b'Tabbed interface detail layout', response.data)
+        self.assertIn(b'Guided modes and progression', response.data)
+        self.assertIn(b'Full and training mode switch', response.data)
+        self.assertIn(b'Progressive training unlocks', response.data)
+        self.assertIn(b'Guided focus overlay', response.data)
+        self.assertIn(b'Training trophies and milestones', response.data)
+        self.assertIn(b'Training trophies', response.data)
+        self.assertIn(b'Scan milestone trophies', response.data)
+        self.assertIn(b'Wireless analysis trophies', response.data)
+        self.assertIn(b'Bluetooth workflow trophies', response.data)
+        self.assertIn(b'Reporting and evidence trophies', response.data)
+        self.assertIn(b'Training completion trophies', response.data)
+        self.assertIn(b'Grouped discovery notifications', response.data)
+        self.assertIn(b'Core network tools', response.data)
+        self.assertIn(b'Ping and reachability testing', response.data)
+        self.assertIn(b'ARP and neighbor discovery viewer', response.data)
+        self.assertIn(b'DNS lookup and diagnostics toolkit', response.data)
+        self.assertIn(b'Route table and gateway diagnostics', response.data)
+        self.assertIn(b'Packet capture and protocol summary', response.data)
+        self.assertIn(b'Service fingerprinting and banner detection', response.data)
+        self.assertIn(b'Extended network tools', response.data)
+        self.assertIn(b'TLS certificate inspection', response.data)
+        self.assertIn(b'DHCP lease and server inspection', response.data)
+        self.assertIn(b'mDNS and Bonjour service discovery', response.data)
+        self.assertIn(b'UPnP and SSDP discovery', response.data)
+        self.assertIn(b'IPv6 assessment toolkit', response.data)
+        self.assertIn(b'Dedicated wireless occupancy report page', response.data)
+        self.assertIn(b'Server-side wireless occupancy history', response.data)
+        self.assertIn(b'Bluetooth metadata refresh pipeline', response.data)
+        self.assertIn(b'Bluetooth destructive-action confirmations', response.data)
+        self.assertIn(b'Browser-level UI smoke tests', response.data)
         self.assertIn(b'Done', response.data)
         self.assertIn(b'completed', response.data)
         self.assertIn(b'remaining', response.data)
@@ -137,6 +169,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'action="/bluetooth-phone"', response.data)
         self.assertIn(b'Phone Integration', response.data)
         self.assertIn(b'id="advertise-enabled"', response.data)
+        self.assertIn(b'Changes autosave', response.data)
+        self.assertIn(b'bluetooth-phone-autosave.js', response.data)
+        self.assertNotIn(b'Save and apply', response.data)
         self.assertIn(b'Pair phones and request authorised contacts', response.data)
 
     def test_red_team_card_forms_are_constrained_to_card_width(self):
@@ -198,10 +233,26 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         job = response.get_json()['job']
         self.assertEqual(job['status'], 'queued')
+        self.assertIn('message', job)
+        self.assertIn('events', job)
+        self.assertEqual(job['result_counts'], {'devices': 0, 'wlans': 0})
 
         response = self.client.get(f"/scan-jobs/{job['id']}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['job']['scan_type'], 'wlan')
+        status_job = response.get_json()['job']
+        self.assertEqual(status_job['scan_type'], 'wlan')
+        self.assertEqual(status_job['progress'], 10)
+        self.assertTrue(status_job['events'])
+
+
+    @patch('app.threading.Thread')
+    def test_duplicate_scan_job_reuses_running_job(self, thread_cls):
+        thread_cls.return_value.start.return_value = None
+        first = self.client.post('/scan-jobs', data={'scanType': 'bluetooth', 'selectedInterface': 'hci0'}).get_json()['job']
+        second = self.client.post('/scan-jobs', data={'scanType': 'bluetooth', 'selectedInterface': 'hci0'}).get_json()['job']
+
+        self.assertEqual(first['id'], second['id'])
+        self.assertEqual(thread_cls.call_count, 1)
 
     def test_scan_job_rejects_unknown_scan_type(self):
         response = self.client.post('/scan-jobs', data={'scanType': 'unknown', 'selectedInterface': 'WiFi'})
@@ -408,6 +459,97 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'All ports', response.data)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertIn(b'port_scan_live.js', response.data)
+
+
+    def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {
+                'address': '6a:76:8a:0c:36:70',
+                'name': 'Trail Speaker',
+                'manufacturer': 'Audio Lab',
+                'status': 'OK',
+                'device_class': 'Bluetooth',
+                'instance_id': 'BTHENUM\\DEV_6A768A0C3670',
+            }
+        ], 'bluetooth-scan', 'hci0')
+
+        response = self.client.get('/clients/6a:76:8a:0c:36:70')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Trail Speaker', response.data)
+        self.assertIn(b'Bluetooth Device', response.data)
+        self.assertIn(b'Bluetooth Address', response.data)
+        self.assertIn(b'6a:76:8a:0c:36:70', response.data)
+        self.assertIn(b'Status', response.data)
+        self.assertIn(b'OK', response.data)
+        self.assertNotIn(b'IP Address', response.data)
+        self.assertIn(b'Bluetooth Controls', response.data)
+        self.assertIn(b'data-action="connect"', response.data)
+        self.assertIn(b'data-action="pair"', response.data)
+        self.assertIn(b'Refresh This Device', response.data)
+        self.assertIn(b'Forget From Inventory', response.data)
+        self.assertIn(b'Bluetooth Action History', response.data)
+        self.assertIn(b'Default host adapter', response.data)
+        self.assertIn(b'bluetooth-scan.js', response.data)
+        self.assertNotIn(b'Bluetooth Notes', response.data)
+        self.assertNotIn(b'Device Port Scan', response.data)
+        self.assertNotIn(b'port_scan_live.js', response.data)
+
+
+    def test_bluetooth_client_detail_uses_contextual_connected_actions(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {
+                'address': '6a:76:8a:0c:36:71',
+                'name': 'Connected Speaker',
+                'manufacturer': 'Audio Lab',
+                'connected': True,
+                'paired': True,
+                'trusted': True,
+            }
+        ], 'bluetooth-scan', 'hci0')
+
+        response = self.client.get('/clients/6a:76:8a:0c:36:71')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-action="disconnect"', response.data)
+        self.assertIn(b'data-action="untrust"', response.data)
+        self.assertNotIn(b'data-action="connect"', response.data)
+        self.assertNotIn(b'data-action="pair"', response.data)
+
+
+    @patch('app.set_interface_power_state')
+    def test_interface_power_endpoint_toggles_interface(self, set_power):
+        set_power.return_value = 'WiFi was turned off.'
+
+        response = self.client.post('/interfaces/WiFi/state', data={'state': 'down'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['message'], 'WiFi was turned off.')
+        set_power.assert_called_once()
+
+    def test_interface_detail_includes_power_controls(self):
+        wireless_interface = SimpleNamespace(
+            name='WiFi',
+            interface_type='Wireless',
+            state='UP',
+            addresses=[],
+            manufacturer='Unknown',
+            extra_info={},
+        )
+
+        with (
+            patch.object(app_module, 'network_interfaces', [wireless_interface]),
+            patch.object(app_module, 'networkTechnologies', {'Wireless'}),
+        ):
+            response = self.client.get('/wireless/WiFi')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-interface-power', response.data)
+        self.assertIn(b'Turn on', response.data)
+        self.assertIn(b'Turn off', response.data)
+        self.assertIn(b'interface-power.js', response.data)
 
     def test_inventory_links_host_devices_to_port_scan(self):
         app_module.device_inventory.clear()
@@ -677,8 +819,29 @@ class RouteSmokeTest(unittest.TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['output'], 'Device disconnected')
-        run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff')
+        payload = response.get_json()
+        self.assertEqual(payload['output'], 'Device disconnected')
+        self.assertEqual(payload['history'][0]['action'], 'disconnect')
+        run_action.assert_called_once_with('disconnect', 'aa:bb:cc:dd:ee:ff', adapter=None)
+
+    @patch('app.run_bluetoothctl_action')
+    def test_bluetooth_device_refresh_uses_single_device_info(self, run_action):
+        run_action.return_value = 'Name: Trail Speaker'
+
+        response = self.client.post('/bluetooth-device/aa:bb:cc:dd:ee:ff/refresh', data={'adapter': 'hci0'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Name: Trail Speaker', response.get_json()['output'])
+        run_action.assert_called_once_with('info', 'aa:bb:cc:dd:ee:ff', adapter='hci0')
+
+    def test_forget_inventory_device_removes_only_mobile_router_record(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([{'address': '6a:76:8a:0c:36:72', 'name': 'Old Speaker'}], 'bluetooth-scan', 'hci0')
+
+        response = self.client.post('/inventory/6a:76:8a:0c:36:72/forget')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(app_module.find_inventory_device('6a:76:8a:0c:36:72'))
 
     @patch.object(app_module.shutil, 'which')
     @patch.object(app_module.subprocess, 'run')
