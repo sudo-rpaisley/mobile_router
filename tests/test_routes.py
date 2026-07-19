@@ -1733,6 +1733,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertNotIn(b'href="#network-device-scan"', response.data)
         self.assertIn(b'Continuous passive capture', response.data)
         self.assertIn(b'data-passive-monitor-toggle', response.data)
+        self.assertIn(b'Passive-only analytics', response.data)
+        self.assertIn(b'data-passive-analytics-panel', response.data)
         self.assertIn(b'Network Device Scan', response.data)
         self.assertIn(b'id="comprehensive-scan-btn"', response.data)
         self.assertIn(b'<option value="wlan0" selected>', response.data)
@@ -1790,6 +1792,7 @@ class RouteSmokeTest(unittest.TestCase):
         app_module.wireless_network_client_cache.clear()
         app_module.wireless_network_labels.clear()
         app_module.passive_monitor_jobs.clear()
+        app_module.passive_observation_analytics.clear()
         app_module.record_inventory_devices([
             {'ip': '192.168.20.10', 'mac': 'AA:BB:CC:DD:EE:10', 'hostname': 'Camera'}
         ], 'passive-monitor', 'wlan0')
@@ -1798,10 +1801,13 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'data-passive-monitor-toggle', response.data)
+        self.assertIn(b'Passive-only analytics', response.data)
+        self.assertIn(b'data-passive-analytics-panel', response.data)
         with open('static/js/network_scan.js') as handle:
             js = handle.read()
         self.assertIn('/passive-monitor/status', js)
         self.assertIn('/passive-monitor/toggle', js)
+        self.assertIn('/passive-analytics.json', js)
         self.assertIn(b'The app does not send probe packets for this mode', response.data)
 
     @patch('app.passive_scan')
@@ -1832,6 +1838,31 @@ class RouteSmokeTest(unittest.TestCase):
             'interval': '5',
         })
         self.assertFalse(response.get_json()['status']['enabled'])
+
+    @patch('app.passive_scan')
+    def test_passive_scan_records_passive_only_analytics_and_quiet_devices(self, passive):
+        app_module.device_inventory.clear()
+        app_module.passive_observation_analytics.clear()
+        passive.return_value = [{'ip': '192.168.20.55', 'mac': 'AA:BB:CC:DD:EE:55'}]
+
+        response = self.client.post('/passive-scan', data={'selectedInterface': 'wlan0'})
+        self.assertEqual(response.status_code, 200)
+        analytics = response.get_json()['analytics']
+        self.assertEqual(analytics['known_device_count'], 1)
+        self.assertEqual(analytics['active_device_count'], 1)
+        self.assertEqual(analytics['recently_disappeared_count'], 0)
+
+        passive.return_value = []
+        response = self.client.post('/passive-scan', data={'selectedInterface': 'wlan0'})
+        self.assertEqual(response.status_code, 200)
+        analytics = response.get_json()['analytics']
+        self.assertEqual(analytics['known_device_count'], 1)
+        self.assertEqual(analytics['active_device_count'], 0)
+        self.assertEqual(analytics['recently_disappeared_count'], 1)
+
+        response = self.client.get('/passive-analytics.json?selectedInterface=wlan0')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['analytics']['recently_disappeared'][0]['ip'], '192.168.20.55')
 
     @patch('scripts.wifi.utils.get_network_detail')
     def test_wireless_network_detail_persists_clients_between_reloads(self, get_detail):

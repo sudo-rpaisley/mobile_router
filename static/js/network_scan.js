@@ -294,6 +294,45 @@ $(document).ready(function () {
   }
 
 
+  function renderPassiveAnalytics(analytics) {
+    const panel = $('[data-passive-analytics-panel]');
+    if (!panel.length) return;
+    const summary = analytics || {};
+    const samples = summary.total_samples || 0;
+    const known = summary.known_device_count || 0;
+    const active = summary.active_device_count || 0;
+    const quiet = summary.recently_disappeared_count || 0;
+    $('[data-passive-analytics-summary]').html(`Samples: <strong>${escapeHtml(samples)}</strong> · Active in latest sample: <strong>${escapeHtml(active)}</strong> · Known passively: <strong>${escapeHtml(known)}</strong> · Recently quiet: <strong>${escapeHtml(quiet)}</strong>`);
+    const quietDevices = summary.recently_disappeared || [];
+    const activeDevices = summary.active_devices || [];
+    const cards = [
+      ...activeDevices.slice(0, 6).map((item) => ({...item, state: 'Observed in latest passive sample'})),
+      ...quietDevices.slice(0, 6).map((item) => ({...item, state: 'Recently disappeared / quiet'}))
+    ];
+    if (!cards.length) {
+      $('[data-passive-analytics-devices]').html('<p class="text-muted mb-0">No passive device churn yet.</p>');
+      return;
+    }
+    $('[data-passive-analytics-devices]').html(cards.map((item) => `
+      <div class="port-service-card">
+        <strong>${escapeHtml(item.hostname || item.ip || item.mac || item.identity)}</strong>
+        <span>${escapeHtml(item.state)}</span>
+        <small>${escapeHtml(item.mac || 'MAC unknown')} · ${escapeHtml(item.manufacturer || 'Unknown')} · seen ${escapeHtml(item.seen_count || 0)} time(s)</small>
+      </div>`).join(''));
+  }
+
+  function refreshPassiveAnalytics() {
+    const panel = $('[data-passive-analytics-panel]');
+    if (!panel.length) return;
+    const iface = panel.attr('data-interface') || $('[data-passive-monitor-toggle]').attr('data-interface') || $('#interface-select-Scan').val() || '';
+    $.ajax({
+      url: '/passive-analytics.json',
+      method: 'GET',
+      data: { selectedInterface: iface },
+      success: function (resp) { renderPassiveAnalytics(resp.analytics || {}); }
+    });
+  }
+
   let passiveMonitorLastUpdate = null;
   let passiveMonitorPollTimer = null;
 
@@ -325,6 +364,7 @@ $(document).ready(function () {
           setPassiveMonitorStatus(`Passive capture running every ${status.interval || 10}s; last update saw ${count} device(s).`, status.error ? 'warning' : 'success');
           if (status.last_update && passiveMonitorLastUpdate && status.last_update !== passiveMonitorLastUpdate) {
             refreshNetworkDeviceList(`Passive capture added ${count} observed device(s).`);
+            refreshPassiveAnalytics();
           }
           passiveMonitorLastUpdate = status.last_update || passiveMonitorLastUpdate;
         } else {
@@ -351,6 +391,7 @@ $(document).ready(function () {
         const status = resp.status || {};
         passiveMonitorLastUpdate = status.last_update || null;
         setPassiveMonitorStatus(resp.message || 'Passive monitor updated.', enabled ? 'success' : 'muted');
+        refreshPassiveAnalytics();
         pollPassiveMonitorStatus();
       },
       error: function (xhr) {
@@ -363,6 +404,7 @@ $(document).ready(function () {
   activateNetworkDeviceTabFromHash();
 
   pollPassiveMonitorStatus();
+  refreshPassiveAnalytics();
 
   $(document).on('change', '[data-passive-monitor-toggle]', function () {
     togglePassiveMonitor($(this));
@@ -448,6 +490,7 @@ $(document).ready(function () {
       success: function (resp) {
         if (isNetworkDeviceListMode()) {
           refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Updating the device list...`);
+          renderPassiveAnalytics(resp.analytics || {});
           return;
         }
         let html = '<h3>Passive Scan Results</h3>';
@@ -462,6 +505,11 @@ $(document).ready(function () {
         showNetworkDeviceListStatus('Scan failed', 'danger');
       }
     });
+  });
+
+  $(document).on('click', '[data-passive-analytics-refresh]', function (e) {
+    e.preventDefault();
+    refreshPassiveAnalytics();
   });
 
   $(document).on('click', '[data-port-scan-all]', function (e) {

@@ -83,6 +83,8 @@ wireless_network_client_cache = {}
 wireless_network_labels = {}
 passive_monitor_jobs = {}
 passive_monitor_lock = threading.Lock()
+passive_observation_analytics = {}
+passive_analytics_lock = threading.Lock()
 HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
@@ -110,6 +112,7 @@ def runtime_state_snapshot():
         'scheduled_client_checks': dict(scheduled_client_checks),
         'wireless_network_client_cache': wireless_network_client_cache,
         'wireless_network_labels': dict(wireless_network_labels),
+        'passive_observation_analytics': passive_observation_analytics,
         'bluetooth_action_histories': bluetooth_action_histories,
         'evil_twin_lab_runs': evil_twin_lab_runs,
         'pineap_lab_runs': pineap_lab_runs,
@@ -145,6 +148,7 @@ def load_runtime_state():
     scheduled_client_checks.update(state.get('scheduled_client_checks') or {})
     wireless_network_client_cache.update(state.get('wireless_network_client_cache') or {})
     wireless_network_labels.update(state.get('wireless_network_labels') or {})
+    passive_observation_analytics.update(state.get('passive_observation_analytics') or {})
     bluetooth_action_histories.update(state.get('bluetooth_action_histories') or {})
     evil_twin_lab_runs.extend(state.get('evil_twin_lab_runs') or [])
     pineap_lab_runs.extend(state.get('pineap_lab_runs') or [])
@@ -2200,6 +2204,112 @@ def merge_discovered_devices(groups):
     return list(merged.values())
 
 
+def passive_device_identity(device):
+    """Return a stable identity key for passive observation analytics."""
+    mac = normalize_mac((device or {}).get('mac') or (device or {}).get('address'))
+    if mac:
+        return mac
+    ip = str((device or {}).get('ip') or '').strip()
+    if ip:
+        return f'ip:{ip}'
+    name = str((device or {}).get('hostname') or (device or {}).get('name') or '').strip()
+    if name:
+        return f'name:{name.lower()}'
+    return None
+
+
+def record_passive_observation_analytics(interface, devices, source='passive-scan'):
+    """Track passive-only observation counts, churn, and quiet devices per interface."""
+    iface = str(interface or 'unknown').strip() or 'unknown'
+    now = time.time()
+    seen_identities = []
+    with passive_analytics_lock:
+        analytics = passive_observation_analytics.setdefault(iface, {
+            'interface': iface,
+            'started_at': now,
+            'last_update': None,
+            'total_samples': 0,
+            'devices': {},
+            'history': [],
+            'last_seen_identities': [],
+        })
+        known_before = set((analytics.get('devices') or {}).keys())
+        devices_map = analytics.setdefault('devices', {})
+        for device in devices or []:
+            identity = passive_device_identity(device)
+            if not identity:
+                continue
+            seen_identities.append(identity)
+            record = devices_map.setdefault(identity, {
+                'identity': identity,
+                'first_seen': now,
+                'seen_count': 0,
+                'sources': [],
+            })
+            record.update({
+                'last_seen': now,
+                'ip': device.get('ip') or record.get('ip'),
+                'mac': normalize_mac(device.get('mac') or device.get('address')) or record.get('mac'),
+                'hostname': device.get('hostname') or device.get('name') or record.get('hostname'),
+                'manufacturer': device.get('manufacturer') or record.get('manufacturer') or 'Unknown',
+            })
+            record['seen_count'] = int(record.get('seen_count') or 0) + 1
+            sources = set(record.get('sources') or [])
+            sources.add(source)
+            record['sources'] = sorted(sources)
+        seen_set = set(seen_identities)
+        new_count = len(seen_set - known_before)
+        quiet = [identity for identity in known_before if identity not in seen_set]
+        analytics['last_update'] = now
+        analytics['total_samples'] = int(analytics.get('total_samples') or 0) + 1
+        analytics['last_seen_identities'] = sorted(seen_set)
+        analytics['history'] = ([{
+            'timestamp': now,
+            'source': source,
+            'observed_count': len(seen_set),
+            'new_count': new_count,
+            'quiet_count': len(quiet),
+        }] + list(analytics.get('history') or []))[:100]
+        snapshot = passive_observation_summary(iface, _locked=True)
+    save_runtime_state(f'passive-analytics:{source}')
+    return snapshot
+
+
+def passive_observation_summary(interface=None, _locked=False):
+    """Return passive-only analytics for one interface or all interfaces."""
+    def build(iface, analytics):
+        devices = list((analytics.get('devices') or {}).values())
+        last_seen = set(analytics.get('last_seen_identities') or [])
+        recently_disappeared = sorted(
+            [dict(item) for item in devices if item.get('identity') not in last_seen],
+            key=lambda item: item.get('last_seen') or 0,
+            reverse=True,
+        )[:25]
+        active = sorted(
+            [dict(item) for item in devices if item.get('identity') in last_seen],
+            key=lambda item: item.get('last_seen') or 0,
+            reverse=True,
+        )[:25]
+        return {
+            'interface': iface,
+            'started_at': analytics.get('started_at'),
+            'last_update': analytics.get('last_update'),
+            'total_samples': analytics.get('total_samples') or 0,
+            'known_device_count': len(devices),
+            'active_device_count': len(active),
+            'recently_disappeared_count': len(recently_disappeared),
+            'active_devices': active,
+            'recently_disappeared': recently_disappeared,
+            'history': list(analytics.get('history') or [])[:25],
+        }
+    if _locked:
+        if interface:
+            return build(interface, passive_observation_analytics.get(interface, {'interface': interface, 'devices': {}, 'history': []}))
+        return {iface: build(iface, analytics) for iface, analytics in passive_observation_analytics.items()}
+    with passive_analytics_lock:
+        if interface:
+            return build(interface, passive_observation_analytics.get(interface, {'interface': interface, 'devices': {}, 'history': []}))
+        return {iface: build(iface, analytics) for iface, analytics in passive_observation_analytics.items()}
 
 def passive_monitor_snapshot(interface=None):
     """Return passive ARP-cache monitor state for one interface or all interfaces."""
@@ -2221,12 +2331,14 @@ def _passive_monitor_worker(interface):
         try:
             devices = classify_scan_results(passive_scan(interface), interface)
             enriched = record_inventory_devices(devices, 'passive-monitor', interface)
+            analytics = record_passive_observation_analytics(interface, enriched, 'passive-monitor')
             with passive_monitor_lock:
                 current = passive_monitor_jobs.get(interface)
                 if current:
                     current.update({
                         'last_update': time.time(),
                         'last_count': len(enriched),
+                        'analytics': analytics,
                         'error': None,
                     })
         except Exception as exc:
@@ -3184,8 +3296,14 @@ def passive_scan_route():
         return json_error('Missing interface')
     devices = classify_scan_results(passive_scan(iface), iface)
     enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
-    return jsonify({'devices': enriched_devices})
+    analytics = record_passive_observation_analytics(iface, enriched_devices, 'passive-scan')
+    return jsonify({'devices': enriched_devices, 'analytics': analytics})
 
+
+@app.route('/passive-analytics.json')
+def passive_analytics_route():
+    interface = request.args.get('selectedInterface') or request.args.get('interface')
+    return json_success(analytics=passive_observation_summary(interface))
 
 
 @app.route('/passive-monitor/status')
