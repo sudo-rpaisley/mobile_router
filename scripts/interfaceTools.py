@@ -31,6 +31,7 @@ FALLBACK_OUI_DB = {
     '40:16:3b': 'Cisco Systems',
     '52:54:00': 'QEMU/KVM Virtual NIC',
     '74:ea:3a': 'Apple',
+    '8c:49:62': 'Roku, Inc.',
     '90:9a:4a': 'Ubiquiti Networks',
     '9c:2a:70': 'MikroTik',
     'a8:b1:3b': 'Netgear',

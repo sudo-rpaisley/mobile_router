@@ -880,6 +880,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(lookup_manufacturer('B8-27-EB-11-22-33'), 'Raspberry Pi Foundation')
         self.assertEqual(lookup_manufacturer('b827eb112233'), 'Raspberry Pi Foundation')
         self.assertEqual(lookup_manufacturer('52:54:00:12:34:56'), 'QEMU/KVM Virtual NIC')
+        self.assertEqual(lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
+        self.assertEqual(lookup_manufacturer('8C-49-62-BD-7D-37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('not-a-mac'), 'Unknown')
 
     def test_capabilities_page_shows_oui_database_health(self):
