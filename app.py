@@ -1122,7 +1122,7 @@ def record_device_open_ports(host, port_details, source='port-scan'):
     if not host:
         return None
     details = sorted(
-        [dict(item) for item in (port_details or []) if item.get('port')],
+        [enrich_port_web_url(host, item) for item in (port_details or []) if item.get('port')],
         key=lambda item: item['port'],
     )
     now = time.time()
@@ -1170,6 +1170,18 @@ def record_device_open_ports(host, port_details, source='port-scan'):
         current = change['current']
         append_client_timeline_event(host, 'Service changed', f"{current['port']}/tcp is now {current.get('service') or 'Unknown'} from {source}.", source)
     return updated
+
+
+def enrich_port_web_url(host, detail):
+    """Attach a clickable web URL for HTTP-like TCP services."""
+    item = dict(detail)
+    service = str(item.get('service') or '').lower()
+    port = int(item.get('port'))
+    if port in {80, 8080, 8000} or service.startswith('http '):
+        item['web_url'] = f"http://{host}:{port}/"
+    elif port in {443, 8443, 9443} or service.startswith('https'):
+        item['web_url'] = f"https://{host}:{port}/"
+    return item
 
 
 def _clean_detected_client_name(name, ip=None):
@@ -1670,6 +1682,11 @@ def merge_wireless_network_clients(network):
             'display_name': device.get('display_name'),
             'manufacturer': device.get('manufacturer'),
             'sources': device.get('sources', []),
+            'discovery_methods': device.get('discovery_methods') or device.get('sources', []),
+            'network_role': device.get('network_role'),
+            'network_scope': device.get('network_scope'),
+            'scan_note': device.get('scan_note'),
+            'open_port_details': device.get('open_port_details', []),
             'source': 'inventory',
         }
 
@@ -2417,7 +2434,7 @@ def run_port_scan_job(job_id):
     scanned = 0
 
     def on_open(port):
-        service_detail = identify_port_service(port)
+        service_detail = enrich_port_web_url(host, identify_port_service(port))
         with port_scan_jobs_lock:
             current = port_scan_jobs.get(job_id)
             if not current:
@@ -2452,7 +2469,7 @@ def run_port_scan_job(job_id):
         if should_cancel():
             update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
             return
-        final_details = describe_open_ports(ports)
+        final_details = [enrich_port_web_url(host, detail) for detail in describe_open_ports(ports)]
         record_device_open_ports(host, final_details, source='port-scan')
         update_port_scan_job(
             job_id,
@@ -3168,7 +3185,7 @@ def port_scan_route():
     except PortScanError as e:
         return json_error(str(e))
 
-    port_details = describe_open_ports(ports)
+    port_details = [enrich_port_web_url(data.get('host'), detail) for detail in describe_open_ports(ports)]
     record_device_open_ports(data.get('host'), port_details, source='port-scan')
     return jsonify({'ports': ports, 'port_details': port_details})
 

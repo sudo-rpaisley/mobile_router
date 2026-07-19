@@ -948,6 +948,7 @@ class RouteSmokeTest(unittest.TestCase):
         app_module.device_inventory.clear()
         app_module.record_device_open_ports('192.168.20.10', [
             {'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'},
+            {'port': 80, 'service': 'HTTP', 'description': 'Web server'},
         ])
 
         response = self.client.get('/clients/192.168.20.10')
@@ -956,6 +957,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Saved Service Profile', response.data)
         self.assertIn(b'22/tcp', response.data)
         self.assertIn(b'SSH', response.data)
+        self.assertIn(b'href="http://192.168.20.10:80/"', response.data)
+        self.assertIn(b'target="_blank"', response.data)
         self.assertIn(b'Device Port Scan', response.data)
         self.assertIn(b'Common ports', response.data)
         self.assertIn(b'All ports', response.data)
@@ -1023,6 +1026,18 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('data-ip-client-metadata-form', js)
         self.assertIn('data-ip-client-fingerprint', js)
         self.assertIn('data-ip-client-scheduled-form', js)
+
+    def test_port_scan_scripts_link_web_ports_and_quick_scan_in_place(self):
+        live_js = open('static/js/port_scan_live.js').read()
+        jobs_js = open('static/js/jobs.js').read()
+        network_js = open('static/js/network_scan.js').read()
+
+        self.assertIn('info.web_url', live_js)
+        self.assertIn('target="_blank"', live_js)
+        self.assertIn('info.web_url', jobs_js)
+        self.assertIn('data-port-scan-quick', network_js)
+        self.assertIn("url: '/port-scan-jobs'", network_js)
+        self.assertIn('startQuickPortScan', network_js)
 
     def test_client_metadata_baseline_and_exports(self):
         app_module.device_inventory.clear()
@@ -1253,6 +1268,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(device['open_ports'], [80, 443])
         self.assertEqual(device['open_port_details'][0]['service'], 'HTTP')
         self.assertEqual(device['open_port_details'][1]['service'], 'HTTPS')
+        self.assertEqual(device['open_port_details'][1]['web_url'], 'https://192.168.20.44:443/')
 
     def test_new_device_alerts_are_created_and_can_be_read(self):
         app_module.device_inventory.clear()
@@ -1509,6 +1525,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="network-devices-tab"', response.data)
         self.assertIn(b'AP Details', response.data)
         self.assertIn(b'Devices Found On This Network Interface', response.data)
+        self.assertIn(b'network-device-card', response.data)
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'AP Identity Hints', response.data)
@@ -1590,6 +1607,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'laptop.local', response.data)
         self.assertIn(b'192.168.50.22', response.data)
         self.assertIn(b'/clients/192.168.50.22', response.data)
+        self.assertIn(b'data-port-scan-quick', response.data)
+        self.assertIn(b'data-label="common port scan"', response.data)
+        self.assertIn(b'data-label="all-port scan"', response.data)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

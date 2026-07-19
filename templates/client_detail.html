@@ -225,7 +225,13 @@
             <div class="port-service-grid">
               {% for port in open_port_details %}
                 <div class="port-service-card">
-                  <strong>{{ port.port }}/tcp</strong>
+                  <strong>
+                    {% if port.web_url %}
+                      <a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>
+                    {% else %}
+                      {{ port.port }}/tcp
+                    {% endif %}
+                  </strong>
                   <span>{{ port.service }}</span>
                   <small>{{ port.description }}</small>
                 </div>

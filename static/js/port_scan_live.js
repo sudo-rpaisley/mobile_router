@@ -29,8 +29,10 @@ $(document).ready(function () {
     ports.forEach(function (port) {
       const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
       const isNew = !previousPorts.has(port);
+      const portLabel = `${escapeHtml(port)}/tcp`;
+      const portHtml = info.web_url ? `<a href="${escapeHtml(info.web_url)}" target="_blank" rel="noopener noreferrer">${portLabel}</a>` : portLabel;
       html += `<div class="port-service-card ${isNew ? 'port-service-card-new' : ''}">`;
-      html += `<div class="port-service-number">${escapeHtml(port)}</div>`;
+      html += `<div class="port-service-number">${portHtml}</div>`;
       html += `<div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div>`;
       html += '</div>';
     });

@@ -106,18 +106,62 @@
             <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
             <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
             {% if network.clients %}
-              <div class="address-card-grid">
+              <div class="wireless-network-grid network-device-card-grid">
                 {% for client in network.clients %}
-                  <section class="address-card">
-                    <div class="address-card-header"><span class="address-family">{{ client.display_name or client.ip or client.mac or 'Client' }}</span></div>
-                    <dl class="interface-definition-list compact">
-                      {% if client.ip %}<div><dt>IP</dt><dd><a href="/clients/{{ client.ip|urlencode }}">{{ client.ip }}</a></dd></div>{% endif %}
-                      {% if client.mac %}<div><dt>MAC</dt><dd><a href="/clients/{{ client.mac|urlencode }}">{{ client.mac }}</a></dd></div>{% endif %}
-                      <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
-                      <div><dt>Signal</dt><dd>{{ client.signal_label or 'Unknown' }}</dd></div>
-                      <div><dt>Seen On</dt><dd>{{ client.bssid or client.source or 'Inventory' }}</dd></div>
-                    </dl>
-                  </section>
+                  <article class="wireless-network-card network-device-card">
+                    <div class="wireless-network-main">
+                      <div class="wireless-network-identity">
+                        <h3 class="wireless-network-ssid mb-1">
+                          {% if client.ip %}
+                            <a href="/clients/{{ client.ip|urlencode }}">{{ client.display_name or client.ip }}</a>
+                          {% elif client.mac %}
+                            <a href="/clients/{{ client.mac|urlencode }}">{{ client.display_name or client.mac }}</a>
+                          {% else %}
+                            {{ client.display_name or 'Client' }}
+                          {% endif %}
+                        </h3>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-network-wired"></i> {{ client.ip or 'Unknown IP' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-fingerprint"></i> {{ client.mac or 'Unknown MAC' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> {{ client.manufacturer or 'Unknown manufacturer' }}</p>
+                      </div>
+                      <div class="wireless-network-badges">
+                        <span class="badge badge-info">{{ client.network_role or 'Client' }}</span>
+                        <span class="badge badge-light border">{{ client.network_scope or 'Wi-Fi interface' }}</span>
+                        <span class="badge badge-primary">{{ (client.discovery_methods or client.sources or [client.source or 'wireless-observation'])|join(', ') }}</span>
+                      </div>
+                    </div>
+                    <div class="wireless-network-bottom network-device-bottom">
+                      <div>
+                        {% if client.open_port_details %}
+                          <div class="network-device-open-ports">
+                            {% for port in client.open_port_details %}
+                              {% if loop.index <= 6 %}
+                                {% if port.web_url %}
+                                  <a class="badge badge-info" href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }} {{ port.service }}</a>
+                                {% else %}
+                                  <span class="badge badge-info">{{ port.port }} {{ port.service }}</span>
+                                {% endif %}
+                              {% endif %}
+                            {% endfor %}
+                          </div>
+                        {% else %}
+                          <p class="text-muted mb-0 small">No saved open ports yet.</p>
+                        {% endif %}
+                        <p class="text-muted small mb-0 mt-2">{{ client.scan_note or client.signal_label or client.bssid or client.source or 'Persisted network client' }}</p>
+                      </div>
+                      {% if client.ip %}
+                        <div class="network-device-actions">
+                          <a class="btn btn-outline-info btn-sm" href="/clients/{{ client.ip|urlencode }}">Device profile</a>
+                          <a class="btn btn-outline-primary btn-sm" href="/port-scan?host={{ client.ip|urlencode }}">Port scan</a>
+                          <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
+                          <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
+                          <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+                        </div>
+                      {% else %}
+                        <span class="badge badge-secondary">No IP port scan</span>
+                      {% endif %}
+                    </div>
+                  </article>
                 {% endfor %}
               </div>
             {% else %}

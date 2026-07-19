@@ -30,7 +30,10 @@ $(document).ready(function () {
   function renderPortBadges(item) {
     const details = Array.isArray(item.open_port_details) ? item.open_port_details : [];
     if (!details.length) return '<p class="text-muted mb-0 small">No saved open ports yet.</p>';
-    return `<div class="network-device-open-ports">${details.slice(0, 6).map((port) => `<span class="badge badge-info">${escapeHtml(port.port)} ${escapeHtml(port.service || 'Unknown')}</span>`).join('')}</div>`;
+    return `<div class="network-device-open-ports">${details.slice(0, 6).map((port) => {
+      const label = `${escapeHtml(port.port)} ${escapeHtml(port.service || 'Unknown')}`;
+      return port.web_url ? `<a class="badge badge-info" href="${escapeHtml(port.web_url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : `<span class="badge badge-info">${label}</span>`;
+    }).join('')}</div>`;
   }
 
   function renderScanAllToolbar(items) {
@@ -66,8 +69,9 @@ $(document).ready(function () {
         ? `<div class="network-device-actions">
             <a class="btn btn-outline-info btn-sm" href="/clients/${encodeURIComponent(ip)}">Device profile</a>
             <a class="btn btn-outline-primary btn-sm" href="/port-scan?host=${encodeURIComponent(ip)}">Port scan</a>
-            <a class="btn btn-outline-secondary btn-sm" href="/port-scan?host=${encodeURIComponent(ip)}">Common ports</a>
-            <a class="btn btn-outline-danger btn-sm" href="/port-scan?host=${encodeURIComponent(ip)}">All ports</a>
+            <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
+            <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
+            <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
           </div>`
         : '<span class="badge badge-secondary">No IP port scan</span>';
       html += `
@@ -123,6 +127,30 @@ $(document).ready(function () {
           }
         }
       });
+    });
+  }
+
+  function startQuickPortScan(button) {
+    const host = button.attr('data-host');
+    const start = button.attr('data-start');
+    const end = button.attr('data-end');
+    const label = button.attr('data-label') || 'port scan';
+    const actions = button.closest('.network-device-actions');
+    const status = actions.find('[data-port-scan-quick-status]');
+    actions.find('[data-port-scan-quick]').prop('disabled', true);
+    status.text(`Starting ${label} for ${host}...`);
+    $.ajax({
+      url: '/port-scan-jobs',
+      method: 'POST',
+      data: { host: host, start: start, end: end, label: label },
+      complete: function (xhr) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          status.text(`Started ${label}. Results save to this device profile as ports are found.`);
+        } else {
+          status.text(xhr.responseJSON?.message || `${label} failed to start.`);
+        }
+        actions.find('[data-port-scan-quick]').prop('disabled', false);
+      }
     });
   }
 
@@ -206,5 +234,10 @@ $(document).ready(function () {
   $(document).on('click', '[data-port-scan-all]', function (e) {
     e.preventDefault();
     startPortScanAll($(this));
+  });
+
+  $(document).on('click', '[data-port-scan-quick]', function (e) {
+    e.preventDefault();
+    startQuickPortScan($(this));
   });
 });

@@ -36,7 +36,9 @@ $(document).ready(function () {
       const openPorts = job.open_ports && job.open_ports.length
         ? `<div class="port-service-grid mt-2">${job.open_ports.map((port) => {
             const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
-            return `<div class="port-service-card"><div class="port-service-number">${escapeHtml(port)}</div><div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div></div>`;
+            const portLabel = `${escapeHtml(port)}/tcp`;
+            const portHtml = info.web_url ? `<a href="${escapeHtml(info.web_url)}" target="_blank" rel="noopener noreferrer">${portLabel}</a>` : portLabel;
+            return `<div class="port-service-card"><div class="port-service-number">${portHtml}</div><div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div></div>`;
           }).join('')}</div>`
         : '';
       const cancel = job.cancelable
