@@ -45,6 +45,19 @@ $(document).ready(function () {
       </div>`).join('')}</div>`;
   }
 
+  function renderFingerprints(results) {
+    if (!results || !results.length) return '<div class="alert alert-warning">No saved services are available to fingerprint.</div>';
+    return `<div class="alert alert-info"><strong>Service fingerprints</strong></div><div class="port-service-grid">${results.map((item) => {
+      const web = item.http ? ` · ${item.http.title || item.http.server || item.http.status || item.http.error || 'HTTP checked'}` : '';
+      const note = (item.banner || (item.notes || []).join('; ') || 'No additional fingerprint data');
+      return `<div class="port-service-card">
+        <strong>${escapeHtml(item.port)}/tcp ${escapeHtml(item.service)}</strong>
+        <span>Confidence: ${escapeHtml(item.confidence)}${escapeHtml(web)}</span>
+        <small>${escapeHtml(note)}</small>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   $('[data-ip-client-ping]').on('click', function () {
     const host = clientHost();
     output('<p class="text-muted">Pinging client...</p>');
@@ -136,6 +149,17 @@ $(document).ready(function () {
     });
   });
 
+  $('[data-ip-client-fingerprint]').on('click', function () {
+    const host = clientHost();
+    output('<p class="text-muted">Fingerprinting saved service candidates...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/fingerprint`,
+      method: 'POST',
+      success: function (resp) { output(renderFingerprints(resp.fingerprints || [])); },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Service fingerprint failed')}</div>`); }
+    });
+  });
+
   $('[data-ip-client-baseline]').on('click', function () {
     const host = clientHost();
     output('<p class="text-muted">Saving current device baseline...</p>');
@@ -163,6 +187,22 @@ $(document).ready(function () {
       },
       success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client metadata saved.')}</div>`); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Client metadata save failed')}</div>`); }
+    });
+  });
+
+  $('[data-ip-client-scheduled-form]').on('submit', function (event) {
+    event.preventDefault();
+    const host = clientHost();
+    output('<p class="text-muted">Saving scheduled check plan...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/scheduled-check`,
+      method: 'POST',
+      data: {
+        intervalMinutes: $('[data-ip-client-check-interval]').val(),
+        checks: $('[data-ip-client-checks]').val()
+      },
+      success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Scheduled check saved.')}</div>`); },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Scheduled check save failed')}</div>`); }
     });
   });
 });

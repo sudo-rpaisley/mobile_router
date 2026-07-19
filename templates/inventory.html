@@ -105,6 +105,20 @@
                       {% endfor %}
                     </div>
                   {% endif %}
+                  {% if device.client_health %}
+                    <div class="small text-muted mb-2">
+                      <span class="badge badge-{{ device.client_health.badge }}">{{ device.client_health.level }} {{ device.client_health.score }}/100</span>
+                      {% if device.client_baseline and device.client_baseline.status == 'Drift detected' %}
+                        <span class="badge badge-danger">Drift</span>
+                      {% endif %}
+                      {% if device.is_watched_client %}
+                        <span class="badge badge-warning">Watched</span>
+                      {% endif %}
+                      {% for tag in device.client_tags or [] %}
+                        {% if loop.index <= 3 %}<span class="badge badge-light border">{{ tag }}</span>{% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
                   {% if device.ip and not device.is_control_traffic %}
                     <a class="btn btn-outline-primary btn-sm" href="/clients/{{ device.ip|urlencode }}">Device scan</a>
                     <a class="btn btn-outline-secondary btn-sm" href="/port-scan?host={{ device.ip|urlencode }}">Tools scan</a>

@@ -103,6 +103,7 @@
               {{ 'Watching client' if watched_client else 'Watch this device' }}
             </button>
             <button type="button" class="btn btn-outline-info" data-ip-client-http-inspect>Inspect web services</button>
+            <button type="button" class="btn btn-outline-success" data-ip-client-fingerprint>Fingerprint services</button>
             <button type="button" class="btn btn-outline-primary" data-ip-client-baseline>Save baseline</button>
             <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a>
             <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a>
@@ -148,6 +149,47 @@
             <textarea id="client-notes" class="form-control" data-ip-client-notes rows="2" placeholder="Expected purpose, owner context, or remediation notes.">{{ inventory_device.client_notes if inventory_device else '' }}</textarea>
             <div class="theme-actions">
               <button type="submit" class="btn btn-primary">Save client metadata</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Client Relationship Map</h2>
+          <p class="text-muted">Context links between this client, interfaces, discovery sources, saved services, and evidence records.</p>
+          <div class="theme-grid">
+            {% for node in relationship_map.nodes %}
+              <div class="port-service-card">
+                <strong>{{ node.label }}</strong>
+                <small>{{ node.type }}</small>
+              </div>
+            {% endfor %}
+          </div>
+          <ul class="mt-3 mb-0">
+            {% for link in relationship_map.links %}
+              <li>{{ link.source }} → {{ link.target }} <span class="text-muted">({{ link.label }})</span></li>
+            {% else %}
+              <li class="text-muted">No related interfaces, services, or evidence are attached yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Scheduled Client Checks</h2>
+          <p class="text-muted">Save a recurring check plan for this client. The plan is recorded now so a background scheduler can run it next.</p>
+          {% if scheduled_check %}
+            <div class="alert alert-info">Scheduled every {{ scheduled_check.interval_minutes }} minute(s): {{ scheduled_check.checks|join(', ') }}</div>
+          {% endif %}
+          <form class="theme-form" data-ip-client-scheduled-form>
+            <label for="client-check-interval">Interval minutes</label>
+            <input id="client-check-interval" class="form-control" type="number" min="5" max="10080" value="{{ scheduled_check.interval_minutes if scheduled_check else 60 }}" data-ip-client-check-interval>
+            <label class="mt-2" for="client-checks">Checks</label>
+            <input id="client-checks" class="form-control" value="{{ scheduled_check.checks|join(', ') if scheduled_check else 'ping, common-ports, baseline-drift' }}" data-ip-client-checks placeholder="ping, common-ports, http-inspect, service-fingerprint, baseline-drift">
+            <div class="theme-actions">
+              <button type="submit" class="btn btn-primary">Save scheduled checks</button>
             </div>
           </form>
         </div>

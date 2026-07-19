@@ -59,6 +59,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'IP client profiles and watchlists', response.data)
         self.assertIn(b'Client relationship map', response.data)
         self.assertIn(b'Scheduled client checks', response.data)
+        self.assertIn(b'Client remediation checklist', response.data)
+        self.assertIn(b'Client change approval log', response.data)
         self.assertIn(b'Core network tools', response.data)
         self.assertIn(b'Ping and reachability testing', response.data)
         self.assertIn(b'ARP and neighbor discovery viewer', response.data)
@@ -962,11 +964,14 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Client Health', response.data)
         self.assertIn(b'Watch this device', response.data)
         self.assertIn(b'Inspect web services', response.data)
+        self.assertIn(b'Fingerprint services', response.data)
         self.assertIn(b'Save baseline', response.data)
         self.assertIn(b'Client Profile Metadata', response.data)
         self.assertIn(b'Expected open ports', response.data)
         self.assertIn(b'Export JSON', response.data)
         self.assertIn(b'Export Markdown', response.data)
+        self.assertIn(b'Client Relationship Map', response.data)
+        self.assertIn(b'Scheduled Client Checks', response.data)
         self.assertIn(b'Client Timeline', response.data)
         self.assertIn(b'Port scan', response.data)
         self.assertIn(b'data-ip-client-ping', response.data)
@@ -988,6 +993,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('http-inspect', js)
         self.assertIn('data-ip-client-baseline', js)
         self.assertIn('data-ip-client-metadata-form', js)
+        self.assertIn('data-ip-client-fingerprint', js)
+        self.assertIn('data-ip-client-scheduled-form', js)
 
     def test_client_metadata_baseline_and_exports(self):
         app_module.device_inventory.clear()
@@ -1025,6 +1032,44 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get('/clients/192.168.20.10/export.md')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Client profile: 192.168.20.10', response.data)
+
+    @patch('app.inspect_http_services')
+    def test_client_relationship_fingerprint_schedule_and_inventory_badges(self, inspect_http):
+        app_module.device_inventory.clear()
+        app_module.scheduled_client_checks.clear()
+        app_module.watched_clients.clear()
+        inspect_http.return_value = [{'port': 80, 'url': 'http://192.168.20.10:80/', 'status': 200, 'title': 'Router UI', 'server': 'lab', 'error': None}]
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2', 'manufacturer': 'Example', 'interfaces': ['eth0']}
+        ], 'active-scan', 'eth0')
+        app_module.record_device_open_ports('192.168.20.10', [
+            {'port': 80, 'service': 'HTTP', 'description': 'Web service'},
+        ])
+        app_module.update_client_metadata('192.168.20.10', {'tags': 'router', 'expectedPorts': '22'})
+        app_module.watched_clients.add('192.168.20.10')
+
+        response = self.client.get('/clients/192.168.20.10/relationship-map')
+        self.assertEqual(response.status_code, 200)
+        node_labels = [node['label'] for node in response.get_json()['map']['nodes']]
+        self.assertIn('192.168.20.10', node_labels)
+        self.assertIn('80/tcp HTTP', node_labels)
+
+        response = self.client.post('/clients/192.168.20.10/fingerprint')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['fingerprints'][0]['http']['title'], 'Router UI')
+
+        response = self.client.post('/clients/192.168.20.10/scheduled-check', data={
+            'intervalMinutes': '30',
+            'checks': 'ping,common-ports,baseline-drift',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['plan']['interval_minutes'], 30)
+        self.assertIn('baseline-drift', response.get_json()['plan']['checks'])
+
+        response = self.client.get('/inventory')
+        self.assertIn(b'Drift', response.data)
+        self.assertIn(b'Watched', response.data)
+        self.assertIn(b'router', response.data)
 
     def test_client_watch_alerts_on_new_open_ports(self):
         app_module.device_inventory.clear()

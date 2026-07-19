@@ -72,6 +72,7 @@ vlan_segmentation_notes = []
 watched_clients = set()
 client_timelines = {}
 client_timelines_lock = threading.Lock()
+scheduled_client_checks = {}
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -115,8 +116,10 @@ ROADMAP_SECTIONS = [
             {'title': 'Comprehensive network device scan', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Network Scan now combines active ARP, passive observations, local ARP/neighbor tables, optional ping sweeps, mDNS, UPnP/SSDP, and LLDP/CDP metadata into one inventory-building workflow.', 'description': 'Scan local networks for devices using multiple discovery methods and merge results into inventory with source attribution.'},
             {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
-            {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
-            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
+            {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles now show relationship nodes and links for interfaces, discovery sources, saved services, and related evidence records.', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
+            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles can save recurring check plans for ping, common ports, HTTP inspection, service fingerprinting, and baseline drift so a scheduler can run them.', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
+            {'title': 'Client remediation checklist', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Turn baseline drift, sensitive services, and unknown identity hints into suggested remediation tasks with resolved/accepted-risk state.'},
+            {'title': 'Client change approval log', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users approve expected port, owner, location, and tag changes with reviewer notes for audit-friendly inventory maintenance.'},
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
@@ -134,7 +137,7 @@ ROADMAP_SECTIONS = [
             {'title': 'Packet capture and protocol summary', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Start and stop scoped packet captures, export PCAP files, summarize protocols/top talkers, and attach captures to evidence.'},
             {'title': 'Live traffic monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show bandwidth, packets per second, top talkers, protocol mix, and short history per interface.'},
             {'title': 'Local socket and listener inventory', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'List local listening ports and established connections with process names where available and highlight externally exposed listeners.'},
-            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
+            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'IP client profiles can run safe banner probes and HTTP checks against saved open ports with confidence labels.', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
             {'title': 'HTTP service inspector', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Inspect HTTP/HTTPS services for status, redirects, page title, server headers, login forms, TLS details, and basic security headers.'},
         ],
     },
@@ -1333,6 +1336,10 @@ def client_profile_export(identifier):
     """Build an exportable IP client profile."""
     device = find_inventory_device(identifier) or {}
     host = device.get('ip') or identifier
+    related_evidence = [
+        item for item in evidence_records()
+        if str(item.get('device') or '') in {str(host), str(device.get('mac') or ''), str(device.get('id') or '')}
+    ]
     return {
         'exported_at': time.time(),
         'host': host,
@@ -1341,7 +1348,103 @@ def client_profile_export(identifier):
         'baseline': client_baseline_diff(device),
         'reachability_history': client_reachability_history(host, limit=25),
         'timeline': client_timeline(host, device),
+        'evidence': related_evidence,
     }
+
+
+def client_relationship_map(identifier):
+    """Build a lightweight client relationship map for profile rendering/export."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    nodes = [{'id': f'client:{host}', 'label': host, 'type': 'client'}]
+    links = []
+    for iface in device.get('interfaces', []):
+        nodes.append({'id': f'interface:{iface}', 'label': iface, 'type': 'interface'})
+        links.append({'source': f'client:{host}', 'target': f'interface:{iface}', 'label': 'seen on'})
+    for source in device.get('sources', []):
+        nodes.append({'id': f'source:{source}', 'label': source, 'type': 'source'})
+        links.append({'source': f'client:{host}', 'target': f'source:{source}', 'label': 'discovered by'})
+    for port in device.get('open_port_details', [])[:12]:
+        node_id = f"service:{host}:{port.get('port')}"
+        nodes.append({'id': node_id, 'label': f"{port.get('port')}/tcp {port.get('service') or 'Unknown'}", 'type': 'service'})
+        links.append({'source': f'client:{host}', 'target': node_id, 'label': 'exposes'})
+    for item in client_profile_export(identifier).get('evidence', [])[:8]:
+        node_id = f"evidence:{item.get('id')}"
+        nodes.append({'id': node_id, 'label': item.get('title') or 'Evidence', 'type': 'evidence'})
+        links.append({'source': f'client:{host}', 'target': node_id, 'label': 'has evidence'})
+    unique_nodes = {node['id']: node for node in nodes}
+    return {'nodes': list(unique_nodes.values()), 'links': links}
+
+
+def fingerprint_client_services(identifier):
+    """Run safe, lightweight service fingerprint checks against saved open ports."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    fingerprints = []
+    http_ports = []
+    for detail in device.get('open_port_details', []):
+        port = detail.get('port')
+        service = str(detail.get('service') or '').lower()
+        finding = {'port': port, 'service': detail.get('service') or 'Unknown', 'confidence': 'low', 'banner': None, 'notes': []}
+        if port in (80, 443, 8080, 8443, 8000, 9443) or any(name in service for name in ('http', 'https', 'web')):
+            http_ports.append(port)
+            finding['confidence'] = 'medium'
+            finding['notes'].append('HTTP-like port selected for web inspection.')
+        elif port in (21, 22, 25, 110, 143, 587, 993, 995):
+            try:
+                with socket.create_connection((host, int(port)), timeout=2) as sock:
+                    sock.settimeout(2)
+                    try:
+                        banner = sock.recv(256).decode('utf-8', errors='ignore').strip()
+                    except socket.timeout:
+                        banner = ''
+                if banner:
+                    finding['banner'] = banner[:160]
+                    finding['confidence'] = 'high'
+                else:
+                    finding['notes'].append('Port accepted TCP connection but did not send a banner quickly.')
+                    finding['confidence'] = 'medium'
+            except OSError as exc:
+                finding['notes'].append(f'Banner probe unavailable: {exc}')
+        else:
+            finding['notes'].append('Service inferred from port number; no active banner probe selected.')
+        fingerprints.append(finding)
+    if http_ports:
+        web_results = inspect_http_services(host, sorted(set(http_ports))[:8])
+        by_port = {item['port']: item for item in web_results}
+        for finding in fingerprints:
+            web = by_port.get(finding.get('port'))
+            if web:
+                finding['http'] = web
+                if web.get('title') or web.get('server') or web.get('status'):
+                    finding['confidence'] = 'high'
+    append_client_timeline_event(host, 'Services fingerprinted', f"Checked {len(fingerprints)} saved service(s).", 'service-fingerprint')
+    return fingerprints
+
+
+def save_scheduled_client_check(identifier, data):
+    """Store a recurring-check plan for a watched or important client."""
+    target = str(identifier or '').strip()
+    if not target:
+        raise ValueError('Missing client identifier')
+    interval = max(5, min(parse_int(data.get('intervalMinutes') or 60, 'Interval must be an integer'), 10080))
+    checks = sorted({
+        check for check in (data.get('checks') or 'ping,common-ports,baseline-drift').split(',')
+        if check in {'ping', 'common-ports', 'http-inspect', 'service-fingerprint', 'baseline-drift'}
+    })
+    if not checks:
+        raise ValueError('Select at least one supported scheduled check')
+    plan = {
+        'client': target,
+        'interval_minutes': interval,
+        'checks': checks,
+        'created_at': time.time(),
+        'last_run': None,
+        'status': 'scheduled',
+    }
+    scheduled_client_checks[target] = plan
+    append_client_timeline_event(target, 'Scheduled checks updated', f"Scheduled {', '.join(checks)} every {interval} minute(s).", 'scheduled-checks')
+    return dict(plan)
 
 
 def is_client_watched(identifier):
@@ -1415,6 +1518,9 @@ def inventory_records():
         item['display_name'] = item.get('name') or item.get('hostname') or item.get('ssid') or item.get('ip') or item.get('mac') or 'Unknown device'
         item['manufacturer'] = item.get('manufacturer') or 'Unknown'
         item['is_unknown_manufacturer'] = item['manufacturer'] == 'Unknown'
+        item['client_health'] = client_health_summary(item, item.get('ip')) if item.get('ip') and not item.get('is_control_traffic') else None
+        item['client_baseline'] = client_baseline_diff(item) if item.get('ip') and not item.get('is_control_traffic') else None
+        item['is_watched_client'] = is_client_watched(item.get('ip')) if item.get('ip') else False
         item['first_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('first_seen', 0)))
         item['last_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('last_seen', 0)))
     return sorted(records, key=lambda item: item.get('last_seen', 0), reverse=True)
@@ -2710,6 +2816,8 @@ def client_detail(identifier):
     watched = False if is_bluetooth else is_client_watched(ip or identifier)
     reachability = [] if is_bluetooth else client_reachability_history(ip or identifier)
     baseline_diff = None if is_bluetooth else client_baseline_diff(inventory_device or {})
+    relationship_map = None if is_bluetooth else client_relationship_map(ip or identifier)
+    scheduled_check = None if is_bluetooth else scheduled_client_checks.get(ip or identifier)
 
     return render_template(
         'client_detail.html',
@@ -2732,6 +2840,8 @@ def client_detail(identifier):
         watched_client=watched,
         reachability_history=reachability,
         baseline_diff=baseline_diff,
+        relationship_map=relationship_map,
+        scheduled_check=scheduled_check,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
@@ -2829,6 +2939,25 @@ def client_export_route(identifier, fmt):
             lines.append(f"- {event.get('time_label')}: {event.get('type')} — {event.get('message')}")
         return Response('\n'.join(lines), mimetype='text/markdown', headers={'Content-Disposition': f'attachment; filename=client-{profile["host"]}.md'})
     return json_error('Unsupported client export format', 404)
+
+
+@app.route('/clients/<identifier>/relationship-map')
+def client_relationship_map_route(identifier):
+    return json_success(map=client_relationship_map(identifier))
+
+
+@app.route('/clients/<identifier>/fingerprint', methods=['POST'])
+def client_fingerprint_route(identifier):
+    return json_success(fingerprints=fingerprint_client_services(identifier))
+
+
+@app.route('/clients/<identifier>/scheduled-check', methods=['POST'])
+def client_scheduled_check_route(identifier):
+    try:
+        plan = save_scheduled_client_check(identifier, request.form)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(plan=plan, message='Scheduled client check saved.')
 
 
 @app.route('/active-scan', methods=['POST'])
