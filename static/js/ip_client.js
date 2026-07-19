@@ -135,4 +135,34 @@ $(document).ready(function () {
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'HTTP inspection failed')}</div>`); }
     });
   });
+
+  $('[data-ip-client-baseline]').on('click', function () {
+    const host = clientHost();
+    output('<p class="text-muted">Saving current device baseline...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/baseline`,
+      method: 'POST',
+      success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client baseline saved.')}</div>`); },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Baseline save failed')}</div>`); }
+    });
+  });
+
+  $('[data-ip-client-metadata-form]').on('submit', function (event) {
+    event.preventDefault();
+    const host = clientHost();
+    output('<p class="text-muted">Saving client profile metadata...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/metadata`,
+      method: 'POST',
+      data: {
+        tags: $('[data-ip-client-tags]').val(),
+        owner: $('[data-ip-client-owner]').val(),
+        location: $('[data-ip-client-location]').val(),
+        expectedPorts: $('[data-ip-client-expected-ports]').val(),
+        notes: $('[data-ip-client-notes]').val()
+      },
+      success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client metadata saved.')}</div>`); },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Client metadata save failed')}</div>`); }
+    });
+  });
 });

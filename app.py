@@ -113,7 +113,10 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
             {'title': 'Comprehensive network device scan', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Network Scan now combines active ARP, passive observations, local ARP/neighbor tables, optional ping sweeps, mDNS, UPnP/SSDP, and LLDP/CDP metadata into one inventory-building workflow.', 'description': 'Scan local networks for devices using multiple discovery methods and merge results into inventory with source attribution.'},
+            {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
+            {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
+            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
@@ -1236,6 +1239,109 @@ def client_health_summary(device, ip=None):
         level = 'Attention'
         badge = 'danger'
     return {'score': score, 'level': level, 'badge': badge, 'flags': flags or ['No notable client concerns from saved data'], 'open_port_count': len(open_ports), 'identity': device.get('hostname') or device.get('name') or ip or 'Unknown client'}
+
+
+def client_reachability_history(host, limit=10):
+    """Return recent ping results for a specific client."""
+    target = str(host or '').strip()
+    matches = [dict(item) for item in ping_history if item.get('host') == target]
+    for item in matches:
+        item['time_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('checked_at', time.time())))
+    return matches[-limit:]
+
+
+def update_client_metadata(identifier, data):
+    """Persist user-maintained client tags, ownership, notes, and expected ports."""
+    target = str(identifier or '').strip()
+    if not target:
+        raise ValueError('Missing client identifier')
+    raw_tags = data.get('tags') or ''
+    tags = sorted({tag.strip() for tag in raw_tags.split(',') if tag.strip()})[:12]
+    expected_ports = []
+    raw_expected_ports = data.get('expectedPorts') or ''
+    for raw_port in raw_expected_ports.split(','):
+        raw_port = raw_port.strip()
+        if not raw_port:
+            continue
+        port = parse_int(raw_port, 'Expected ports must be integers')
+        if not 1 <= port <= 65535:
+            raise ValueError('Expected ports must be between 1 and 65535')
+        expected_ports.append(port)
+    updates = {
+        'client_tags': tags,
+        'client_owner': (data.get('owner') or '').strip()[:80],
+        'client_location': (data.get('location') or '').strip()[:80],
+        'client_notes': (data.get('notes') or '').strip()[:500],
+        'expected_open_ports': sorted(set(expected_ports)),
+    }
+    with device_inventory_lock:
+        key = f'ip:{target}'
+        existing = device_inventory.get(key)
+        if existing is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == target or item.get('mac') == target or item.get('id') == target:
+                    key = candidate_key
+                    existing = item
+                    break
+        existing = dict(existing or {'id': key, 'ip': target, 'manufacturer': 'Unknown', 'first_seen': time.time(), 'sources': [], 'interfaces': []})
+        key = existing.get('id') or inventory_key(existing) or key
+        existing.update({k: v for k, v in updates.items() if v not in (None, '')})
+        existing['last_seen'] = time.time()
+        device_inventory[key] = existing
+    append_client_timeline_event(target, 'Profile updated', 'Client tags, ownership, notes, or expected ports were updated.', 'client-metadata')
+    return dict(existing)
+
+
+def save_client_baseline(identifier):
+    """Save current observed identity/service details as the expected baseline."""
+    device = find_inventory_device(identifier) or {}
+    target = device.get('ip') or identifier
+    baseline = {
+        'saved_at': time.time(),
+        'hostname': device.get('hostname') or device.get('name'),
+        'manufacturer': device.get('manufacturer'),
+        'open_ports': sorted(device.get('open_ports', [])),
+        'mac': device.get('mac'),
+        'sources': list(device.get('sources', [])),
+    }
+    updated = update_client_metadata(target, {'expectedPorts': ','.join(str(port) for port in baseline['open_ports'])})
+    with device_inventory_lock:
+        key = updated.get('id')
+        device_inventory[key]['client_baseline'] = baseline
+        updated = dict(device_inventory[key])
+    append_client_timeline_event(target, 'Baseline saved', f"Saved {len(baseline['open_ports'])} expected open port(s).", 'client-baseline')
+    return updated
+
+
+def client_baseline_diff(device):
+    """Compare current saved observations to expected profile/baseline data."""
+    device = device or {}
+    expected_ports = set(device.get('expected_open_ports') or (device.get('client_baseline') or {}).get('open_ports') or [])
+    current_ports = set(device.get('open_ports') or [])
+    added = sorted(current_ports - expected_ports) if expected_ports else []
+    missing = sorted(expected_ports - current_ports)
+    return {
+        'expected_ports': sorted(expected_ports),
+        'current_ports': sorted(current_ports),
+        'unexpected_ports': added,
+        'missing_ports': missing,
+        'status': 'Drift detected' if added or missing else ('Baseline saved' if expected_ports else 'No baseline'),
+    }
+
+
+def client_profile_export(identifier):
+    """Build an exportable IP client profile."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    return {
+        'exported_at': time.time(),
+        'host': host,
+        'device': device,
+        'health': client_health_summary(device, host),
+        'baseline': client_baseline_diff(device),
+        'reachability_history': client_reachability_history(host, limit=25),
+        'timeline': client_timeline(host, device),
+    }
 
 
 def is_client_watched(identifier):
@@ -2602,6 +2708,8 @@ def client_detail(identifier):
     health_summary = None if is_bluetooth else client_health_summary(inventory_device or {}, ip)
     timeline = [] if is_bluetooth else client_timeline(ip or mac or identifier, inventory_device)
     watched = False if is_bluetooth else is_client_watched(ip or identifier)
+    reachability = [] if is_bluetooth else client_reachability_history(ip or identifier)
+    baseline_diff = None if is_bluetooth else client_baseline_diff(inventory_device or {})
 
     return render_template(
         'client_detail.html',
@@ -2610,6 +2718,7 @@ def client_detail(identifier):
         mac=mac,
         manufacturer=manufacturer,
         display_name=display_name,
+        inventory_device=inventory_device or {},
         is_bluetooth=is_bluetooth,
         open_port_details=[] if is_bluetooth else (inventory_device or {}).get('open_port_details', []),
         open_ports=[] if is_bluetooth else (inventory_device or {}).get('open_ports', []),
@@ -2621,6 +2730,8 @@ def client_detail(identifier):
         health_summary=health_summary,
         client_timeline=timeline,
         watched_client=watched,
+        reachability_history=reachability,
+        baseline_diff=baseline_diff,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
@@ -2669,6 +2780,55 @@ def client_http_inspect(identifier):
     results = inspect_http_services(host, candidates)
     append_client_timeline_event(host, 'HTTP inspected', f"Inspected {len(results)} web service candidate(s).", 'http-inspector')
     return json_success(results=results)
+
+
+@app.route('/clients/<identifier>/metadata', methods=['POST'])
+def client_metadata_route(identifier):
+    """Save user-maintained IP client profile metadata."""
+    try:
+        device = update_client_metadata(identifier, request.form)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(device=device, message='Client profile metadata saved.')
+
+
+@app.route('/clients/<identifier>/baseline', methods=['POST'])
+def client_baseline_route(identifier):
+    """Save current device observations as the expected baseline."""
+    device = save_client_baseline(identifier)
+    return json_success(device=device, baseline=client_baseline_diff(device), message='Client baseline saved.')
+
+
+@app.route('/clients/<identifier>/export.<fmt>')
+def client_export_route(identifier, fmt):
+    """Export an individual IP client profile."""
+    profile = client_profile_export(identifier)
+    if fmt == 'json':
+        return jsonify(profile)
+    if fmt == 'md':
+        device = profile['device']
+        lines = [
+            f"# Client profile: {profile['host']}",
+            '',
+            f"- Manufacturer: {device.get('manufacturer') or 'Unknown'}",
+            f"- MAC: {device.get('mac') or 'Unknown'}",
+            f"- Tags: {', '.join(device.get('client_tags', [])) or 'None'}",
+            f"- Owner: {device.get('client_owner') or 'Unknown'}",
+            f"- Location: {device.get('client_location') or 'Unknown'}",
+            f"- Health: {profile['health']['level']} ({profile['health']['score']}/100)",
+            f"- Baseline: {profile['baseline']['status']}",
+            '',
+            '## Open ports',
+        ]
+        for item in device.get('open_port_details', []):
+            lines.append(f"- {item.get('port')}/tcp {item.get('service') or 'Unknown'} — {item.get('description') or ''}")
+        if not device.get('open_port_details'):
+            lines.append('- No open ports saved.')
+        lines.extend(['', '## Timeline'])
+        for event in profile['timeline']:
+            lines.append(f"- {event.get('time_label')}: {event.get('type')} — {event.get('message')}")
+        return Response('\n'.join(lines), mimetype='text/markdown', headers={'Content-Disposition': f'attachment; filename=client-{profile["host"]}.md'})
+    return json_error('Unsupported client export format', 404)
 
 
 @app.route('/active-scan', methods=['POST'])

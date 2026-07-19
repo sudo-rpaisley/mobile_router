@@ -56,6 +56,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Training completion trophies', response.data)
         self.assertIn(b'Grouped discovery notifications', response.data)
         self.assertIn(b'Comprehensive network device scan', response.data)
+        self.assertIn(b'IP client profiles and watchlists', response.data)
+        self.assertIn(b'Client relationship map', response.data)
+        self.assertIn(b'Scheduled client checks', response.data)
         self.assertIn(b'Core network tools', response.data)
         self.assertIn(b'Ping and reachability testing', response.data)
         self.assertIn(b'ARP and neighbor discovery viewer', response.data)
@@ -959,6 +962,11 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Client Health', response.data)
         self.assertIn(b'Watch this device', response.data)
         self.assertIn(b'Inspect web services', response.data)
+        self.assertIn(b'Save baseline', response.data)
+        self.assertIn(b'Client Profile Metadata', response.data)
+        self.assertIn(b'Expected open ports', response.data)
+        self.assertIn(b'Export JSON', response.data)
+        self.assertIn(b'Export Markdown', response.data)
         self.assertIn(b'Client Timeline', response.data)
         self.assertIn(b'Port scan', response.data)
         self.assertIn(b'data-ip-client-ping', response.data)
@@ -978,6 +986,45 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('data-ip-client-evidence-form', js)
         self.assertIn('data-ip-client-watch', js)
         self.assertIn('http-inspect', js)
+        self.assertIn('data-ip-client-baseline', js)
+        self.assertIn('data-ip-client-metadata-form', js)
+
+    def test_client_metadata_baseline_and_exports(self):
+        app_module.device_inventory.clear()
+        app_module.record_device_open_ports('192.168.20.10', [
+            {'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'},
+            {'port': 80, 'service': 'HTTP', 'description': 'Web service'},
+        ])
+
+        response = self.client.post('/clients/192.168.20.10/metadata', data={
+            'tags': 'trusted, router',
+            'owner': 'Lab',
+            'location': 'Bench',
+            'expectedPorts': '22,443',
+            'notes': 'Expected lab gateway.',
+        })
+        self.assertEqual(response.status_code, 200)
+        device = response.get_json()['device']
+        self.assertEqual(device['client_tags'], ['router', 'trusted'])
+        self.assertEqual(device['client_owner'], 'Lab')
+        self.assertEqual(device['expected_open_ports'], [22, 443])
+
+        response = self.client.get('/clients/192.168.20.10')
+        self.assertIn(b'Drift detected', response.data)
+        self.assertIn(b'Unexpected 80', response.data)
+        self.assertIn(b'Missing 443', response.data)
+
+        response = self.client.post('/clients/192.168.20.10/baseline')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['baseline']['status'], 'Baseline saved')
+
+        response = self.client.get('/clients/192.168.20.10/export.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['host'], '192.168.20.10')
+
+        response = self.client.get('/clients/192.168.20.10/export.md')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Client profile: 192.168.20.10', response.data)
 
     def test_client_watch_alerts_on_new_open_ports(self):
         app_module.device_inventory.clear()
