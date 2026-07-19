@@ -1,4 +1,5 @@
 {% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
 <body class="d-flex flex-column min-vh-100">
   <main class="page-shell">
     <section class="page-hero">
@@ -9,7 +10,7 @@
           {% if is_bluetooth %}
             Bluetooth identity and device details discovered from scan results. The MAC address remains the unique device ID.
           {% else %}
-            Device identity and manufacturer details discovered from scan results.
+            Device identity and manufacturer details discovered from scan results{% if display_name_source %}; display name learned from {{ display_name_source }}{% endif %}.
           {% endif %}
         </p>
       </div>
@@ -33,6 +34,19 @@
             <dt>Manufacturer</dt>
             <dd>{{ manufacturer }}</dd>
           </div>
+          {% if not is_bluetooth %}
+            <div>
+              <dt>Likely Role</dt>
+              <dd>
+                {{ (inventory_device.device_role_guess or {}).role or 'Client' }}
+                <span class="badge badge-light border">{{ (inventory_device.device_role_guess or {}).confidence or 'low' }} confidence</span>
+              </dd>
+            </div>
+            <div>
+              <dt>MAC Privacy</dt>
+              <dd>{{ 'Likely randomized/private MAC' if inventory_device.likely_randomized_mac else 'Hardware/OUI MAC not flagged as randomized' }}</dd>
+            </div>
+          {% endif %}
           {% for field in bluetooth_fields %}
             <div>
               <dt>{{ field.label }}</dt>
@@ -40,6 +54,14 @@
             </div>
           {% endfor %}
         </dl>
+        {% if not is_bluetooth and inventory_device.observed_names %}
+          <h3 class="theme-subsection-title mt-3">Names observed</h3>
+          <div class="network-device-tags">
+            {% for item in inventory_device.observed_names %}
+              <span class="badge badge-light border">{{ item.name }} · {{ item.source }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
       </div>
     </section>
 
@@ -88,6 +110,172 @@
         </div>
       </section>
     {% elif ip %}
+      <section class="theme-card card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap">
+            <div>
+              <h2 class="theme-section-title">Client Health</h2>
+              <p class="text-muted">A lightweight profile score built from identity confidence, saved services, and exposure hints.</p>
+            </div>
+            <span class="badge badge-{{ health_summary.badge }} p-2">{{ health_summary.level }} · {{ health_summary.score }}/100</span>
+          </div>
+          <div class="theme-actions">
+            <button type="button" class="btn btn-{{ 'warning' if watched_client else 'outline-warning' }}" data-ip-client-watch data-watched="{{ 'true' if watched_client else 'false' }}">
+              {{ 'Watching client' if watched_client else 'Watch this device' }}
+            </button>
+            <button type="button" class="btn btn-outline-info" data-ip-client-http-inspect>Inspect web services</button>
+            <button type="button" class="btn btn-outline-success" data-ip-client-fingerprint>Fingerprint services</button>
+            <button type="button" class="btn btn-outline-dark" data-ip-client-intelligence>Gather device intelligence</button>
+            <button type="button" class="btn btn-outline-primary" data-ip-client-baseline>Save baseline</button>
+            <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a>
+            <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a>
+          </div>
+          <ul class="mt-3 mb-0">
+            {% for flag in health_summary.flags %}
+              <li>{{ flag }}</li>
+            {% endfor %}
+          </ul>
+          <div class="mt-3">
+            <strong>Baseline drift:</strong> {{ baseline_diff.status }}
+            {% if baseline_diff.unexpected_ports %}<span class="badge badge-danger">Unexpected {{ baseline_diff.unexpected_ports|join(', ') }}</span>{% endif %}
+            {% if baseline_diff.missing_ports %}<span class="badge badge-warning">Missing {{ baseline_diff.missing_ports|join(', ') }}</span>{% endif %}
+          </div>
+        </div>
+      </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Client Profile Metadata</h2>
+          <form class="theme-form" data-ip-client-metadata-form>
+            <div class="form-row">
+              <div class="col">
+                <label for="client-tags">Tags</label>
+                <input id="client-tags" class="form-control" data-ip-client-tags value="{{ (inventory_device.client_tags or [])|join(', ') if inventory_device else '' }}" placeholder="trusted, printer, guest">
+              </div>
+              <div class="col">
+                <label for="client-owner">Owner</label>
+                <input id="client-owner" class="form-control" data-ip-client-owner value="{{ inventory_device.client_owner if inventory_device else '' }}" placeholder="Team or person">
+              </div>
+            </div>
+            <div class="form-row mt-2">
+              <div class="col">
+                <label for="client-location">Location</label>
+                <input id="client-location" class="form-control" data-ip-client-location value="{{ inventory_device.client_location if inventory_device else '' }}" placeholder="Office, lab bench, garage">
+              </div>
+              <div class="col">
+                <label for="client-expected-ports">Expected open ports</label>
+                <input id="client-expected-ports" class="form-control" data-ip-client-expected-ports value="{{ (inventory_device.expected_open_ports or [])|join(', ') if inventory_device else '' }}" placeholder="22, 80, 443">
+              </div>
+            </div>
+            <label class="mt-2" for="client-notes">Profile notes</label>
+            <textarea id="client-notes" class="form-control" data-ip-client-notes rows="2" placeholder="Expected purpose, owner context, or remediation notes.">{{ inventory_device.client_notes if inventory_device else '' }}</textarea>
+            <div class="theme-actions">
+              <button type="submit" class="btn btn-primary">Save client metadata</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Client Relationship Map</h2>
+          <p class="text-muted">Context links between this client, interfaces, discovery sources, saved services, and evidence records.</p>
+          <div class="theme-grid">
+            {% for node in relationship_map.nodes %}
+              <div class="port-service-card">
+                <strong>{{ node.label }}</strong>
+                <small>{{ node.type }}</small>
+              </div>
+            {% endfor %}
+          </div>
+          <ul class="mt-3 mb-0">
+            {% for link in relationship_map.links %}
+              <li>{{ link.source }} → {{ link.target }} <span class="text-muted">({{ link.label }})</span></li>
+            {% else %}
+              <li class="text-muted">No related interfaces, services, or evidence are attached yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Scheduled Client Checks</h2>
+          <p class="text-muted">Save a recurring check plan for this client. The plan is recorded now so a background scheduler can run it next.</p>
+          {% if scheduled_check %}
+            <div class="alert alert-info">Scheduled every {{ scheduled_check.interval_minutes }} minute(s): {{ scheduled_check.checks|join(', ') }}</div>
+          {% endif %}
+          <form class="theme-form" data-ip-client-scheduled-form>
+            <label for="client-check-interval">Interval minutes</label>
+            <input id="client-check-interval" class="form-control" type="number" min="5" max="10080" value="{{ scheduled_check.interval_minutes if scheduled_check else 60 }}" data-ip-client-check-interval>
+            <label class="mt-2" for="client-checks">Checks</label>
+            <input id="client-checks" class="form-control" value="{{ scheduled_check.checks|join(', ') if scheduled_check else 'ping, common-ports, baseline-drift' }}" data-ip-client-checks placeholder="ping, common-ports, http-inspect, service-fingerprint, baseline-drift">
+            <div class="theme-actions">
+              <button type="submit" class="btn btn-primary">Save scheduled checks</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="theme-card card" data-ip-client-tools data-host="{{ ip }}">
+        <div class="card-body">
+          <h2 class="theme-section-title">IP Client Actions</h2>
+          <p class="text-muted">Run quick reachability and path checks, jump to deeper diagnostics, or save investigation notes for this client profile.</p>
+          <div class="theme-actions">
+            <button type="button" class="btn btn-outline-success" data-ip-client-ping>Ping client</button>
+            <button type="button" class="btn btn-outline-info" data-ip-client-route>Route diagnostics</button>
+            <button type="button" class="btn btn-outline-secondary" data-ip-client-traceroute>Traceroute</button>
+            <a class="btn btn-outline-primary" href="/diagnostics">Open diagnostics</a>
+          </div>
+          <form class="theme-form mt-3" data-ip-client-evidence-form>
+            <label for="ip-client-evidence">Evidence / investigation note</label>
+            <textarea id="ip-client-evidence" class="form-control" data-ip-client-evidence-notes rows="3" placeholder="Example: Gateway responded to ping; SSH and HTTPS open during authorized baseline." required></textarea>
+            <div class="theme-actions">
+              <button type="submit" class="btn btn-primary">Save evidence note</button>
+              <a class="btn btn-link" href="/evidence">Open Evidence Vault</a>
+            </div>
+          </form>
+          <div class="theme-results mt-3" data-ip-client-output><p class="text-muted mb-0">No IP client action has run yet.</p></div>
+        </div>
+      </section>
+
+      {% if open_port_details %}
+        <section class="theme-card card">
+          <div class="card-body">
+            <h2 class="theme-section-title">Saved Service Profile</h2>
+            <p class="text-muted">Open ports found on previous scans are saved to this device profile{% if last_port_scan_label %}; last scan {{ last_port_scan_label }}{% endif %}.</p>
+            <div class="port-service-grid">
+              {% for port in open_port_details %}
+                <div class="port-service-card" data-web-service-preview>
+                  <strong class="port-service-number">
+                    {% if port.web_url %}
+                      <a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>
+                    {% else %}
+                      {{ port.port }}/tcp
+                    {% endif %}
+                  </strong>
+                  <a class="port-service-card-link" href="/clients/{{ ip|urlencode }}/services/{{ port.port }}">
+                    <span>{{ port.service }}</span>
+                    <small>{{ port.description }}</small>
+                    {% if port.http_title %}<small>HTTP title: {{ port.http_title }}</small>{% endif %}
+                    {% if port.http_favicon %}<small>Favicon SHA-256: {{ port.http_favicon.sha256[:12] }}…</small>{% endif %}
+                    {% if port.tls_certificate %}<small>TLS CN: {{ port.tls_certificate.subject_common_name or 'Unknown' }}{% if port.tls_certificate.issuer_common_name %} · Issuer: {{ port.tls_certificate.issuer_common_name }}{% endif %}</small>{% endif %}
+                  </a>
+                  {% if port.web_url %}
+                    <div class="web-service-hover-preview">
+                      {% if port.http_thumbnail_url %}<img src="{{ port.http_thumbnail_url }}" alt="Preview of {{ port.web_url }}">{% endif %}
+                      <strong>{{ port.http_title or port.web_url }}</strong>
+                      <span>Status: {{ port.http_status or 'not captured' }}{% if port.http_server %} · {{ port.http_server }}{% endif %}</span>
+                      <small>Long-hover preview. Click the port circle to open the web page; click the card body for saved service details.</small>
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       <section class="theme-card card port-scan-panel" data-host="{{ ip }}">
         <div class="card-body">
           <h2 class="theme-section-title">Device Port Scan</h2>
@@ -125,12 +313,34 @@
           </div>
         </div>
       </section>
+
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Client Timeline</h2>
+          {% if reachability_history %}
+            <div class="alert alert-info">
+              Recent reachability: {{ reachability_history|length }} ping check(s), latest {{ 'reachable' if reachability_history[-1].reachable else 'unreachable' }} with {{ reachability_history[-1].packet_loss_percent }}% loss.
+            </div>
+          {% endif %}
+          <ol class="client-timeline">
+            {% for event in client_timeline %}
+              <li>
+                <strong>{{ event.time_label }}</strong> — {{ event.type }}
+                <p class="mb-0">{{ event.message }}{% if event.source %} <span class="text-muted">({{ event.source }})</span>{% endif %}</p>
+              </li>
+            {% else %}
+              <li class="text-muted">No client timeline events have been recorded yet.</li>
+            {% endfor %}
+          </ol>
+        </div>
+      </section>
     {% endif %}
   </main>
 {% if is_bluetooth %}
 <script src="/static/js/bluetooth-scan.js"></script>
 {% else %}
 <script src="/static/js/port_scan_live.js"></script>
+<script src="/static/js/ip_client.js"></script>
 {% endif %}
 </body>
 {% include '_footer.html' %}

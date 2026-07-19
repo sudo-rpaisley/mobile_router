@@ -1,12 +1,15 @@
 import importlib.util
+import os
 import platform
 import shutil
 import subprocess
 import sys
 from typing import Dict, List
 
+from scripts.interfaceTools import oui_database_status
+
 CORE_COMMANDS = ["ip", "ifconfig", "ipconfig", "arp", "ping", "traceroute", "tracepath", "tracert"]
-OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "busctl", "powershell", "pwsh"]
+OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "busctl", "powershell", "pwsh", "wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"]
 REQUIRED_PACKAGE_SPECS = {
     "blinker": "blinker==1.8.2",
     "click": "click==8.1.7",
@@ -48,6 +51,15 @@ CENTRAL_CAPABILITY_REGISTRY = [
         "description": "List local network adapters, addresses, status, and manufacturer metadata.",
         "feature": "Interface inventory",
         "commands": ["ip", "ifconfig", "ipconfig"],
+        "packages": [],
+    },
+    {
+        "id": "oui-vendor-lookup",
+        "name": "OUI vendor lookup",
+        "category": "Discovery",
+        "description": "Resolve MAC/BSSID prefixes to vendors using the bundled database with built-in fallbacks.",
+        "feature": "OUI vendor lookup",
+        "commands": [],
         "packages": [],
     },
     {
@@ -179,6 +191,7 @@ def _display_feature_names(system):
         "Minecraft status lab",
         "Minecraft mob toggles",
         "Interface inventory",
+        "OUI vendor lookup",
         "Passive ARP scan",
         "Active ping scan",
         "Traceroute",
@@ -223,6 +236,10 @@ def _bluetooth_actions_available(commands):
     return bool(busctl.get("available") and _busctl_bluez_available(busctl.get("path")))
 
 
+def _browser_screenshot_available(commands):
+    return any(commands.get(name, {}).get("available") for name in ("wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"))
+
+
 def _host_dependencies(system, commands):
     if system != "Linux":
         return []
@@ -230,12 +247,65 @@ def _host_dependencies(system, commands):
     bluetooth_actions_available = _bluetooth_actions_available(commands)
     return [
         {
+            "id": "bluez",
             "name": "BlueZ Bluetooth actions",
             "available": bluetooth_actions_available,
             "details": "Required for Bluetooth device action buttons such as info, connect, disconnect, pair, trust, block, and remove.",
             "install_hint": "Install the distro BlueZ package, then start/enable the bluetooth service. Debian/Ubuntu: sudo apt install bluez && sudo systemctl enable --now bluetooth. Alpine/OpenWrt-style systems may use bluez, bluez-utils, or bluez-daemon packages.",
-        }
+            "install_action": False,
+        },
+        {
+            "id": "browser-screenshot",
+            "name": "Browser screenshot tooling",
+            "available": _browser_screenshot_available(commands),
+            "details": "Enables HTTP service preview thumbnails for long-hover web-port cards and saved service pages.",
+            "install_hint": "Install one of: chromium, chromium-browser, google-chrome, or wkhtmltoimage. Debian/Ubuntu: sudo apt install chromium (or wkhtmltopdf for wkhtmltoimage).",
+            "install_action": True,
+        },
     ]
+
+
+def _privilege_prefix():
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return []
+    sudo = shutil.which("sudo")
+    return [sudo, "-n"] if sudo else []
+
+
+def browser_screenshot_install_plan():
+    """Return package-manager commands to install browser screenshot tooling."""
+    prefix = _privilege_prefix()
+    if shutil.which("apt-get"):
+        return [prefix + ["apt-get", "update"], prefix + ["apt-get", "install", "-y", "chromium"]]
+    if shutil.which("apk"):
+        return [prefix + ["apk", "add", "--no-cache", "chromium"]]
+    if shutil.which("dnf"):
+        return [prefix + ["dnf", "install", "-y", "chromium"]]
+    if shutil.which("yum"):
+        return [prefix + ["yum", "install", "-y", "chromium"]]
+    if shutil.which("pacman"):
+        return [prefix + ["pacman", "-Sy", "--noconfirm", "chromium"]]
+    raise RuntimeError("No supported package manager found. Install chromium, chromium-browser, google-chrome, or wkhtmltoimage manually.")
+
+
+def install_host_dependency(dependency_id):
+    """Install an approved host dependency using the local package manager."""
+    if dependency_id != "browser-screenshot":
+        raise ValueError(f"Unsupported host dependency: {dependency_id}")
+    if _browser_screenshot_available(command_status(["wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"])):
+        return {"dependency": dependency_id, "installed": True, "message": "Browser screenshot tooling is already available.", "commands": []}
+    commands = browser_screenshot_install_plan()
+    outputs = []
+    for command in commands:
+        if not command or command[0] is None:
+            raise RuntimeError("Unable to build an install command for this host.")
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
+        outputs.append({"command": " ".join(command), "returncode": result.returncode, "stdout": result.stdout[-2000:], "stderr": result.stderr[-2000:]})
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "Host dependency install failed"
+            raise RuntimeError(message)
+    installed = _browser_screenshot_available(command_status(["wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"]))
+    return {"dependency": dependency_id, "installed": installed, "message": "Browser screenshot tooling installed." if installed else "Install command completed but tooling was not found on PATH.", "commands": outputs}
 
 
 def _install_python_package(package, specs):
@@ -313,11 +383,14 @@ def build_capabilities() -> Dict[str, object]:
         or (system == "Linux" and (_available(commands, "nmcli", "iw") or packages["scapy"]))
     )
 
+    oui_status = oui_database_status()
+
     features = {
         "Core web UI": True,
         "Minecraft status lab": True,
         "Minecraft mob toggles": True,
         "Interface inventory": bool(commands.get("ip", {}).get("available") or commands.get("ifconfig", {}).get("available") or commands.get("ipconfig", {}).get("available") or system == "Windows"),
+        "OUI vendor lookup": bool(oui_status.get("loaded")),
         "Passive ARP scan": bool(commands.get("arp", {}).get("available") or system == "Linux"),
         "Active ping scan": bool(commands.get("ping", {}).get("available")),
         "Traceroute": bool(commands.get("traceroute", {}).get("available") or commands.get("tracepath", {}).get("available") or commands.get("tracert", {}).get("available")),
@@ -341,6 +414,7 @@ def build_capabilities() -> Dict[str, object]:
         "Aireplay deauth": "Requires the external aireplay-ng command from aircrack-ng.",
         "Reports": "Exports the current in-memory runtime state; restart-persistent storage is not required.",
         "New device alerts": "Alerts are generated for newly recorded non-control inventory devices.",
+        "OUI vendor lookup": "Uses oui/oui_db.csv when available and a built-in fallback set for common lab, router, and virtual-device prefixes.",
     }
 
     display_command_names = _display_command_names(system)
@@ -373,4 +447,5 @@ def build_capabilities() -> Dict[str, object]:
         "feature_notes": feature_notes,
         "registry": registry,
         "display_registry": registry,
+        "oui_database": oui_status,
     }

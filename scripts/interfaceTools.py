@@ -17,6 +17,28 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 GRANDPARENT_DIR = os.path.dirname(PARENT_DIR)
 
+# Built-in safety net for common lab/router/virtual-device OUIs. The local
+# database loaded from oui/oui_db.csv (or a refreshed IEEE export) is still the
+# primary source, but keeping a tiny fallback prevents core demos/tests from
+# silently losing vendor context if that file is missing or malformed.
+FALLBACK_OUI_DB = {
+    '00:0c:29': 'VMware',
+    '00:15:5d': 'Microsoft',
+    '00:50:56': 'VMware',
+    '08:00:27': 'PCS Systemtechnik GmbH',
+    '18:69:d8': 'TP-LINK Technologies',
+    '34:ab:37': 'Google',
+    '40:16:3b': 'Cisco Systems',
+    '52:54:00': 'QEMU/KVM Virtual NIC',
+    '74:ea:3a': 'Apple',
+    '90:9a:4a': 'Ubiquiti Networks',
+    '9c:2a:70': 'MikroTik',
+    'a8:b1:3b': 'Netgear',
+    'b8:27:eb': 'Raspberry Pi Foundation',
+    'bc:92:6b': 'Amazon Technologies',
+    'e8:2a:ea': 'Ubiquiti Networks',
+}
+
 # Try locating the OUI database inside the project directory or one of the
 # parent directories. This allows keeping the file outside the repository if
 # desired.
@@ -39,14 +61,15 @@ def _normalize_oui_prefix(prefix):
 
 
 def _load_oui_db():
-    """Load the local OUI database if available.
+    """Load OUI mappings from the bundled/found database plus fallbacks.
 
     Supports the compact project format (prefix,vendor) and the IEEE CSV
-    format downloaded by scripts/update_oui_db.py.
+    format downloaded by scripts/update_oui_db.py. Malformed rows are skipped so
+    one bad line does not disable all vendor lookups.
     """
-    db = {}
+    db = dict(FALLBACK_OUI_DB)
     if OUI_DB_PATH and os.path.exists(OUI_DB_PATH):
-        with open(OUI_DB_PATH, encoding='utf-8') as f:
+        with open(OUI_DB_PATH, encoding='utf-8-sig') as f:
             header = f.readline().strip().split(',')
             f.seek(0)
             if {'Assignment', 'Organization Name'}.issubset(set(header)):
@@ -59,15 +82,26 @@ def _load_oui_db():
             else:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith('#') or ',' not in line:
                         continue
                     prefix, name = line.split(',', 1)
                     normalized = _normalize_oui_prefix(prefix)
-                    if normalized:
+                    if normalized and name.strip():
                         db[normalized] = name.strip()
     return db
 
 OUI_DB = _load_oui_db()
+
+
+def oui_database_status():
+    """Return metadata useful for validating local OUI lookup health."""
+    return {
+        'path': OUI_DB_PATH,
+        'path_exists': bool(OUI_DB_PATH and os.path.exists(OUI_DB_PATH)),
+        'entries': len(OUI_DB),
+        'fallback_entries': len(FALLBACK_OUI_DB),
+        'loaded': bool(OUI_DB),
+    }
 
 
 def _normalize_interface_state(status, interface_type=None):

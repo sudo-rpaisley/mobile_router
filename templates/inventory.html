@@ -7,7 +7,31 @@
   <div class="page-hero-copy">
     <p class="page-kicker">Network visibility</p>
     <h1 class="page-title">Device Inventory</h1>
-    <p class="page-subtitle">Review discovered IPs, MAC addresses, manufacturers, interfaces, sources, and first/last seen timestamps in one place.</p>
+    <p class="page-subtitle">Review discovered IPs, MAC addresses, manufacturers, interfaces, sources, saved ports, and first/last seen timestamps in one place.</p>
+  </div>
+  <div class="theme-actions">
+    <a class="btn btn-outline-primary" href="/inventory/export.json">Export devices + ports</a>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Inventory import/export</h2>
+    <p class="text-muted">Export saves device records and saved port/service profiles so you can restore them later and avoid re-running large port scans.</p>
+    {% if import_result %}
+      {% if import_result.status == 'success' %}
+        <div class="alert alert-success" role="alert">Imported {{ import_result.imported_devices }} device record(s) and {{ import_result.imported_port_profiles }} saved port profile(s).</div>
+      {% else %}
+        <div class="alert alert-danger" role="alert">{{ import_result.message }}</div>
+      {% endif %}
+    {% endif %}
+    <form class="theme-form" action="/inventory/import" method="post" enctype="multipart/form-data">
+      <div class="form-group">
+        <label for="inventoryFile">Import exported inventory JSON</label>
+        <input id="inventoryFile" class="form-control-file" type="file" name="inventoryFile" accept="application/json,.json" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Import devices + ports</button>
+    </form>
   </div>
 </section>
 
@@ -95,8 +119,33 @@
                 <td>{{ device.first_seen_label }}</td>
                 <td>{{ device.last_seen_label }}</td>
                 <td>
+                  {% if device.open_port_details %}
+                    <div class="small text-muted mb-2">
+                      Open:
+                      {% for port in device.open_port_details %}
+                        {% if loop.index <= 4 %}
+                          <span class="badge badge-info">{{ port.port }} {{ port.service }}</span>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                  {% if device.client_health %}
+                    <div class="small text-muted mb-2">
+                      <span class="badge badge-{{ device.client_health.badge }}">{{ device.client_health.level }} {{ device.client_health.score }}/100</span>
+                      {% if device.client_baseline and device.client_baseline.status == 'Drift detected' %}
+                        <span class="badge badge-danger">Drift</span>
+                      {% endif %}
+                      {% if device.is_watched_client %}
+                        <span class="badge badge-warning">Watched</span>
+                      {% endif %}
+                      {% for tag in device.client_tags or [] %}
+                        {% if loop.index <= 3 %}<span class="badge badge-light border">{{ tag }}</span>{% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
                   {% if device.ip and not device.is_control_traffic %}
-                    <a class="btn btn-outline-primary btn-sm" href="/port-scan?host={{ device.ip|urlencode }}">Check ports</a>
+                    <a class="btn btn-outline-primary btn-sm" href="/clients/{{ device.ip|urlencode }}">Device scan</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="/port-scan?host={{ device.ip|urlencode }}">Tools scan</a>
                   {% else %}
                     —
                   {% endif %}

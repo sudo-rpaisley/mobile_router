@@ -309,6 +309,47 @@
   width: 100%;
 }
 
+.network-device-filterbar {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #e6edf7;
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.network-device-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.network-device-notes-form {
+  border: 1px solid #e6edf7;
+  border-radius: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem;
+}
+
+.network-device-label-form {
+  border: 1px dashed #b8d4f3;
+  border-radius: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem;
+}
+
+.network-device-progress {
+  min-height: 0.7rem;
+}
+
+.network-device-card-disappeared {
+  opacity: 0.82;
+}
+
 .wireless-connect-form {
   width: 100%;
 }
@@ -586,4 +627,80 @@ body.wireless-map-open {
   font-weight: 700;
   line-height: 1;
   min-width: 2.25rem;
+}
+
+.network-scan-all-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.network-device-card-grid {
+  margin-top: 1rem;
+}
+
+.network-device-card-control {
+  opacity: 0.82;
+}
+
+.network-device-bottom {
+  grid-template-columns: minmax(14rem, 1fr) minmax(12rem, 18rem);
+}
+
+.network-device-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  justify-self: end;
+  width: min(100%, 18rem);
+}
+
+.network-device-open-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.client-timeline {
+  border-left: 2px solid rgba(56, 189, 248, 0.35);
+  list-style: none;
+  margin: 1rem 0 0;
+  padding-left: 1rem;
+}
+
+.client-timeline li {
+  margin-bottom: 0.85rem;
+  position: relative;
+}
+
+.client-timeline li::before {
+  background: #38bdf8;
+  border-radius: 999px;
+  content: '';
+  height: 0.65rem;
+  left: -1.4rem;
+  position: absolute;
+  top: 0.35rem;
+  width: 0.65rem;
+}
+
+.network-detail-tabs {
+  gap: 0.25rem;
+}
+
+.network-detail-tab-content {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .network-device-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .network-device-actions {
+    justify-self: stretch;
+    width: 100%;
+  }
 }
