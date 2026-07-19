@@ -74,6 +74,8 @@ client_timelines = {}
 client_timelines_lock = threading.Lock()
 scheduled_client_checks = {}
 wireless_network_client_cache = {}
+wireless_network_labels = {}
+HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -1193,7 +1195,7 @@ def enrich_web_port_metadata(host, detail):
         inspected = inspect_http_services(host, [item['port']])[0]
     except (IndexError, OSError, ValueError):
         return item
-    for key in ('status', 'title', 'server', 'error'):
+    for key in ('status', 'title', 'server', 'error', 'thumbnail_url'):
         if inspected.get(key) not in (None, ''):
             item[f'http_{key}'] = inspected.get(key)
     return item
@@ -1602,6 +1604,29 @@ def create_client_watch_alert(identifier, title, message):
     return alert
 
 
+def capture_http_preview_thumbnail(url):
+    """Capture a small web preview when a local browser/screenshot utility exists."""
+    tool = shutil.which('wkhtmltoimage') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+    if not tool:
+        return None
+    os.makedirs(HTTP_PREVIEW_DIR, exist_ok=True)
+    filename = secure_filename(re.sub(r'[^A-Za-z0-9_.-]+', '_', url))[:120] + '.png'
+    output_path = os.path.join(HTTP_PREVIEW_DIR, filename)
+    try:
+        if os.path.exists(output_path) and time.time() - os.path.getmtime(output_path) < 3600:
+            return f'/http-previews/{filename}'
+        if os.path.basename(tool) == 'wkhtmltoimage':
+            command = [tool, '--width', '480', '--height', '320', url, output_path]
+        else:
+            command = [tool, '--headless', '--disable-gpu', '--no-sandbox', f'--screenshot={output_path}', '--window-size=480,320', url]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8, check=False)
+        if result.returncode == 0 and os.path.exists(output_path):
+            return f'/http-previews/{filename}'
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None
+
+
 def inspect_http_services(host, ports):
     """Safely inspect likely HTTP services for titles and headers."""
     results = []
@@ -1618,6 +1643,7 @@ def inspect_http_services(host, ports):
                 match = re.search(r'<title[^>]*>(.*?)</title>', body, re.I | re.S)
                 if match:
                     result['title'] = re.sub(r'\s+', ' ', match.group(1)).strip()[:120]
+                result['thumbnail_url'] = capture_http_preview_thumbnail(url)
         except HTTPError as e:
             result['status'] = e.code
             result['server'] = e.headers.get('Server')
@@ -1667,13 +1693,34 @@ def wireless_network_cache_key(network):
     )
 
 
+def wireless_network_client_label_key(interface, ssid, bssid, identity):
+    return (
+        (interface or '').strip(),
+        (ssid or '<Hidden SSID>').strip(),
+        normalize_mac(bssid) or 'any-bssid',
+        (identity or '').strip(),
+    )
+
+
+def network_client_display_label(network, client):
+    identity = client.get('mac') or client.get('ip')
+    label = wireless_network_labels.get(wireless_network_client_label_key(network.get('interface'), network.get('ssid'), network.get('bssid'), identity))
+    if label:
+        return label
+    return client.get('display_name') or client.get('hostname') or client.get('name') or client.get('ip') or client.get('mac') or 'Client'
+
+
+def sorted_network_clients(clients):
+    return sorted(clients, key=lambda item: (item.get('sort_bucket', 9), 0 if item.get('network_known_state') == 'New' else 1, (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower()))
+
+
 def merge_wireless_network_clients(network):
     """Persist and merge wireless clients plus inventory devices for a network detail view."""
     key = wireless_network_cache_key(network)
     now = time.time()
     existing_cache = wireless_network_client_cache.get(key, [])
     known_identities = {client.get('mac') or client.get('ip') for client in existing_cache if client.get('mac') or client.get('ip')}
-    cached = {client.get('mac') or client.get('ip'): dict(client) for client in existing_cache if client.get('mac') or client.get('ip')}
+    cached = {client.get('mac') or client.get('ip'): {**dict(client), 'currently_visible': False} for client in existing_cache if client.get('mac') or client.get('ip')}
     for client in network.get('clients') or []:
         client = dict(client)
         mac = normalize_mac(client.get('mac'))
@@ -1685,6 +1732,7 @@ def merge_wireless_network_clients(network):
             previous = cached.get(identity, {})
             client['network_first_seen'] = previous.get('network_first_seen') or now
             client['network_last_seen'] = now
+            client['currently_visible'] = True
             cached[identity] = {**previous, **client}
 
     interface_name = network.get('interface')
@@ -1723,10 +1771,14 @@ def merge_wireless_network_clients(network):
         client['network_known_state'] = 'Known' if identity in known_identities or (now - first_seen) > 86400 else 'New'
         client['has_open_ports'] = bool(client.get('open_port_details'))
         client['sort_bucket'] = 0 if 'gateway' in str(client.get('network_role') or '').lower() else (1 if client.get('has_open_ports') else 2)
+        client['custom_label'] = wireless_network_labels.get(wireless_network_client_label_key(network.get('interface'), network.get('ssid'), network.get('bssid'), identity))
+        client['display_name'] = network_client_display_label(network, client)
 
-    clients = sorted(cached.values(), key=lambda item: (item.get('sort_bucket', 9), 0 if item.get('network_known_state') == 'New' else 1, (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower()))
-    wireless_network_client_cache[key] = clients
+    disappeared_clients = sorted_network_clients([client for client in cached.values() if not client.get('currently_visible') and client.get('source') != 'inventory'])
+    clients = sorted_network_clients([client for client in cached.values() if client not in disappeared_clients])
+    wireless_network_client_cache[key] = clients + disappeared_clients
     network['clients'] = clients
+    network['disappeared_clients'] = disappeared_clients
     network['interface_devices'] = inventory_devices
     network['client_count'] = len(clients)
     network['inventory_device_count'] = len(inventory_devices)
@@ -2986,6 +3038,25 @@ def advanced_diagnostics_page():
     return render_template('advanced_diagnostics.html', title='Advanced Diagnostics', **current_context())
 
 
+
+
+@app.route('/http-previews/<path:filename>')
+def http_preview_file(filename):
+    """Serve locally captured HTTP preview thumbnails."""
+    return send_from_directory(HTTP_PREVIEW_DIR, filename)
+
+
+@app.route('/clients/<identifier>/services/<int:port>')
+def client_service_detail(identifier, port):
+    """Show a focused saved-service detail page for an IP client port."""
+    device = enrich_ip_client_display_name(identifier, find_inventory_device(identifier) or {})
+    host = device.get('ip') or identifier
+    service = next((dict(item) for item in device.get('open_port_details', []) if int(item.get('port') or 0) == int(port)), None)
+    if not service:
+        return render_template('service_detail.html', title='Service not found', host=host, port=port, service=None, device=device, **current_context()), 404
+    return render_template('service_detail.html', title=f"{host}:{port} Service", host=host, port=port, service=service, device=device, **current_context())
+
+
 @app.route('/clients/<identifier>')
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
@@ -3389,6 +3460,50 @@ def snmp_discovery_route():
 def ipv6_assessment_route():
     result = run_ipv6_assessment(request.form.get('host'), request.form.get('ports'))
     return json_success(result=result)
+
+
+@app.route('/wireless/network/label', methods=['POST'])
+def wireless_network_client_label_route():
+    """Save an SSID-scoped custom label for a network client card."""
+    interface = request.form.get('interface')
+    ssid = request.form.get('ssid')
+    bssid = request.form.get('bssid')
+    identity = request.form.get('identity') or request.form.get('ip') or request.form.get('mac')
+    label = (request.form.get('label') or '').strip()[:80]
+    if not interface or not ssid or not identity:
+        return json_error('Interface, SSID, and client identity are required')
+    key = wireless_network_client_label_key(interface, ssid, bssid, identity)
+    if label:
+        wireless_network_labels[key] = label
+    else:
+        wireless_network_labels.pop(key, None)
+    return json_success(label=label, message='Network client label saved.')
+
+
+@app.route('/wireless/network/clients.csv')
+def wireless_network_clients_export():
+    """Export the persisted Wi-Fi network device list as CSV."""
+    from scripts.wifi import utils as wifi_utils
+    network = wifi_utils.get_network_detail(ssid=request.args.get('ssid'), bssid=request.args.get('bssid'), interface_name=request.args.get('interface'))
+    network = merge_wireless_network_clients(network)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=['display_name', 'ip', 'mac', 'manufacturer', 'tags', 'notes', 'open_ports', 'first_seen', 'last_seen', 'state'])
+    writer.writeheader()
+    for client in network.get('clients', []) + network.get('disappeared_clients', []):
+        writer.writerow({
+            'display_name': client.get('display_name'),
+            'ip': client.get('ip'),
+            'mac': client.get('mac'),
+            'manufacturer': client.get('manufacturer'),
+            'tags': ', '.join(client.get('client_tags') or []),
+            'notes': client.get('client_notes') or '',
+            'open_ports': ', '.join(str(item.get('port')) for item in client.get('open_port_details') or []),
+            'first_seen': client.get('network_first_seen'),
+            'last_seen': client.get('network_last_seen'),
+            'state': 'disappeared' if client in network.get('disappeared_clients', []) else 'visible',
+        })
+    filename = secure_filename(f"{network.get('ssid') or 'wireless-network'}-clients.csv")
+    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename="{filename}"'})
 
 
 @app.route('/wireless/network')

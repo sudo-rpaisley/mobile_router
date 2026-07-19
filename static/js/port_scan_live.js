@@ -31,9 +31,11 @@ $(document).ready(function () {
       const isNew = !previousPorts.has(port);
       const portLabel = `${escapeHtml(port)}/tcp`;
       const portHtml = info.web_url ? `<a href="${escapeHtml(info.web_url)}" target="_blank" rel="noopener noreferrer">${portLabel}</a>` : portLabel;
-      html += `<div class="port-service-card ${isNew ? 'port-service-card-new' : ''}">`;
+      const serviceUrl = `/clients/${encodeURIComponent(job.host)}/services/${encodeURIComponent(port)}`;
+      const preview = info.web_url ? `<div class="web-service-hover-preview">${info.http_thumbnail_url ? `<img src="${escapeHtml(info.http_thumbnail_url)}" alt="Preview of ${escapeHtml(info.web_url)}">` : ''}<strong>${escapeHtml(info.http_title || info.web_url)}</strong><span>Status: ${escapeHtml(info.http_status || 'not captured')}${info.http_server ? ` · ${escapeHtml(info.http_server)}` : ''}</span><small>Click the port circle to open the page; click the card body for service details.</small></div>` : '';
+      html += `<div class="port-service-card ${isNew ? 'port-service-card-new' : ''}" data-web-service-preview>`;
       html += `<div class="port-service-number">${portHtml}</div>`;
-      html += `<div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div>`;
+      html += `<a class="port-service-card-link" href="${serviceUrl}"><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p>${info.http_title ? `<small>HTTP title: ${escapeHtml(info.http_title)}</small>` : ''}</a>${preview}`;
       html += '</div>';
     });
     html += '</div>';

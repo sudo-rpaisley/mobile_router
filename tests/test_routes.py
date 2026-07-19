@@ -1042,6 +1042,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('/summary', network_js)
         self.assertIn('data-network-device-notes-form', network_js)
         self.assertIn('data-network-device-filter', network_js)
+        self.assertIn('data-port-scan-quick-progress', network_js)
+        self.assertIn('data-network-device-label-form', network_js)
+        self.assertIn('/wireless/network/label', network_js)
 
     def test_client_summary_returns_latest_card_fields(self):
         app_module.device_inventory.clear()
@@ -1633,6 +1636,73 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'data-network-device-filter="gateway"', response.data)
         self.assertIn(b'data-network-device-notes-form', response.data)
         self.assertIn(b'data-known-state="New"', response.data)
+        self.assertIn(b'Export device list', response.data)
+        self.assertIn(b'data-network-device-label-form', response.data)
+        self.assertIn(b'data-port-scan-quick-progress', response.data)
+
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_labels_disappeared_and_export(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        app_module.wireless_network_labels.clear()
+        first = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'channel': '6',
+            'signal': 82,
+            'signal_label': '82%',
+            'interface': 'wlan0',
+            'discovered': True,
+            'gateway': {},
+            'bands': [],
+            'wps': False,
+            'wps_status': None,
+            'wps_note': None,
+            'wps_access_points': 0,
+            'ap_groups': [],
+            'access_points': [],
+            'clients': [{'ip': '192.168.50.33', 'mac': '48:b0:2d:ef:ec:f3', 'manufacturer': 'TvCo'}],
+        }
+        second = {**first, 'clients': []}
+        get_detail.side_effect = [first, second, second]
+
+        self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        response = self.client.post('/wireless/network/label', data={
+            'interface': 'wlan0',
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'identity': '48:b0:2d:ef:ec:f3',
+            'label': 'Living room TV',
+        })
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        self.assertIn(b'Recently Disappeared Devices', response.data)
+        self.assertIn(b'Living room TV', response.data)
+
+        response = self.client.get('/wireless/network/clients.csv?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Living room TV', response.data)
+        self.assertIn(b'disappeared', response.data)
+
+    def test_service_detail_page_and_port_card_links(self):
+        app_module.device_inventory.clear()
+        app_module.record_device_open_ports('192.168.20.80', [
+            {'port': 80, 'service': 'HTTP', 'description': 'Web server', 'http_title': 'Router Console'},
+        ])
+
+        response = self.client.get('/clients/192.168.20.80')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'class="port-service-number"', response.data)
+        self.assertIn(b'href="http://192.168.20.80:80/"', response.data)
+        self.assertIn(b'/clients/192.168.20.80/services/80', response.data)
+        self.assertIn(b'web-service-hover-preview', response.data)
+
+        response = self.client.get('/clients/192.168.20.80/services/80')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'192.168.20.80:80', response.data)
+        self.assertIn(b'Router Console', response.data)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

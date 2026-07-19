@@ -334,6 +334,22 @@
   padding: 0.6rem;
 }
 
+.network-device-label-form {
+  border: 1px dashed #b8d4f3;
+  border-radius: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem;
+}
+
+.network-device-progress {
+  min-height: 0.7rem;
+}
+
+.network-device-card-disappeared {
+  opacity: 0.82;
+}
+
 .wireless-connect-form {
   width: 100%;
 }

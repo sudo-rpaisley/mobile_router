@@ -118,6 +118,7 @@
                   <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="new">New</button>
                   <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="unknown">Unknown</button>
                 </div>
+                <a class="btn btn-outline-primary btn-sm" href="/wireless/network/clients.csv?interface={{ network.interface|urlencode }}&ssid={{ network.ssid|urlencode }}&bssid={{ (network.bssid or '')|urlencode }}">Export device list</a>
               </div>
               <div class="wireless-network-grid network-device-card-grid">
                 {% for client in network.clients %}
@@ -126,11 +127,11 @@
                       <div class="wireless-network-identity">
                         <h3 class="wireless-network-ssid mb-1">
                           {% if client.ip %}
-                            <a href="/clients/{{ client.ip|urlencode }}">{{ client.display_name or client.ip }}</a>
+                            <a href="/clients/{{ client.ip|urlencode }}" data-network-device-title>{{ client.display_name or client.ip }}</a>
                           {% elif client.mac %}
-                            <a href="/clients/{{ client.mac|urlencode }}">{{ client.display_name or client.mac }}</a>
+                            <a href="/clients/{{ client.mac|urlencode }}" data-network-device-title>{{ client.display_name or client.mac }}</a>
                           {% else %}
-                            {{ client.display_name or 'Client' }}
+                            <span data-network-device-title>{{ client.display_name or 'Client' }}</span>
                           {% endif %}
                         </h3>
                         <p class="wireless-network-meta mb-0"><i class="fa-solid fa-network-wired"></i> {{ client.ip or 'Unknown IP' }}</p>
@@ -180,6 +181,14 @@
                           <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
                           <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
                           <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+                          <div class="progress network-device-progress" data-port-scan-quick-progress>
+                            <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</div>
+                          </div>
+                          <form class="network-device-label-form" data-network-device-label-form data-interface="{{ network.interface }}" data-ssid="{{ network.ssid }}" data-bssid="{{ network.bssid or '' }}" data-identity="{{ client.mac or client.ip }}">
+                            <input class="form-control form-control-sm" name="label" placeholder="SSID label, e.g. Living room TV" value="{{ client.custom_label or '' }}">
+                            <button class="btn btn-outline-info btn-sm" type="submit">Save SSID label</button>
+                            <div class="network-device-label-status small text-muted" data-network-device-label-status></div>
+                          </form>
                           <form class="network-device-notes-form" data-network-device-notes-form data-host="{{ client.ip }}">
                             <input class="form-control form-control-sm" name="tags" placeholder="Tags, comma separated" value="{{ (client.client_tags or [])|join(', ') }}">
                             <textarea class="form-control form-control-sm" name="notes" rows="2" placeholder="Device notes">{{ client.client_notes or '' }}</textarea>
@@ -199,6 +208,32 @@
             {% endif %}
           </div>
         </article>
+        {% if network.disappeared_clients %}
+          <article class="card shadow-sm interface-address-card mt-3">
+            <div class="card-body">
+              <h2 class="interface-section-title">Recently Disappeared Devices</h2>
+              <p class="text-muted">These clients were previously seen on this SSID/interface but were not visible in the latest network detail observation.</p>
+              <div class="wireless-network-grid network-device-card-grid">
+                {% for client in network.disappeared_clients %}
+                  <article class="wireless-network-card network-device-card network-device-card-disappeared">
+                    <div class="wireless-network-main">
+                      <div>
+                        <h3 class="wireless-network-ssid mb-1">{{ client.display_name or client.ip or client.mac }}</h3>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-network-wired"></i> {{ client.ip or 'Unknown IP' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-fingerprint"></i> {{ client.mac or 'Unknown MAC' }}</p>
+                      </div>
+                      <div class="wireless-network-badges">
+                        <span class="badge badge-secondary">Recently disappeared</span>
+                        <span class="badge badge-light border">{{ client.network_known_state or 'Known' }}</span>
+                      </div>
+                    </div>
+                    <p class="text-muted small mb-0">Last seen on this network: {{ client.network_last_seen or 'unknown' }}</p>
+                  </article>
+                {% endfor %}
+              </div>
+            </div>
+          </article>
+        {% endif %}
       </section>
 
       <section class="tab-pane fade" id="network-ap-pane" role="tabpanel" aria-labelledby="network-ap-tab">

@@ -34,7 +34,7 @@ $(document).ready(function () {
       const title = port.http_title ? ` · ${escapeHtml(port.http_title)}` : '';
       const label = `${escapeHtml(port.port)} ${escapeHtml(port.service || 'Unknown')}${title}`;
       const tooltip = escapeHtml(port.http_title || port.http_status || port.description || '');
-      return port.web_url ? `<a class="badge badge-info" href="${escapeHtml(port.web_url)}" target="_blank" rel="noopener noreferrer" title="${tooltip}">${label}</a>` : `<span class="badge badge-info">${label}</span>`;
+      return port.web_url ? `<a class="badge badge-info" href="${escapeHtml(port.web_url)}" target="_blank" rel="noopener noreferrer" title="${tooltip}" data-web-service-preview>${label}</a>` : `<span class="badge badge-info">${label}</span>`;
     }).join('')}</div>`;
   }
 
@@ -58,6 +58,7 @@ $(document).ready(function () {
         if (device.client_notes) notes.removeClass('d-none').text(device.client_notes);
         else notes.addClass('d-none').text('');
         card.attr('data-has-open-ports', (device.open_port_details || []).length ? 'true' : 'false');
+        if (device.display_name) card.find('[data-network-device-title]').text(device.display_name);
       }
     });
   }
@@ -102,6 +103,7 @@ $(document).ready(function () {
             <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
             <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
             <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+            <div class="progress network-device-progress" data-port-scan-quick-progress><div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</div></div>
             <form class="network-device-notes-form" data-network-device-notes-form data-host="${escapeHtml(ip)}">
               <input class="form-control form-control-sm" name="tags" placeholder="Tags, comma separated" value="${escapeHtml((item.client_tags || []).join(', '))}">
               <textarea class="form-control form-control-sm" name="notes" rows="2" placeholder="Device notes">${escapeHtml(item.client_notes || '')}</textarea>
@@ -202,6 +204,7 @@ $(document).ready(function () {
         const job = resp.job || {};
         const progress = job.progress == null ? 0 : job.progress;
         status.text(`${job.label || 'Port scan'} ${job.status}: ${progress}% (${job.open_ports?.length || 0} open)`);
+        card.find('[data-port-scan-quick-progress] .progress-bar').css('width', `${progress}%`).attr('aria-valuenow', progress).text(`${progress}%`);
         const host = card.attr('data-host') || job.host;
         refreshDeviceCard(host, card);
         if (['queued', 'running'].includes(job.status)) {
@@ -322,6 +325,33 @@ $(document).ready(function () {
     $('[data-network-device-filter]').removeClass('active');
     $(this).addClass('active');
     applyNetworkDeviceFilter($(this).attr('data-network-device-filter'));
+  });
+
+  $(document).on('submit', '[data-network-device-label-form]', function (e) {
+    e.preventDefault();
+    const form = $(this);
+    const status = form.find('[data-network-device-label-status]');
+    const card = form.closest('[data-network-device-card]');
+    status.text('Saving SSID label...');
+    $.ajax({
+      url: '/wireless/network/label',
+      method: 'POST',
+      data: {
+        interface: form.attr('data-interface'),
+        ssid: form.attr('data-ssid'),
+        bssid: form.attr('data-bssid'),
+        identity: form.attr('data-identity'),
+        label: form.find('[name="label"]').val()
+      },
+      success: function (resp) {
+        status.text(resp.message || 'SSID label saved.');
+        const label = form.find('[name="label"]').val();
+        if (label) card.find('[data-network-device-title]').text(label);
+      },
+      error: function (xhr) {
+        status.text(xhr.responseJSON?.message || 'Failed to save SSID label.');
+      }
+    });
   });
 
   $(document).on('submit', '[data-network-device-notes-form]', function (e) {
