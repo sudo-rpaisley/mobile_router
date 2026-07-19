@@ -24,6 +24,7 @@ from services import inventory as inventory_service
 from services import diagnostics as diagnostics_service
 from services import port_scans as port_scan_service
 from services import wireless_clients as wireless_client_service
+from services import persistence as persistence_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
     get_network_interfaces,
@@ -87,6 +88,72 @@ EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
+runtime_state_lock = threading.Lock()
+
+
+def runtime_state_snapshot():
+    """Build a durable snapshot of inventory/profile state worth keeping across restarts."""
+    with device_inventory_lock:
+        inventory = {key: dict(value) for key, value in device_inventory.items()}
+    with new_device_alerts_lock:
+        alerts = [dict(item) for item in new_device_alerts]
+    with evidence_vault_lock:
+        evidence = [dict(item) for item in evidence_vault]
+    with client_timelines_lock:
+        timelines = {key: [dict(item) for item in value] for key, value in client_timelines.items()}
+    return {
+        'device_inventory': inventory,
+        'new_device_alerts': alerts,
+        'evidence_vault': evidence,
+        'watched_clients': sorted(watched_clients),
+        'client_timelines': timelines,
+        'scheduled_client_checks': dict(scheduled_client_checks),
+        'wireless_network_client_cache': wireless_network_client_cache,
+        'wireless_network_labels': dict(wireless_network_labels),
+        'bluetooth_action_histories': bluetooth_action_histories,
+        'evil_twin_lab_runs': evil_twin_lab_runs,
+        'pineap_lab_runs': pineap_lab_runs,
+        'handshake_lab_records': handshake_lab_records,
+    }
+
+
+def save_runtime_state(reason='state-update'):
+    """Persist runtime state best-effort so scan profiles survive restarts."""
+    try:
+        with runtime_state_lock:
+            return persistence_service.save_state({'reason': reason, **runtime_state_snapshot()})
+    except OSError as exc:
+        app.logger.warning('Unable to persist runtime state after %s: %s', reason, exc)
+        return None
+
+
+def load_runtime_state():
+    """Load persisted runtime state into the in-memory stores on startup."""
+    state = persistence_service.load_state()
+    if not state:
+        return None
+    with device_inventory_lock:
+        device_inventory.update(state.get('device_inventory') or {})
+    with new_device_alerts_lock:
+        new_device_alerts.extend(state.get('new_device_alerts') or [])
+        del new_device_alerts[200:]
+    with evidence_vault_lock:
+        evidence_vault.extend(state.get('evidence_vault') or [])
+    with client_timelines_lock:
+        client_timelines.update(state.get('client_timelines') or {})
+    watched_clients.update(state.get('watched_clients') or [])
+    scheduled_client_checks.update(state.get('scheduled_client_checks') or {})
+    wireless_network_client_cache.update(state.get('wireless_network_client_cache') or {})
+    wireless_network_labels.update(state.get('wireless_network_labels') or {})
+    bluetooth_action_histories.update(state.get('bluetooth_action_histories') or {})
+    evil_twin_lab_runs.extend(state.get('evil_twin_lab_runs') or [])
+    pineap_lab_runs.extend(state.get('pineap_lab_runs') or [])
+    handshake_lab_records.extend(state.get('handshake_lab_records') or [])
+    return state
+
+
+load_runtime_state()
+
 
 ROADMAP_SECTIONS = [
     {
@@ -123,6 +190,7 @@ ROADMAP_SECTIONS = [
         'title': 'Network visibility',
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
+            {'title': 'Persistent local inventory state', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Inventory devices, saved port profiles, client timelines, labels, watched clients, scheduled check plans, evidence, alerts, and lab records are now snapshotted to data/runtime_state.json and loaded on startup.', 'description': 'Persist device profiles, ports, labels, timelines, alerts, and evidence locally so large scans do not need to be rerun after restart.'},
             {'title': 'Comprehensive network device scan', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Network Scan now combines active ARP, passive observations, local ARP/neighbor tables, optional ping sweeps, mDNS, UPnP/SSDP, and LLDP/CDP metadata into one inventory-building workflow.', 'description': 'Scan local networks for devices using multiple discovery methods and merge results into inventory with source attribution.'},
             {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
@@ -344,6 +412,7 @@ def record_evil_twin_lab_run(selected_interface, lab):
     with evil_twin_lab_lock:
         evil_twin_lab_runs.append(run)
         del evil_twin_lab_runs[:-25]
+    save_runtime_state('evil-twin-lab')
     app.logger.info(
         'Evil twin lab %s recorded for SSID %r BSSID %s channel %s on %s',
         run['action'], run['ssid'], run['bssid'], run['channel'], selected_interface,
@@ -420,6 +489,7 @@ def build_pineap_lab_result(selected_interface, lab):
     with pineap_lab_lock:
         pineap_lab_runs.insert(0, run)
         del pineap_lab_runs[100:]
+    save_runtime_state('pineap-lab')
     app.logger.info('PineAP-style lab %s recorded for SSID %r on %s', run['action'], run['ssid'], selected_interface)
     return run
 
@@ -491,6 +561,7 @@ def record_handshake_lab_evidence(selected_interface, lab, uploaded_file=None):
     with handshake_lab_lock:
         handshake_lab_records.insert(0, record)
         del handshake_lab_records[200:]
+    save_runtime_state('handshake-lab')
     app.logger.info('Handshake lab evidence %s cataloged for SSID %r BSSID %s', record['capture_type'], record['ssid'], record['bssid'])
     return record
 
@@ -783,6 +854,7 @@ def create_evidence_record(title, category='note', source=None, device=None, not
     with evidence_vault_lock:
         evidence_vault.insert(0, record)
         del evidence_vault[500:]
+    save_runtime_state('evidence')
     return dict(record)
 
 
@@ -1070,11 +1142,14 @@ def unread_alert_count():
         return len([alert for alert in new_device_alerts if not alert.get('read')])
 
 def record_inventory_devices(devices, source, interface=None):
-    return inventory_service.merge_devices(
+    merged = inventory_service.merge_devices(
         devices, source, interface, device_inventory, device_inventory_lock,
         normalize_mac, inventory_key, lookup_manufacturer,
         create_new_device_alert, create_grouped_device_alert,
     )
+    if merged:
+        save_runtime_state(f'inventory:{source}')
+    return merged
 
 
 def record_device_open_ports(host, port_details, source='port-scan'):
@@ -1090,6 +1165,7 @@ def record_device_open_ports(host, port_details, source='port-scan'):
             if key in device_inventory:
                 device_inventory[key]['device_role_guess'] = role_guess
                 updated = dict(device_inventory[key])
+        save_runtime_state(f'ports:{source}')
     return updated
 
 
@@ -1237,6 +1313,7 @@ def append_client_timeline_event(identifier, event_type, message, source=None):
     with client_timelines_lock:
         client_timelines.setdefault(key, []).insert(0, event)
         del client_timelines[key][50:]
+    save_runtime_state('client-timeline')
     return event
 
 
@@ -1586,6 +1663,7 @@ def save_scheduled_client_check(identifier, data):
     }
     scheduled_client_checks[target] = plan
     append_client_timeline_event(target, 'Scheduled checks updated', f"Scheduled {', '.join(checks)} every {interval} minute(s).", 'scheduled-checks')
+    save_runtime_state('scheduled-check')
     return dict(plan)
 
 
@@ -2872,9 +2950,11 @@ def watch_client(identifier):
     if watch:
         watched_clients.add(target)
         append_client_timeline_event(target, 'Watch enabled', 'This client will create alerts for notable profile changes.', 'client-watch')
+        save_runtime_state('client-watch')
         return json_success(watched=True, message='Client watch enabled.')
     watched_clients.discard(target)
     append_client_timeline_event(target, 'Watch disabled', 'Client watch notifications were disabled.', 'client-watch')
+    save_runtime_state('client-watch')
     return json_success(watched=False, message='Client watch disabled.')
 
 
@@ -3238,6 +3318,7 @@ def wireless_network_client_label_route():
         wireless_network_labels[key] = label
     else:
         wireless_network_labels.pop(key, None)
+    save_runtime_state('wireless-label')
     return json_success(label=label, message='Network client label saved.')
 
 

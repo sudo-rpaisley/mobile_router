@@ -1,3 +1,6 @@
+import json
+import os
+import tempfile
 import time
 import unittest
 from types import SimpleNamespace
@@ -34,6 +37,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Project Roadmap', response.data)
         self.assertIn(b'Device inventory page', response.data)
+        self.assertIn(b'Persistent local inventory state', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
         self.assertIn(b'WPS exposure checks', response.data)
         self.assertNotIn(b'Authorization guardrails', response.data)
@@ -1360,6 +1364,35 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.data.count(b'Tools scan'), 1)
         self.assertIn(b'Export devices + ports', response.data)
         self.assertIn(b'Import devices + ports', response.data)
+
+    def test_runtime_state_persists_inventory_ports_labels_and_profiles(self):
+        app_module.device_inventory.clear()
+        app_module.client_timelines.clear()
+        app_module.wireless_network_labels.clear()
+        app_module.watched_clients.clear()
+        app_module.scheduled_client_checks.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = os.path.join(tmpdir, 'runtime_state.json')
+            with patch.object(app_module.persistence_service, 'state_path', return_value=state_path):
+                app_module.record_inventory_devices([
+                    {'ip': '192.168.90.10', 'mac': 'b8:27:eb:90:00:10', 'interfaces': ['wlan0']},
+                ], 'active-scan', 'wlan0')
+                app_module.record_device_open_ports('192.168.90.10', [
+                    {'port': 80, 'service': 'HTTP', 'description': 'Web service'},
+                ])
+                app_module.update_client_metadata('192.168.90.10', {'tags': 'trusted', 'notes': 'Do not rescan heavily.'})
+                app_module.wireless_network_labels['wlan0|TrainingNet||b8:27:eb:90:00:10'] = 'Living room TV'
+                app_module.save_runtime_state('test')
+
+            with open(state_path, encoding='utf-8') as handle:
+                payload = json.load(handle)
+
+        device = next(item for item in payload['device_inventory'].values() if item.get('ip') == '192.168.90.10')
+        self.assertEqual(device['open_ports'], [80])
+        self.assertEqual(device['client_tags'], ['trusted'])
+        self.assertEqual(payload['wireless_network_labels']['wlan0|TrainingNet||b8:27:eb:90:00:10'], 'Living room TV')
+        self.assertIn('192.168.90.10', payload['client_timelines'])
 
     def test_inventory_export_and_import_preserves_open_ports(self):
         app_module.device_inventory.clear()
