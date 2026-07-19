@@ -587,3 +587,48 @@ body.wireless-map-open {
   line-height: 1;
   min-width: 2.25rem;
 }
+
+.network-scan-all-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.network-device-card-grid {
+  margin-top: 1rem;
+}
+
+.network-device-card-control {
+  opacity: 0.82;
+}
+
+.network-device-bottom {
+  grid-template-columns: minmax(14rem, 1fr) minmax(12rem, 18rem);
+}
+
+.network-device-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  justify-self: end;
+  width: min(100%, 18rem);
+}
+
+.network-device-open-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+@media (max-width: 768px) {
+  .network-device-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .network-device-actions {
+    justify-self: stretch;
+    width: 100%;
+  }
+}

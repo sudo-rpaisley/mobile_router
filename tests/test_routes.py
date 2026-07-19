@@ -477,6 +477,17 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Comprehensive Device Scan', response.data)
         self.assertIn(b'id="sweep-cidr"', response.data)
         self.assertIn(b'Include mDNS, UPnP/SSDP, and LLDP/CDP', response.data)
+        self.assertIn(b'interface.css', response.data)
+
+    def test_network_scan_results_render_device_cards_and_scan_all_actions(self):
+        js = open('static/js/network_scan.js').read()
+
+        self.assertIn('network-device-card', js)
+        self.assertIn('Scan all common ports', js)
+        self.assertIn('Scan all ports', js)
+        self.assertIn('data-port-scan-all', js)
+        self.assertIn('Device profile', js)
+        self.assertIn('Port scan', js)
 
     @patch('app.discover_lldp_neighbors')
     @patch('app.discover_upnp_devices')
