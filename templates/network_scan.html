@@ -3,6 +3,7 @@
 {% block title %}Network Scan{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/interface.css">
 <section class="page-hero">
   <div class="page-hero-copy">
     <p class="page-kicker">Discovery</p>
@@ -20,12 +21,19 @@
         {% include '_adapters-list.html' %}
       </div>
       <div class="theme-actions">
+        <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
         <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
         <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
       </div>
+      <div class="form-group mb-0">
+        <label for="sweep-cidr">Optional ping sweep CIDR</label>
+        <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
+      </div>
+      <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
+      <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
     </form>
     <div class="alert alert-secondary mt-3" role="note">
-      <strong>How to read passive results:</strong> private LAN hosts are likely devices on your network, gateway/router rows are infrastructure, and broadcast or multicast rows are local control traffic rather than individual clients.
+      <strong>Comprehensive scans:</strong> combine active ARP discovery, passive observations, local ARP/neighbor tables, optional ping sweeps, and service discovery metadata to build device inventory like Bluetooth scans do for nearby devices.
     </div>
     <div id="scan-results" class="theme-results"></div>
   </div>

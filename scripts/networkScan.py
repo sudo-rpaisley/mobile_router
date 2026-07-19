@@ -173,11 +173,27 @@ def _dedupe_devices(devices):
     return unique
 
 
+def _arp_cache_candidates(interface=None):
+    """Return ARP cache entries for an interface, falling back to host-wide cache.
+
+    UI adapter labels are not always the kernel interface names (for example a
+    friendly "WiFi" label), so an active scan should still show cached LAN
+    neighbors instead of reporting an empty result when CIDR detection fails.
+    """
+    devices = _parse_proc_arp(interface)
+    if devices:
+        return devices
+    devices = _parse_proc_arp()
+    if devices:
+        return devices
+    return _parse_arp_command()
+
+
 def active_scan(interface):
     """Perform a bounded ping sweep and return live hosts with MAC addresses."""
     cidr = _get_ipv4_cidr(interface)
     if not cidr:
-        return []
+        return sorted(_dedupe_devices(_arp_cache_candidates(interface)), key=lambda item: ipaddress.ip_address(item["ip"]))
     try:
         network = ipaddress.ip_interface(cidr).network
     except ValueError:
@@ -189,7 +205,7 @@ def active_scan(interface):
     # afterwards so ICMP-blocking LAN hosts can still show up when discovered.
     hosts = list(network.hosts())
     if len(hosts) > 1024:
-        return []
+        return sorted(_dedupe_devices(_arp_cache_candidates(interface)), key=lambda item: ipaddress.ip_address(item["ip"]))
 
     live_hosts = []
     workers = min(64, max(1, len(hosts)))
@@ -200,7 +216,7 @@ def active_scan(interface):
             if ip:
                 live_hosts.append({"ip": ip, "mac": get_mac_by_ip(ip)})
 
-    live_hosts.extend(_parse_proc_arp(interface))
+    live_hosts.extend(_arp_cache_candidates(interface))
     return sorted(_dedupe_devices(live_hosts), key=lambda item: ipaddress.ip_address(item["ip"]))
 
 

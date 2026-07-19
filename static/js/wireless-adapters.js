@@ -364,6 +364,7 @@ $(document).ready(function () {
             </div>
             ${hasWps && network.wps_note ? `<p class="wireless-network-notes text-warning mb-2"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(network.wps_note)}</p>` : ''}
             <div class="wireless-network-actions">
+              <a class="btn btn-outline-success btn-sm" href="${escapeHtml(detailUrl)}#network-device-scan" title="Open this SSID detail page with the interface device scan panel">Device scan</a>
               <form class="wireless-connect-form" data-interface="${escapeHtml(interfaceName)}" data-ssid="${escapeHtml(ssid)}">
                 <div class="input-group input-group-sm">
                   <input type="password" class="form-control" name="password" placeholder="${isOpen ? 'Open network: no password needed' : 'Password'}" aria-label="Password for ${escapeHtml(ssid)}">

@@ -171,7 +171,20 @@
               <div class="text-muted small">{{ dependency.details }}</div>
             </td>
             <td>{% if dependency.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
-            <td><code>{{ dependency.install_hint }}</code></td>
+            <td>
+              <code>{{ dependency.install_hint }}</code>
+              {% if dependency.install_action %}
+                <div class="mt-2">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary install-host-dependency-btn"
+                    data-dependency="{{ dependency.id }}"
+                    data-confirm="install">
+                    Install for me
+                  </button>
+                </div>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

@@ -11,7 +11,11 @@ import shutil
 import subprocess
 import csv
 import io
+import ipaddress
+import socket
 from urllib.parse import quote
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 from werkzeug.utils import secure_filename
 
 from routes import register_blueprints
@@ -57,6 +61,21 @@ new_device_alerts = []
 new_device_alerts_lock = threading.Lock()
 evidence_vault = []
 evidence_vault_lock = threading.Lock()
+evil_twin_lab_runs = []
+evil_twin_lab_lock = threading.Lock()
+pineap_lab_runs = []
+pineap_lab_lock = threading.Lock()
+handshake_lab_records = []
+handshake_lab_lock = threading.Lock()
+ping_history = []
+vlan_segmentation_notes = []
+watched_clients = set()
+client_timelines = {}
+client_timelines_lock = threading.Lock()
+scheduled_client_checks = {}
+wireless_network_client_cache = {}
+wireless_network_labels = {}
+HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -97,25 +116,31 @@ ROADMAP_SECTIONS = [
         'title': 'Network visibility',
         'items': [
             {'title': 'Device inventory page', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'The /inventory page aggregates discovered devices, sources, interfaces, manufacturers, and first/last seen timestamps.', 'description': 'Aggregate discovered IPs, MACs, manufacturers, ports, SSIDs, and first/last seen timestamps.'},
+            {'title': 'Comprehensive network device scan', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Network Scan now combines active ARP, passive observations, local ARP/neighbor tables, optional ping sweeps, mDNS, UPnP/SSDP, and LLDP/CDP metadata into one inventory-building workflow.', 'description': 'Scan local networks for devices using multiple discovery methods and merge results into inventory with source attribution.'},
+            {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
+            {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles now show relationship nodes and links for interfaces, discovery sources, saved services, and related evidence records.', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
+            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles can save recurring check plans for ping, common ports, HTTP inspection, service fingerprinting, and baseline drift so a scheduler can run them.', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
+            {'title': 'Client remediation checklist', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Turn baseline drift, sensitive services, and unknown identity hints into suggested remediation tasks with resolved/accepted-risk state.'},
+            {'title': 'Client change approval log', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users approve expected port, owner, location, and tag changes with reviewer notes for audit-friendly inventory maintenance.'},
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
             {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
             {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
-            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
+            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory discovery now creates one grouped alert for multi-device active/job scans while preserving individual passive-scan alerts.', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
         ],
     },
     {
         'title': 'Core network tools',
         'items': [
-            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
-            {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
+            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Diagnostics now includes single-host ping, bounded subnet sweeps, packet loss, latency parsing, and recent reachability history.', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
+            {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Comprehensive network scans now include local ARP cache and neighbor-table observations with OUI/vendor enrichment and inventory links.', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
             {'title': 'DNS lookup and diagnostics toolkit', 'priority': 'High', 'priority_class': 'danger', 'description': 'Support A, AAAA, PTR, MX, TXT, NS, and CNAME lookups, resolver comparison, timing, and split-horizon troubleshooting.'},
-            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
+            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Diagnostics now reports default gateways, parsed IPv4/IPv6 routes, per-interface metrics, VPN route hints, and target scan-path context.', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
             {'title': 'Connectivity health check', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Check gateway, DNS, HTTP, HTTPS, NTP, IPv4, IPv6, captive portal state, and explain which layer is failing.'},
             {'title': 'Packet capture and protocol summary', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Start and stop scoped packet captures, export PCAP files, summarize protocols/top talkers, and attach captures to evidence.'},
             {'title': 'Live traffic monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show bandwidth, packets per second, top talkers, protocol mix, and short history per interface.'},
             {'title': 'Local socket and listener inventory', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'List local listening ports and established connections with process names where available and highlight externally exposed listeners.'},
-            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
+            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'IP client profiles can run safe banner probes and HTTP checks against saved open ports with confidence labels.', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
             {'title': 'HTTP service inspector', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Inspect HTTP/HTTPS services for status, redirects, page title, server headers, login forms, TLS details, and basic security headers.'},
         ],
     },
@@ -124,14 +149,14 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'TLS certificate inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show certificate subject, issuer, SANs, expiration, self-signed status, hostname mismatch, and chain details.'},
             {'title': 'DHCP lease and server inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Display DHCP lease details, DNS/router options, renewal timing, and warnings for multiple or unexpected DHCP servers.'},
-            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
-            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
-            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
-            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
-            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
-            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
-            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
-            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
+            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now parses mDNS/Bonjour service records, hostnames, ports, TXT records, roles, and inventory metadata.', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
+            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now performs bounded SSDP discovery and catalogs friendly names, model/manufacturer hints, service types, and control URLs.', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
+            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now surfaces lldpctl neighbor data including switch/router names, ports, VLAN hints, and management addresses when visible.', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
+            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now inventories VLAN interfaces/tags and stores SSID-to-VLAN segmentation validation notes.', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
+            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now reports public IP hints, NAT context, DNS resolvers, IPv6 egress, VPN/proxy hints, and per-interface route context.', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
+            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now runs bounded iperf3 client/server checks for LAN throughput baselines when iperf3 is installed.', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
+            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now safely collects SNMP system and interface metadata from authorized targets when credentials are supplied.', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
+            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now includes IPv6 ping, traceroute, neighbor/default-route views, AAAA lookup, and bounded IPv6 TCP checks.', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
         ],
     },
     {
@@ -150,11 +175,11 @@ ROADMAP_SECTIONS = [
     {
         'title': 'Wireless risk lab',
         'items': [
-            {'title': 'WPA handshake capture lab', 'priority': 'High', 'priority_class': 'danger', 'description': 'Capture, validate, catalog, and export WPA/WPA2 handshake or PMKID evidence from authorized lab networks.'},
+            {'title': 'WPA handshake capture lab', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Red Team now catalogs authorized WPA/WPA2 handshake or PMKID evidence with validation status, Evidence Vault mirroring, and JSON/CSV exports.', 'description': 'Capture, validate, catalog, and export WPA/WPA2 handshake or PMKID evidence from authorized lab networks.'},
             {'title': 'Scoped deauthentication actions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Run AP-wide or client-specific deauthentication actions against authorized lab networks with targeting controls, rate limits, and clear logs.'},
             {'title': 'Remote cracking orchestration', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Queue authorized handshake material to stronger remote workers such as Spark, track job progress, and import results for password-strength review.'},
-            {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
-            {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
+            {'title': 'PineAP-style recon and campaign engine', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Red Team now includes a PineAP-style lab console for authorized recon, campaign, handshake, and module workflow logging.', 'description': 'Build functional WiFi Pineapple-style recon, campaign, handshake, module, and Cloud C2-inspired workflows for authorized labs.'},
+            {'title': 'Evil twin and captive portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Red Team now records authorized evil-twin/captive-portal lab plans with explicit SSID/BSSID/channel targeting, cleanup steps, and detection guidance.', 'description': 'Run controlled rogue-AP and captive-portal lab workflows with explicit SSID targeting, logging, cleanup, and detection guidance.'},
             {'title': 'WPS exposure checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Wireless scan results and network detail pages now flag APs advertising WPS and explain why WPS can weaken credential protection.', 'description': 'Identify lab networks advertising WPS and explain why WPS increases wireless credential risk.'},
             {'title': 'Client privacy and probe request monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Monitor probe behavior to show device presence, preferred-network leakage, and tracking risk in authorized training environments.'},
             {'title': 'Rogue DHCP, DNS, and portal lab', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Run isolated post-association lab workflows for rogue DHCP, DNS manipulation, and portal redirection with validation checks.'},
@@ -213,6 +238,11 @@ BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
 DEAUTH_FRAME_LIMIT = 5
 BROADCAST_MAC = 'ff:ff:ff:ff:ff:ff'
+EVIL_TWIN_MAX_DURATION_MINUTES = 30
+EVIL_TWIN_ACTIONS = {'plan', 'start', 'cleanup'}
+PINEAP_ACTIONS = {'recon', 'campaign', 'handshake', 'module'}
+PINEAP_MODULES = {'recon', 'evil-twin-lab', 'handshake-capture', 'portal-awareness', 'detection-report'}
+HANDSHAKE_CAPTURE_TYPES = {'wpa-handshake', 'pmkid'}
 
 
 def normalize_mac(value):
@@ -234,6 +264,245 @@ def validate_lab_deauth_request(data):
     if frames < 1 or frames > DEAUTH_FRAME_LIMIT:
         raise ValueError(f'Frames must be between 1 and {DEAUTH_FRAME_LIMIT} for first-year labs')
     return ap_mac, target_mac, frames
+
+
+def validate_evil_twin_lab_request(data):
+    """Validate a controlled rogue-AP/captive-portal lab workflow request."""
+    action = (data.get('action') or 'plan').strip().lower()
+    if action not in EVIL_TWIN_ACTIONS:
+        raise ValueError('Choose plan, start, or cleanup for the lab workflow')
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before preparing an evil twin lab workflow')
+
+    ssid = (data.get('ssid') or '').strip()
+    if not ssid or len(ssid) > 32:
+        raise ValueError('Enter the exact lab SSID, up to 32 characters')
+
+    bssid = normalize_mac(data.get('bssid'))
+    channel = parse_int(data.get('channel'), 'Channel must be an integer')
+    if channel < 1 or channel > 196:
+        raise ValueError('Channel must be between 1 and 196')
+
+    duration = parse_int(data.get('durationMinutes') or '10', 'Duration must be an integer')
+    if duration < 1 or duration > EVIL_TWIN_MAX_DURATION_MINUTES:
+        raise ValueError(f'Duration must be between 1 and {EVIL_TWIN_MAX_DURATION_MINUTES} minutes')
+
+    portal_message = (data.get('portalMessage') or 'Training portal: do not enter real credentials.').strip()
+    if len(portal_message) > 200:
+        raise ValueError('Portal message must be 200 characters or fewer')
+
+    return {
+        'action': action,
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'duration_minutes': duration,
+        'portal_message': portal_message,
+    }
+
+
+def build_evil_twin_lab_guidance(run):
+    """Return safe operator, cleanup, and defensive guidance for the lab."""
+    return {
+        'operator_steps': [
+            f"Verify the isolated lab AP broadcasting '{run['ssid']}' has BSSID {run['bssid']} on channel {run['channel']}.",
+            'Use a dedicated lab radio and avoid bridging the portal to production networks.',
+            'Display only the training message; do not request, collect, or store credentials.',
+            f"Stop the workflow within {run['duration_minutes']} minutes and confirm clients reconnect to the legitimate lab AP.",
+        ],
+        'cleanup_steps': [
+            'Stop hostapd/dnsmasq or any lab AP service started outside Mobile Router.',
+            'Remove temporary DHCP/DNS/portal configuration files for this SSID.',
+            'Restore interface mode, channel, IP addressing, forwarding, and firewall rules.',
+            'Record the cleanup result in the lab log and evidence notes.',
+        ],
+        'detection_guidance': [
+            'Alert on duplicate SSIDs with a new BSSID, mismatched channel, or weaker security than baseline.',
+            'Compare beacon RSN/capability fields and vendor OUIs against the approved AP inventory.',
+            'Watch DHCP/DNS gateway changes and captive-portal redirects from unknown MAC addresses.',
+            'Train users to report unexpected portal prompts and never enter real credentials in drills.',
+        ],
+    }
+
+
+def record_evil_twin_lab_run(selected_interface, lab):
+    """Record a non-credential evil-twin/captive-portal lab workflow event."""
+    run = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+    }
+    run.update(build_evil_twin_lab_guidance(run))
+    with evil_twin_lab_lock:
+        evil_twin_lab_runs.append(run)
+        del evil_twin_lab_runs[:-25]
+    app.logger.info(
+        'Evil twin lab %s recorded for SSID %r BSSID %s channel %s on %s',
+        run['action'], run['ssid'], run['bssid'], run['channel'], selected_interface,
+    )
+    return run
+
+
+def _split_module_ids(value):
+    modules = []
+    for item in re.split(r'[,\s]+', value or ''):
+        item = item.strip().lower()
+        if item:
+            modules.append(item)
+    return modules
+
+
+def validate_pineap_lab_request(data):
+    """Validate a WiFi Pineapple-style lab controller request."""
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before running a campaign workflow')
+    action = (data.get('action') or 'recon').strip().lower()
+    if action not in PINEAP_ACTIONS:
+        raise ValueError('Choose recon, campaign, handshake, or module')
+    ssid = (data.get('ssid') or '').strip()
+    if ssid and len(ssid) > 32:
+        raise ValueError('SSID must be 32 characters or fewer')
+    bssid = normalize_mac(data.get('bssid')) if data.get('bssid') else None
+    channel = None
+    if data.get('channel'):
+        channel = parse_int(data.get('channel'), 'Channel must be an integer')
+        if channel < 1 or channel > 196:
+            raise ValueError('Channel must be between 1 and 196')
+    modules = _split_module_ids(data.get('modules') or 'recon,detection-report')
+    unknown = [module for module in modules if module not in PINEAP_MODULES]
+    if unknown:
+        raise ValueError(f"Unknown lab module: {', '.join(unknown)}")
+    if action in {'campaign', 'handshake', 'module'} and not ssid:
+        raise ValueError('Enter an explicit lab SSID for campaign, handshake, or module workflows')
+    return {
+        'action': action,
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'modules': modules,
+        'notes': (data.get('notes') or '').strip()[:500],
+    }
+
+
+def build_pineap_lab_result(selected_interface, lab):
+    """Build an auditable, non-destructive PineAP-style lab result."""
+    recon = []
+    if lab['action'] == 'recon':
+        from scripts.wifi import utils as wifi_utils
+        wifi_utils.scan_networks(selected_interface)
+        recon = wifi_utils.get_networks_summary()
+    run = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+        'recon': recon,
+        'campaign_steps': [
+            'Recon: inventory authorized lab SSIDs, BSSIDs, channels, security, and WPS exposure.',
+            'Campaign: select only approved training modules and log operator intent before execution.',
+            'Handshake: capture or upload WPA/WPA2 handshake or PMKID evidence without password cracking.',
+            'Report: export findings, cleanup actions, and detection opportunities for defenders.',
+        ],
+        'module_status': [
+            {'id': module, 'status': 'queued' if lab['action'] != 'recon' else 'available'}
+            for module in lab['modules']
+        ],
+        'safety': 'This controller records authorized lab workflow state and recon output; it does not collect credentials or run cracking jobs.',
+    }
+    with pineap_lab_lock:
+        pineap_lab_runs.insert(0, run)
+        del pineap_lab_runs[100:]
+    app.logger.info('PineAP-style lab %s recorded for SSID %r on %s', run['action'], run['ssid'], selected_interface)
+    return run
+
+
+def validate_handshake_lab_request(data):
+    """Validate handshake/PMKID evidence catalog inputs."""
+    if data.get('authorized') != 'on':
+        raise ValueError('Confirm this is an authorized isolated lab before cataloging handshake evidence')
+    ssid = (data.get('ssid') or '').strip()
+    if not ssid or len(ssid) > 32:
+        raise ValueError('Enter the exact lab SSID, up to 32 characters')
+    bssid = normalize_mac(data.get('bssid'))
+    channel = parse_int(data.get('channel'), 'Channel must be an integer')
+    if channel < 1 or channel > 196:
+        raise ValueError('Channel must be between 1 and 196')
+    capture_type = (data.get('captureType') or 'wpa-handshake').strip().lower()
+    if capture_type not in HANDSHAKE_CAPTURE_TYPES:
+        raise ValueError('Capture type must be WPA handshake or PMKID')
+    return {
+        'ssid': ssid,
+        'bssid': bssid,
+        'channel': channel,
+        'capture_type': capture_type,
+        'client': normalize_mac(data.get('client')) if data.get('client') else '',
+        'validation_notes': (data.get('validationNotes') or '').strip()[:500],
+    }
+
+
+def validate_handshake_evidence(record, uploaded_file=None):
+    """Attach lightweight validation status for uploaded WPA/PMKID evidence."""
+    file_name = uploaded_file.filename if uploaded_file and uploaded_file.filename else ''
+    extension = os.path.splitext(file_name.lower())[1]
+    accepted = {'.cap', '.pcap', '.pcapng', '.hc22000', '.hccapx'}
+    checks = [
+        'SSID/BSSID/channel are explicitly scoped to the authorized lab target.',
+        'Evidence is cataloged for validation/export only; password cracking is out of scope.',
+    ]
+    if file_name:
+        checks.append('Uploaded capture extension is recognized.' if extension in accepted else 'Uploaded capture extension is unusual; verify manually.')
+    else:
+        checks.append('No capture uploaded yet; record is ready for later evidence attachment.')
+    status = 'needs-review' if file_name and extension not in accepted else 'cataloged'
+    return {'validation_status': status, 'validation_checks': checks}
+
+
+def record_handshake_lab_evidence(selected_interface, lab, uploaded_file=None):
+    """Catalog handshake/PMKID lab evidence and mirror it into the evidence vault."""
+    validation = validate_handshake_evidence(lab, uploaded_file=uploaded_file)
+    evidence = create_evidence_record(
+        f"{lab['capture_type'].upper()} evidence for {lab['ssid']}",
+        category='capture',
+        source='WPA handshake capture lab',
+        device=lab['bssid'],
+        notes=lab['validation_notes'],
+        content='\n'.join(validation['validation_checks']),
+        uploaded_file=uploaded_file,
+    )
+    record = {
+        'id': uuid.uuid4().hex,
+        'created_at': time.time(),
+        'interface': selected_interface,
+        **lab,
+        **validation,
+        'evidence_id': evidence['id'],
+        'download_url': evidence.get('download_url'),
+        'file_name': evidence.get('file_name'),
+        'file_size': evidence.get('file_size'),
+    }
+    with handshake_lab_lock:
+        handshake_lab_records.insert(0, record)
+        del handshake_lab_records[200:]
+    app.logger.info('Handshake lab evidence %s cataloged for SSID %r BSSID %s', record['capture_type'], record['ssid'], record['bssid'])
+    return record
+
+
+def handshake_lab_export_records():
+    with handshake_lab_lock:
+        records = [dict(item) for item in handshake_lab_records]
+    for item in records:
+        item['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('created_at', 0)))
+    return records
+
+
+def handshake_records_as_csv(records):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SSID', 'BSSID', 'Channel', 'Type', 'Client', 'Status', 'File', 'Created'])
+    for item in records:
+        writer.writerow([item.get('ssid'), item.get('bssid'), item.get('channel'), item.get('capture_type'), item.get('client'), item.get('validation_status'), item.get('file_name'), item.get('created_at_label')])
+    return output.getvalue()
 
 
 class BluetoothToolUnavailable(RuntimeError):
@@ -415,6 +684,39 @@ def create_new_device_alert(device, source, interface=None):
         'interface': interface,
         'created_at': time.time(),
         'read': False,
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
+def create_grouped_device_alert(devices, source, interface=None):
+    """Record one unread alert for a batch of newly observed devices."""
+    devices = [dict(device) for device in devices or []]
+    alert = {
+        'id': uuid.uuid4().hex,
+        'alert_type': 'grouped-discovery',
+        'display_name': f"{len(devices)} new devices discovered",
+        'ip': None,
+        'mac': None,
+        'manufacturer': 'Multiple',
+        'device_url': '/inventory',
+        'source': source,
+        'interface': interface,
+        'created_at': time.time(),
+        'read': False,
+        'device_count': len(devices),
+        'devices': [
+            {
+                'id': device.get('id'),
+                'display_name': device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device',
+                'ip': device.get('ip'),
+                'mac': device.get('mac') or device.get('bssid'),
+                'manufacturer': device.get('manufacturer') or 'Unknown',
+            }
+            for device in devices[:10]
+        ],
     }
     with new_device_alerts_lock:
         new_device_alerts.insert(0, alert)
@@ -777,6 +1079,7 @@ def record_inventory_devices(devices, source, interface=None):
     """Merge discovered devices into the in-memory inventory with OUI metadata."""
     now = time.time()
     changed_devices = []
+    new_devices = []
     with device_inventory_lock:
         for raw_device in devices or []:
             device = dict(raw_device)
@@ -805,9 +1108,550 @@ def record_inventory_devices(devices, source, interface=None):
             is_new_device = not existing
             device_inventory[key] = merged
             if is_new_device and not merged.get('is_control_traffic'):
-                create_new_device_alert(merged, source, interface)
+                new_devices.append(dict(merged))
             changed_devices.append(dict(merged))
+    if source == 'passive-scan' or len(new_devices) <= 1:
+        for device in new_devices:
+            create_new_device_alert(device, source, interface)
+    else:
+        create_grouped_device_alert(new_devices, source, interface)
     return changed_devices
+
+
+def record_device_open_ports(host, port_details, source='port-scan'):
+    """Attach open-port/service findings to a discovered IP device profile."""
+    host = (host or '').strip()
+    if not host:
+        return None
+    details = sorted(
+        [enrich_port_web_url(host, item) for item in (port_details or []) if item.get('port')],
+        key=lambda item: item['port'],
+    )
+    now = time.time()
+    added_ports = []
+    changed_ports = []
+    with device_inventory_lock:
+        key = f'ip:{host}'
+        existing_key = key if key in device_inventory else None
+        if existing_key is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == host:
+                    existing_key = candidate_key
+                    break
+        if existing_key is None:
+            existing_key = key
+            device_inventory[existing_key] = {
+                'id': key,
+                'ip': host,
+                'manufacturer': 'Unknown',
+                'first_seen': now,
+                'interfaces': [],
+                'sources': [],
+            }
+        device = device_inventory[existing_key]
+        existing_details = {item.get('port'): dict(item) for item in device.get('open_port_details', []) if item.get('port')}
+        for detail in details:
+            previous = existing_details.get(detail['port'])
+            if previous is None:
+                added_ports.append(detail)
+            elif previous.get('service') != detail.get('service') or previous.get('description') != detail.get('description'):
+                changed_ports.append({'previous': previous, 'current': detail})
+            existing_details[detail['port']] = detail
+        device['open_port_details'] = [existing_details[port] for port in sorted(existing_details)]
+        device['open_ports'] = sorted(existing_details)
+        device['last_port_scan'] = now
+        device['last_seen'] = now
+        device['sources'] = sorted(set(device.get('sources', [])) | {source})
+        device_inventory[existing_key] = device
+        updated = dict(device)
+    if added_ports:
+        append_client_timeline_event(host, 'New open ports', f"Added {', '.join(f'{item['port']}/tcp {item.get('service') or 'Unknown'}' for item in added_ports)} from {source}.", source)
+        if is_client_watched(host):
+            create_client_watch_alert(host, 'New open port discovered', f"{len(added_ports)} new port(s): {', '.join(str(item['port']) for item in added_ports)}")
+    for change in changed_ports:
+        current = change['current']
+        append_client_timeline_event(host, 'Service changed', f"{current['port']}/tcp is now {current.get('service') or 'Unknown'} from {source}.", source)
+    return updated
+
+
+def enrich_port_web_url(host, detail):
+    """Attach a clickable web URL for HTTP-like TCP services."""
+    item = dict(detail)
+    service = str(item.get('service') or '').lower()
+    port = int(item.get('port'))
+    if port in {80, 8080, 8000} or service.startswith('http '):
+        item['web_url'] = f"http://{host}:{port}/"
+    elif port in {443, 8443, 9443} or service.startswith('https'):
+        item['web_url'] = f"https://{host}:{port}/"
+    return item
+
+
+def enrich_web_port_metadata(host, detail):
+    """Add lightweight HTTP status/title metadata for clickable web services."""
+    item = enrich_port_web_url(host, detail)
+    if not item.get('web_url'):
+        return item
+    try:
+        inspected = inspect_http_services(host, [item['port']])[0]
+    except (IndexError, OSError, ValueError):
+        return item
+    for key in ('status', 'title', 'server', 'error', 'thumbnail_url'):
+        if inspected.get(key) not in (None, ''):
+            item[f'http_{key}'] = inspected.get(key)
+    return item
+
+
+def _clean_detected_client_name(name, ip=None):
+    """Normalize display names learned from local naming protocols."""
+    value = str(name or '').strip().strip('.')
+    if not value or value == str(ip or ''):
+        return ''
+    if value.endswith('.local'):
+        return value
+    return value[:120]
+
+
+def _reverse_dns_display_name(ip):
+    """Attempt a reverse-DNS/PTR lookup for an IP client."""
+    try:
+        hostname, _aliases, _addresses = socket.gethostbyaddr(ip)
+    except (OSError, socket.herror, socket.gaierror):
+        return ''
+    return _clean_detected_client_name(hostname, ip)
+
+
+def _dhcp_lease_display_name(ip):
+    """Look for a client hostname in common local DHCP lease files."""
+    lease_paths = [
+        '/var/lib/misc/dnsmasq.leases',
+        '/tmp/dhcp.leases',
+        '/var/lib/dhcp/dhcpd.leases',
+        '/var/lib/dhcp/dhclient.leases',
+    ]
+    for path in lease_paths:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding='utf-8', errors='ignore') as handle:
+                content = handle.read()
+        except OSError:
+            continue
+        for line in content.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and parts[2] == ip:
+                return _clean_detected_client_name(parts[3], ip)
+        block_match = re.search(rf'lease\s+{re.escape(ip)}\s+\{{(.*?)\}}', content, re.S)
+        if block_match:
+            host_match = re.search(r'client-hostname\s+"([^"]+)"', block_match.group(1))
+            if host_match:
+                return _clean_detected_client_name(host_match.group(1), ip)
+    return ''
+
+
+def display_name_for_inventory_device(device, fallback=None):
+    """Choose the best human-readable name for an inventory device."""
+    device = device or {}
+    return (
+        device.get('preferred_name')
+        or device.get('detected_display_name')
+        or device.get('name')
+        or device.get('hostname')
+        or device.get('friendly_name')
+        or device.get('ssid')
+        or device.get('ip')
+        or device.get('mac')
+        or fallback
+        or 'Unknown device'
+    )
+
+
+def enrich_ip_client_display_name(identifier, device=None):
+    """Detect and persist a better display name for an IP client when possible."""
+    device = dict(device or find_inventory_device(identifier) or {})
+    ip = device.get('ip') or (identifier if identifier and not MAC_RE.match(str(identifier)) else None)
+    if not ip:
+        return device
+    existing = display_name_for_inventory_device(device, ip)
+    if existing and existing not in {ip, device.get('mac'), device.get('id')}:
+        device['display_name'] = existing
+        return device
+    detected = _clean_detected_client_name(device.get('hostname') or device.get('name'), ip)
+    source = 'inventory'
+    if not detected:
+        detected = _dhcp_lease_display_name(ip)
+        source = 'dhcp-lease'
+    if not detected:
+        detected = _reverse_dns_display_name(ip)
+        source = 'reverse-dns'
+    if not detected:
+        device['display_name'] = existing or ip
+        return device
+    updates = {'detected_display_name': detected, 'display_name': detected, 'hostname': device.get('hostname') or detected, 'display_name_source': source}
+    with device_inventory_lock:
+        key = device.get('id') or f'ip:{ip}'
+        existing_record = device_inventory.get(key)
+        if existing_record is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == ip or item.get('mac') == device.get('mac'):
+                    key = candidate_key
+                    existing_record = item
+                    break
+        existing_record = dict(existing_record or {'id': key, 'ip': ip, 'manufacturer': device.get('manufacturer') or 'Unknown', 'first_seen': time.time(), 'sources': [], 'interfaces': []})
+        existing_record.update({k: v for k, v in updates.items() if v})
+        existing_record['last_seen'] = time.time()
+        device_inventory[key] = existing_record
+        device = dict(existing_record)
+    append_client_timeline_event(ip, 'Display name detected', f'Detected "{detected}" from {source}.', source)
+    return device
+
+
+def append_client_timeline_event(identifier, event_type, message, source=None):
+    """Record a lightweight per-client event shown on the client profile."""
+    key = str(identifier or '').strip()
+    if not key:
+        return None
+    event = {'timestamp': time.time(), 'type': event_type, 'message': message, 'source': source or 'client-profile'}
+    with client_timelines_lock:
+        client_timelines.setdefault(key, []).insert(0, event)
+        del client_timelines[key][50:]
+    return event
+
+
+def client_timeline(identifier, inventory_device=None):
+    """Return explicit and inferred timeline entries for a client."""
+    keys = {str(identifier or '').strip()}
+    for field in ('ip', 'mac', 'id'):
+        value = (inventory_device or {}).get(field)
+        if value:
+            keys.add(str(value))
+    events = []
+    with client_timelines_lock:
+        for key in keys:
+            events.extend(dict(item) for item in client_timelines.get(key, []))
+    if inventory_device:
+        if inventory_device.get('first_seen'):
+            events.append({'timestamp': inventory_device['first_seen'], 'type': 'First discovered', 'message': 'Device first entered inventory.', 'source': ', '.join(inventory_device.get('sources', []))})
+        if inventory_device.get('last_seen'):
+            events.append({'timestamp': inventory_device['last_seen'], 'type': 'Last seen', 'message': 'Device was refreshed by discovery or scan activity.', 'source': ', '.join(inventory_device.get('sources', []))})
+        if inventory_device.get('last_port_scan'):
+            events.append({'timestamp': inventory_device['last_port_scan'], 'type': 'Port scan', 'message': f"{len(inventory_device.get('open_ports', []))} open port(s) saved to this profile.", 'source': 'port-scan'})
+    unique = {(round(item.get('timestamp', 0), 3), item.get('type'), item.get('message')): item for item in events}
+    ordered = sorted(unique.values(), key=lambda item: item.get('timestamp', 0), reverse=True)[:12]
+    for item in ordered:
+        item['time_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('timestamp', time.time())))
+    return ordered
+
+
+def client_health_summary(device, ip=None):
+    """Build a simple client health/risk summary from inventory evidence."""
+    device = device or {}
+    flags = []
+    score = 100
+    open_ports = device.get('open_port_details') or []
+    if not device.get('manufacturer') or device.get('manufacturer') == 'Unknown':
+        flags.append('Unknown manufacturer')
+        score -= 10
+    risky_ports = {21: 'FTP', 23: 'Telnet', 445: 'SMB', 3389: 'RDP', 5900: 'VNC'}
+    exposed = [item for item in open_ports if item.get('port') in risky_ports]
+    if exposed:
+        flags.append(f"{len(exposed)} sensitive service(s) exposed")
+        score -= 25
+    if len(open_ports) >= 8:
+        flags.append('Large open-port surface')
+        score -= 15
+    if not device.get('hostname') and not device.get('name'):
+        flags.append('No hostname learned')
+        score -= 5
+    if not open_ports:
+        flags.append('No service baseline yet')
+        score -= 5
+    score = max(0, min(100, score))
+    if score >= 85:
+        level = 'Good'
+        badge = 'success'
+    elif score >= 60:
+        level = 'Review'
+        badge = 'warning'
+    else:
+        level = 'Attention'
+        badge = 'danger'
+    return {'score': score, 'level': level, 'badge': badge, 'flags': flags or ['No notable client concerns from saved data'], 'open_port_count': len(open_ports), 'identity': device.get('hostname') or device.get('name') or ip or 'Unknown client'}
+
+
+def client_reachability_history(host, limit=10):
+    """Return recent ping results for a specific client."""
+    target = str(host or '').strip()
+    matches = [dict(item) for item in ping_history if item.get('host') == target]
+    for item in matches:
+        item['time_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('checked_at', time.time())))
+    return matches[-limit:]
+
+
+def update_client_metadata(identifier, data):
+    """Persist user-maintained client tags, ownership, notes, and expected ports."""
+    target = str(identifier or '').strip()
+    if not target:
+        raise ValueError('Missing client identifier')
+    raw_tags = data.get('tags') or ''
+    tags = sorted({tag.strip() for tag in raw_tags.split(',') if tag.strip()})[:12]
+    expected_ports = []
+    raw_expected_ports = data.get('expectedPorts') or ''
+    for raw_port in raw_expected_ports.split(','):
+        raw_port = raw_port.strip()
+        if not raw_port:
+            continue
+        port = parse_int(raw_port, 'Expected ports must be integers')
+        if not 1 <= port <= 65535:
+            raise ValueError('Expected ports must be between 1 and 65535')
+        expected_ports.append(port)
+    updates = {
+        'client_tags': tags,
+        'client_owner': (data.get('owner') or '').strip()[:80],
+        'client_location': (data.get('location') or '').strip()[:80],
+        'client_notes': (data.get('notes') or '').strip()[:500],
+        'expected_open_ports': sorted(set(expected_ports)),
+    }
+    with device_inventory_lock:
+        key = f'ip:{target}'
+        existing = device_inventory.get(key)
+        if existing is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == target or item.get('mac') == target or item.get('id') == target:
+                    key = candidate_key
+                    existing = item
+                    break
+        existing = dict(existing or {'id': key, 'ip': target, 'manufacturer': 'Unknown', 'first_seen': time.time(), 'sources': [], 'interfaces': []})
+        key = existing.get('id') or inventory_key(existing) or key
+        existing.update({k: v for k, v in updates.items() if v not in (None, '')})
+        existing['last_seen'] = time.time()
+        device_inventory[key] = existing
+    append_client_timeline_event(target, 'Profile updated', 'Client tags, ownership, notes, or expected ports were updated.', 'client-metadata')
+    return dict(existing)
+
+
+def save_client_baseline(identifier):
+    """Save current observed identity/service details as the expected baseline."""
+    device = find_inventory_device(identifier) or {}
+    target = device.get('ip') or identifier
+    baseline = {
+        'saved_at': time.time(),
+        'hostname': device.get('hostname') or device.get('name'),
+        'manufacturer': device.get('manufacturer'),
+        'open_ports': sorted(device.get('open_ports', [])),
+        'mac': device.get('mac'),
+        'sources': list(device.get('sources', [])),
+    }
+    updated = update_client_metadata(target, {'expectedPorts': ','.join(str(port) for port in baseline['open_ports'])})
+    with device_inventory_lock:
+        key = updated.get('id')
+        device_inventory[key]['client_baseline'] = baseline
+        updated = dict(device_inventory[key])
+    append_client_timeline_event(target, 'Baseline saved', f"Saved {len(baseline['open_ports'])} expected open port(s).", 'client-baseline')
+    return updated
+
+
+def client_baseline_diff(device):
+    """Compare current saved observations to expected profile/baseline data."""
+    device = device or {}
+    expected_ports = set(device.get('expected_open_ports') or (device.get('client_baseline') or {}).get('open_ports') or [])
+    current_ports = set(device.get('open_ports') or [])
+    added = sorted(current_ports - expected_ports) if expected_ports else []
+    missing = sorted(expected_ports - current_ports)
+    return {
+        'expected_ports': sorted(expected_ports),
+        'current_ports': sorted(current_ports),
+        'unexpected_ports': added,
+        'missing_ports': missing,
+        'status': 'Drift detected' if added or missing else ('Baseline saved' if expected_ports else 'No baseline'),
+    }
+
+
+def client_profile_export(identifier):
+    """Build an exportable IP client profile."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    related_evidence = [
+        item for item in evidence_records()
+        if str(item.get('device') or '') in {str(host), str(device.get('mac') or ''), str(device.get('id') or '')}
+    ]
+    return {
+        'exported_at': time.time(),
+        'host': host,
+        'device': device,
+        'health': client_health_summary(device, host),
+        'baseline': client_baseline_diff(device),
+        'reachability_history': client_reachability_history(host, limit=25),
+        'timeline': client_timeline(host, device),
+        'evidence': related_evidence,
+    }
+
+
+def client_relationship_map(identifier):
+    """Build a lightweight client relationship map for profile rendering/export."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    nodes = [{'id': f'client:{host}', 'label': host, 'type': 'client'}]
+    links = []
+    for iface in device.get('interfaces', []):
+        nodes.append({'id': f'interface:{iface}', 'label': iface, 'type': 'interface'})
+        links.append({'source': f'client:{host}', 'target': f'interface:{iface}', 'label': 'seen on'})
+    for source in device.get('sources', []):
+        nodes.append({'id': f'source:{source}', 'label': source, 'type': 'source'})
+        links.append({'source': f'client:{host}', 'target': f'source:{source}', 'label': 'discovered by'})
+    for port in device.get('open_port_details', [])[:12]:
+        node_id = f"service:{host}:{port.get('port')}"
+        nodes.append({'id': node_id, 'label': f"{port.get('port')}/tcp {port.get('service') or 'Unknown'}", 'type': 'service'})
+        links.append({'source': f'client:{host}', 'target': node_id, 'label': 'exposes'})
+    for item in client_profile_export(identifier).get('evidence', [])[:8]:
+        node_id = f"evidence:{item.get('id')}"
+        nodes.append({'id': node_id, 'label': item.get('title') or 'Evidence', 'type': 'evidence'})
+        links.append({'source': f'client:{host}', 'target': node_id, 'label': 'has evidence'})
+    unique_nodes = {node['id']: node for node in nodes}
+    return {'nodes': list(unique_nodes.values()), 'links': links}
+
+
+def fingerprint_client_services(identifier):
+    """Run safe, lightweight service fingerprint checks against saved open ports."""
+    device = find_inventory_device(identifier) or {}
+    host = device.get('ip') or identifier
+    fingerprints = []
+    http_ports = []
+    for detail in device.get('open_port_details', []):
+        port = detail.get('port')
+        service = str(detail.get('service') or '').lower()
+        finding = {'port': port, 'service': detail.get('service') or 'Unknown', 'confidence': 'low', 'banner': None, 'notes': []}
+        if port in (80, 443, 8080, 8443, 8000, 9443) or any(name in service for name in ('http', 'https', 'web')):
+            http_ports.append(port)
+            finding['confidence'] = 'medium'
+            finding['notes'].append('HTTP-like port selected for web inspection.')
+        elif port in (21, 22, 25, 110, 143, 587, 993, 995):
+            try:
+                with socket.create_connection((host, int(port)), timeout=2) as sock:
+                    sock.settimeout(2)
+                    try:
+                        banner = sock.recv(256).decode('utf-8', errors='ignore').strip()
+                    except socket.timeout:
+                        banner = ''
+                if banner:
+                    finding['banner'] = banner[:160]
+                    finding['confidence'] = 'high'
+                else:
+                    finding['notes'].append('Port accepted TCP connection but did not send a banner quickly.')
+                    finding['confidence'] = 'medium'
+            except OSError as exc:
+                finding['notes'].append(f'Banner probe unavailable: {exc}')
+        else:
+            finding['notes'].append('Service inferred from port number; no active banner probe selected.')
+        fingerprints.append(finding)
+    if http_ports:
+        web_results = inspect_http_services(host, sorted(set(http_ports))[:8])
+        by_port = {item['port']: item for item in web_results}
+        for finding in fingerprints:
+            web = by_port.get(finding.get('port'))
+            if web:
+                finding['http'] = web
+                if web.get('title') or web.get('server') or web.get('status'):
+                    finding['confidence'] = 'high'
+    append_client_timeline_event(host, 'Services fingerprinted', f"Checked {len(fingerprints)} saved service(s).", 'service-fingerprint')
+    return fingerprints
+
+
+def save_scheduled_client_check(identifier, data):
+    """Store a recurring-check plan for a watched or important client."""
+    target = str(identifier or '').strip()
+    if not target:
+        raise ValueError('Missing client identifier')
+    interval = max(5, min(parse_int(data.get('intervalMinutes') or 60, 'Interval must be an integer'), 10080))
+    checks = sorted({
+        check for check in (data.get('checks') or 'ping,common-ports,baseline-drift').split(',')
+        if check in {'ping', 'common-ports', 'http-inspect', 'service-fingerprint', 'baseline-drift'}
+    })
+    if not checks:
+        raise ValueError('Select at least one supported scheduled check')
+    plan = {
+        'client': target,
+        'interval_minutes': interval,
+        'checks': checks,
+        'created_at': time.time(),
+        'last_run': None,
+        'status': 'scheduled',
+    }
+    scheduled_client_checks[target] = plan
+    append_client_timeline_event(target, 'Scheduled checks updated', f"Scheduled {', '.join(checks)} every {interval} minute(s).", 'scheduled-checks')
+    return dict(plan)
+
+
+def is_client_watched(identifier):
+    key = str(identifier or '').strip()
+    return key in watched_clients
+
+
+def create_client_watch_alert(identifier, title, message):
+    alert = {
+        'id': str(uuid.uuid4()),
+        'alert_type': 'watched-client',
+        'title': title,
+        'message': message,
+        'ip': identifier,
+        'device_url': f"/clients/{quote(str(identifier))}",
+        'read': False,
+        'timestamp': time.time(),
+        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
+def capture_http_preview_thumbnail(url):
+    """Capture a small web preview when a local browser/screenshot utility exists."""
+    tool = shutil.which('wkhtmltoimage') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+    if not tool:
+        return None
+    os.makedirs(HTTP_PREVIEW_DIR, exist_ok=True)
+    filename = secure_filename(re.sub(r'[^A-Za-z0-9_.-]+', '_', url))[:120] + '.png'
+    output_path = os.path.join(HTTP_PREVIEW_DIR, filename)
+    try:
+        if os.path.exists(output_path) and time.time() - os.path.getmtime(output_path) < 3600:
+            return f'/http-previews/{filename}'
+        if os.path.basename(tool) == 'wkhtmltoimage':
+            command = [tool, '--width', '480', '--height', '320', url, output_path]
+        else:
+            command = [tool, '--headless', '--disable-gpu', '--no-sandbox', f'--screenshot={output_path}', '--window-size=480,320', url]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8, check=False)
+        if result.returncode == 0 and os.path.exists(output_path):
+            return f'/http-previews/{filename}'
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None
+
+
+def inspect_http_services(host, ports):
+    """Safely inspect likely HTTP services for titles and headers."""
+    results = []
+    for port in ports:
+        scheme = 'https' if int(port) in (443, 8443, 9443) else 'http'
+        url = f"{scheme}://{host}:{port}/"
+        result = {'port': int(port), 'url': url, 'status': None, 'title': None, 'server': None, 'error': None}
+        try:
+            req = Request(url, headers={'User-Agent': 'MobileRouterLab/1.0'})
+            with urlopen(req, timeout=3) as resp:
+                body = resp.read(65536).decode('utf-8', errors='ignore')
+                result['status'] = getattr(resp, 'status', None)
+                result['server'] = resp.headers.get('Server')
+                match = re.search(r'<title[^>]*>(.*?)</title>', body, re.I | re.S)
+                if match:
+                    result['title'] = re.sub(r'\s+', ' ', match.group(1)).strip()[:120]
+                result['thumbnail_url'] = capture_http_preview_thumbnail(url)
+        except HTTPError as e:
+            result['status'] = e.code
+            result['server'] = e.headers.get('Server')
+            result['error'] = e.reason
+        except (URLError, TimeoutError, socket.timeout, ValueError) as e:
+            result['error'] = str(e)
+        results.append(result)
+    return results
 
 
 def inventory_records():
@@ -829,12 +1673,183 @@ def inventory_records():
     with device_inventory_lock:
         records = [dict(item) for item in device_inventory.values()]
     for item in records:
-        item['display_name'] = item.get('name') or item.get('hostname') or item.get('ssid') or item.get('ip') or item.get('mac') or 'Unknown device'
+        item['display_name'] = display_name_for_inventory_device(item)
         item['manufacturer'] = item.get('manufacturer') or 'Unknown'
         item['is_unknown_manufacturer'] = item['manufacturer'] == 'Unknown'
+        item['client_health'] = client_health_summary(item, item.get('ip')) if item.get('ip') and not item.get('is_control_traffic') else None
+        item['client_baseline'] = client_baseline_diff(item) if item.get('ip') and not item.get('is_control_traffic') else None
+        item['is_watched_client'] = is_client_watched(item.get('ip')) if item.get('ip') else False
         item['first_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('first_seen', 0)))
         item['last_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('last_seen', 0)))
     return sorted(records, key=lambda item: item.get('last_seen', 0), reverse=True)
+
+
+def wireless_network_cache_key(network):
+    """Build a stable cache key for SSID/interface/BSSID scoped client observations."""
+    return (
+        (network.get('interface') or '').strip(),
+        (network.get('ssid') or '<Hidden SSID>').strip(),
+        normalize_mac(network.get('bssid')) or 'any-bssid',
+    )
+
+
+def wireless_network_client_label_key(interface, ssid, bssid, identity):
+    return (
+        (interface or '').strip(),
+        (ssid or '<Hidden SSID>').strip(),
+        normalize_mac(bssid) or 'any-bssid',
+        (identity or '').strip(),
+    )
+
+
+def network_client_display_label(network, client):
+    identity = client.get('mac') or client.get('ip')
+    label = wireless_network_labels.get(wireless_network_client_label_key(network.get('interface'), network.get('ssid'), network.get('bssid'), identity))
+    if label:
+        return label
+    return client.get('display_name') or client.get('hostname') or client.get('name') or client.get('ip') or client.get('mac') or 'Client'
+
+
+def sorted_network_clients(clients):
+    return sorted(clients, key=lambda item: (item.get('sort_bucket', 9), 0 if item.get('network_known_state') == 'New' else 1, (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower()))
+
+
+def merge_wireless_network_clients(network):
+    """Persist and merge wireless clients plus inventory devices for a network detail view."""
+    key = wireless_network_cache_key(network)
+    now = time.time()
+    existing_cache = wireless_network_client_cache.get(key, [])
+    known_identities = {client.get('mac') or client.get('ip') for client in existing_cache if client.get('mac') or client.get('ip')}
+    cached = {client.get('mac') or client.get('ip'): {**dict(client), 'currently_visible': False} for client in existing_cache if client.get('mac') or client.get('ip')}
+    for client in network.get('clients') or []:
+        client = dict(client)
+        mac = normalize_mac(client.get('mac'))
+        if mac:
+            client['mac'] = mac
+        client['source'] = client.get('source') or 'wireless-client-observation'
+        identity = client.get('mac') or client.get('ip')
+        if identity:
+            previous = cached.get(identity, {})
+            client['network_first_seen'] = previous.get('network_first_seen') or now
+            client['network_last_seen'] = now
+            client['currently_visible'] = True
+            cached[identity] = {**previous, **client}
+
+    interface_name = network.get('interface')
+    inventory_devices = []
+    for device in inventory_records():
+        if interface_name and interface_name not in set(device.get('interfaces') or []):
+            continue
+        if device.get('is_control_traffic') or not (device.get('ip') or device.get('mac')):
+            continue
+        inventory_devices.append(device)
+        identity = device.get('mac') or device.get('ip')
+        previous = cached.get(identity, {})
+        cached[identity] = {
+            **previous,
+            'mac': device.get('mac') or previous.get('mac'),
+            'ip': device.get('ip') or previous.get('ip'),
+            'display_name': device.get('display_name'),
+            'manufacturer': device.get('manufacturer'),
+            'sources': device.get('sources', []),
+            'discovery_methods': device.get('discovery_methods') or device.get('sources', []),
+            'network_role': device.get('network_role'),
+            'network_scope': device.get('network_scope'),
+            'scan_note': device.get('scan_note'),
+            'open_port_details': device.get('open_port_details', []),
+            'client_tags': device.get('client_tags', []),
+            'client_notes': device.get('client_notes'),
+            'network_first_seen': previous.get('network_first_seen') or device.get('first_seen') or now,
+            'network_last_seen': max(previous.get('network_last_seen') or 0, device.get('last_seen') or now),
+            'source': 'inventory',
+        }
+
+    for identity, client in list(cached.items()):
+        first_seen = client.get('network_first_seen') or now
+        client['network_first_seen'] = first_seen
+        client['network_last_seen'] = client.get('network_last_seen') or now
+        client['network_known_state'] = 'Known' if identity in known_identities or (now - first_seen) > 86400 else 'New'
+        client['has_open_ports'] = bool(client.get('open_port_details'))
+        client['sort_bucket'] = 0 if 'gateway' in str(client.get('network_role') or '').lower() else (1 if client.get('has_open_ports') else 2)
+        client['custom_label'] = wireless_network_labels.get(wireless_network_client_label_key(network.get('interface'), network.get('ssid'), network.get('bssid'), identity))
+        client['display_name'] = network_client_display_label(network, client)
+
+    disappeared_clients = sorted_network_clients([client for client in cached.values() if not client.get('currently_visible') and client.get('source') != 'inventory'])
+    clients = sorted_network_clients([client for client in cached.values() if client not in disappeared_clients])
+    wireless_network_client_cache[key] = clients + disappeared_clients
+    network['clients'] = clients
+    network['disappeared_clients'] = disappeared_clients
+    network['interface_devices'] = inventory_devices
+    network['client_count'] = len(clients)
+    network['inventory_device_count'] = len(inventory_devices)
+    return network
+
+
+def inventory_export_payload(records=None):
+    """Build a portable inventory export that includes saved port/service details."""
+    records = records if records is not None else inventory_records()
+    devices = []
+    for device in records:
+        devices.append({
+            'id': device.get('id'),
+            'display_name': device.get('display_name'),
+            'ip': device.get('ip'),
+            'mac': device.get('mac'),
+            'bssid': device.get('bssid'),
+            'manufacturer': device.get('manufacturer'),
+            'hostname': device.get('hostname'),
+            'name': device.get('name'),
+            'device_type': device.get('device_type'),
+            'sources': device.get('sources', []),
+            'interfaces': device.get('interfaces', []),
+            'first_seen': device.get('first_seen'),
+            'last_seen': device.get('last_seen'),
+            'client_tags': device.get('client_tags', []),
+            'client_notes': device.get('client_notes'),
+            'expected_open_ports': device.get('expected_open_ports', []),
+            'open_ports': device.get('open_ports', []),
+            'open_port_details': device.get('open_port_details', []),
+            'last_port_scan': device.get('last_port_scan'),
+        })
+    return {'exported_at': time.time(), 'schema': 'mobile-router-inventory-v1', 'devices': devices}
+
+
+def import_inventory_payload(payload, source='inventory-import'):
+    """Import devices and saved port/service profiles from a portable JSON export."""
+    if not isinstance(payload, dict):
+        raise ValueError('Inventory import must be a JSON object')
+    devices = payload.get('devices')
+    if not isinstance(devices, list):
+        raise ValueError('Inventory import must contain a devices list')
+    imported_devices = 0
+    imported_port_profiles = 0
+    for raw in devices[:1000]:
+        if not isinstance(raw, dict):
+            continue
+        device = {key: raw.get(key) for key in ('ip', 'mac', 'bssid', 'hostname', 'name', 'device_type', 'manufacturer') if raw.get(key)}
+        device['sources'] = sorted(set(raw.get('sources') or []) | {source})
+        interfaces = raw.get('interfaces') or []
+        interface = interfaces[0] if interfaces else None
+        enriched = record_inventory_devices([device], source, interface)
+        identifier = raw.get('ip') or raw.get('mac') or raw.get('bssid')
+        if not identifier:
+            continue
+        imported_devices += len(enriched)
+        updates = {}
+        for field in ('client_tags', 'client_notes', 'expected_open_ports', 'last_port_scan'):
+            if raw.get(field) not in (None, ''):
+                updates[field] = raw.get(field)
+        if updates:
+            target = find_inventory_device(identifier) or {}
+            key = target.get('id') or inventory_key({**device, 'ip': raw.get('ip'), 'mac': raw.get('mac'), 'bssid': raw.get('bssid')})
+            with device_inventory_lock:
+                if key in device_inventory:
+                    device_inventory[key].update(updates)
+        port_details = raw.get('open_port_details') or []
+        if raw.get('ip') and port_details:
+            record_device_open_ports(raw.get('ip'), port_details, source=source)
+            imported_port_profiles += 1
+    return {'imported_devices': imported_devices, 'imported_port_profiles': imported_port_profiles}
 
 
 def manufacturer_insights(records=None):
@@ -879,6 +1894,556 @@ def parse_int(value, error_message):
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(error_message) from exc
+
+
+def _ping_command(host, count=4, timeout=2):
+    if os.name == 'nt':
+        return ['ping', '-n', str(count), '-w', str(timeout * 1000), host]
+    return ['ping', '-c', str(count), '-W', str(timeout), host]
+
+
+def _parse_ping_output(output):
+    """Return packet-loss and latency details from common ping output."""
+    loss = None
+    transmitted = received = None
+    packet_match = re.search(r'(\d+)\s+packets transmitted,\s+(\d+)\s+(?:packets )?received,\s+([\d.]+)% packet loss', output)
+    if packet_match:
+        transmitted = int(packet_match.group(1))
+        received = int(packet_match.group(2))
+        loss = float(packet_match.group(3))
+    windows_match = re.search(r'Packets: Sent = (\d+), Received = (\d+), Lost = (\d+) \((\d+)% loss\)', output)
+    if windows_match:
+        transmitted = int(windows_match.group(1))
+        received = int(windows_match.group(2))
+        loss = float(windows_match.group(4))
+    stats_match = re.search(r'(?:rtt|round-trip).*?=\s*([\d.]+)/([\d.]+)/([\d.]+)/(?:[\d.]+)', output)
+    windows_stats = re.search(r'Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms', output)
+    latency = {}
+    if stats_match:
+        latency = {'min_ms': float(stats_match.group(1)), 'avg_ms': float(stats_match.group(2)), 'max_ms': float(stats_match.group(3))}
+    elif windows_stats:
+        latency = {'min_ms': float(windows_stats.group(1)), 'avg_ms': float(windows_stats.group(3)), 'max_ms': float(windows_stats.group(2))}
+    return {'transmitted': transmitted, 'received': received, 'packet_loss_percent': loss, 'latency': latency}
+
+
+def run_ping_check(host, count=4, timeout=2):
+    host = (host or '').strip()
+    if not host:
+        raise ValueError('Host is required')
+    count = max(1, min(parse_int(count, 'Count must be an integer'), 10))
+    timeout = max(1, min(parse_int(timeout, 'Timeout must be an integer'), 10))
+    started = time.time()
+    result = subprocess.run(_ping_command(host, count=count, timeout=timeout), capture_output=True, text=True, timeout=(count * timeout) + 5, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    parsed = _parse_ping_output(output)
+    history = {
+        'host': host,
+        'reachable': result.returncode == 0,
+        'returncode': result.returncode,
+        'duration_ms': round((time.time() - started) * 1000, 2),
+        'output': output,
+        **parsed,
+        'checked_at': time.time(),
+    }
+    ping_history.append(history)
+    del ping_history[:-100]
+    return history
+
+
+def run_ping_sweep(cidr, count=1, timeout=1):
+    network = ipaddress.ip_network((cidr or '').strip(), strict=False)
+    hosts = list(network.hosts())
+    if network.version == 6 and network.prefixlen < 120:
+        raise ValueError('IPv6 sweeps are limited to /120 or smaller ranges')
+    if len(hosts) > 64:
+        raise ValueError('Subnet sweeps are limited to 64 hosts')
+    results = []
+    for host in hosts:
+        try:
+            results.append(run_ping_check(str(host), count=count, timeout=timeout))
+        except subprocess.TimeoutExpired:
+            results.append({'host': str(host), 'reachable': False, 'packet_loss_percent': 100.0, 'latency': {}, 'output': 'Timed out', 'checked_at': time.time()})
+    return {
+        'cidr': str(network),
+        'total_hosts': len(results),
+        'reachable_hosts': len([item for item in results if item.get('reachable')]),
+        'results': results,
+    }
+
+
+def _run_text_command(command, timeout=5):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {'command': command, 'returncode': 1, 'output': str(exc)}
+    return {'command': command, 'returncode': result.returncode, 'output': (result.stdout or result.stderr or '').strip()}
+
+
+def _parse_route_lines(output):
+    routes = []
+    for line in (output or '').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        route = {'raw': line, 'destination': None, 'gateway': None, 'interface': None, 'metric': None, 'family': 'IPv6' if ':' in line.split()[0] else 'IPv4'}
+        tokens = line.split()
+        if tokens:
+            route['destination'] = tokens[0]
+        if 'via' in tokens:
+            route['gateway'] = tokens[tokens.index('via') + 1]
+        if 'dev' in tokens:
+            route['interface'] = tokens[tokens.index('dev') + 1]
+        if 'metric' in tokens:
+            route['metric'] = tokens[tokens.index('metric') + 1]
+        routes.append(route)
+    return routes
+
+
+def build_route_diagnostics(target=None):
+    commands = []
+    if os.name == 'nt':
+        commands.append(['route', 'print'])
+        if target:
+            commands.append(['tracert', '-d', '-h', '1', target])
+    else:
+        commands.extend([['ip', '-4', 'route', 'show'], ['ip', '-6', 'route', 'show']])
+        if target:
+            commands.append(['ip', 'route', 'get', target])
+    command_results = [_run_text_command(command) for command in commands]
+    routes = []
+    for result in command_results:
+        if result['command'][:2] in (['ip', '-4'], ['ip', '-6']) or result['command'][:1] == ['ip']:
+            routes.extend(_parse_route_lines(result['output']))
+    default_gateways = [route for route in routes if route.get('destination') == 'default']
+    vpn_hints = [route for route in routes if re.search(r'\b(tun|tap|wg|vpn|ppp|utun)\w*\b', route.get('interface') or '', re.I)]
+    scan_path = next((result['output'] for result in command_results if result['command'][:3] == ['ip', 'route', 'get']), '')
+    return {
+        'default_gateways': default_gateways,
+        'routes': routes,
+        'vpn_hints': vpn_hints,
+        'scan_path_context': scan_path,
+        'commands': command_results,
+        'checked_at': time.time(),
+    }
+
+
+def classify_service_role(service_type, text=''):
+    value = f"{service_type or ''} {text or ''}".lower()
+    if any(term in value for term in ['printer', 'ipp', 'pdl-datastream']):
+        return 'Printer'
+    if any(term in value for term in ['airplay', 'media', 'spotify', 'raop', 'dlna', 'mediarenderer']):
+        return 'Media device'
+    if any(term in value for term in ['router', 'gateway', 'internetgatewaydevice', 'wanipconnection']):
+        return 'Gateway/router'
+    if any(term in value for term in ['workstation', 'smb', 'ssh', 'http']):
+        return 'Host service'
+    return 'Service endpoint'
+
+
+def _parse_mdns_output(output):
+    services = []
+    for line in (output or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [part.strip() for part in line.split(';')]
+        if len(parts) >= 9 and parts[0] == '=':
+            txt = ';'.join(parts[9:]) if len(parts) > 9 else ''
+            services.append({
+                'interface': parts[1],
+                'protocol': parts[2],
+                'name': parts[3],
+                'service_type': parts[4],
+                'domain': parts[5],
+                'hostname': parts[6],
+                'ip': parts[7],
+                'port': parts[8],
+                'txt': txt,
+                'role': classify_service_role(parts[4], txt),
+            })
+    return services
+
+
+def discover_mdns_services(selected_interface=None):
+    avahi = shutil.which('avahi-browse')
+    if not avahi:
+        return {'available': False, 'tool': None, 'services': [], 'message': 'Install avahi-utils or use dns-sd to discover mDNS/Bonjour services.'}
+    command = [avahi, '-artp']
+    result = _run_text_command(command, timeout=8)
+    services = _parse_mdns_output(result['output'])
+    if selected_interface:
+        services = [service for service in services if selected_interface in {service.get('interface'), service.get('interface_name')}]
+    inventory_items = [
+        {
+            'ip': service.get('ip'),
+            'hostname': service.get('hostname'),
+            'name': service.get('name'),
+            'device_type': service.get('role'),
+            'service_metadata': service,
+        }
+        for service in services if service.get('ip')
+    ]
+    record_inventory_devices(inventory_items, 'mdns-discovery', selected_interface)
+    return {'available': True, 'tool': avahi, 'services': services, 'message': f'Discovered {len(services)} mDNS service(s).'}
+
+
+def _parse_ssdp_response(response):
+    headers = {}
+    for line in response.split('\r\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            headers[key.strip().lower()] = value.strip()
+    location = headers.get('location') or ''
+    host = ''
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(location).hostname or ''
+    except Exception:
+        host = ''
+    service_type = headers.get('st') or headers.get('nt') or ''
+    return {
+        'ip': host,
+        'friendly_name': headers.get('server') or headers.get('usn') or 'UPnP device',
+        'manufacturer': headers.get('manufacturer') or headers.get('server') or 'Unknown',
+        'model': headers.get('modelname') or headers.get('server') or '',
+        'service_type': service_type,
+        'control_url': location,
+        'usn': headers.get('usn'),
+        'role': classify_service_role(service_type, headers.get('server')),
+        'headers': headers,
+    }
+
+
+def discover_upnp_devices(timeout=2):
+    request_data = '\r\n'.join([
+        'M-SEARCH * HTTP/1.1',
+        'HOST: 239.255.255.250:1900',
+        'MAN: "ssdp:discover"',
+        'MX: 1',
+        'ST: ssdp:all',
+        '',
+        '',
+    ]).encode('utf-8')
+    devices = []
+    seen = set()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+            sock.settimeout(timeout)
+            sock.sendto(request_data, ('239.255.255.250', 1900))
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    data, _addr = sock.recvfrom(65535)
+                except socket.timeout:
+                    break
+                device = _parse_ssdp_response(data.decode('utf-8', errors='ignore'))
+                key = device.get('usn') or device.get('control_url') or device.get('ip')
+                if key and key not in seen:
+                    seen.add(key)
+                    devices.append(device)
+    except OSError as exc:
+        return {'available': False, 'devices': [], 'message': f'SSDP discovery unavailable: {exc}'}
+    record_inventory_devices([
+        {
+            'ip': device.get('ip'),
+            'name': device.get('friendly_name'),
+            'manufacturer': device.get('manufacturer'),
+            'device_type': device.get('role'),
+            'service_metadata': device,
+        }
+        for device in devices if device.get('ip')
+    ], 'upnp-discovery')
+    return {'available': True, 'devices': devices, 'message': f'Discovered {len(devices)} UPnP/SSDP device(s).'}
+
+
+def _parse_lldpctl_keyvalue(output):
+    neighbors = []
+    current = {}
+    for line in (output or '').splitlines():
+        if '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"')
+        if key.endswith('.chassis.name'):
+            if current:
+                neighbors.append(current)
+            current = {'name': value, 'protocol': 'LLDP/CDP'}
+        elif key.endswith('.port.ifname') or key.endswith('.port.descr'):
+            current['port_id'] = value
+        elif key.endswith('.mgmt-ip'):
+            current['management_address'] = value
+        elif '.vlan.' in key and key.endswith('.vid'):
+            current.setdefault('vlans', []).append(value)
+        elif key.endswith('.chassis.descr'):
+            current['description'] = value
+    if current:
+        neighbors.append(current)
+    for neighbor in neighbors:
+        neighbor['role'] = 'Switch/router neighbor'
+    return neighbors
+
+
+def discover_lldp_neighbors(selected_interface=None):
+    lldpctl = shutil.which('lldpctl')
+    if not lldpctl:
+        return {'available': False, 'tool': None, 'neighbors': [], 'message': 'Install lldpd/lldpctl to reveal LLDP/CDP neighbors.'}
+    command = [lldpctl, '-f', 'keyvalue']
+    if selected_interface:
+        command.append(selected_interface)
+    result = _run_text_command(command, timeout=6)
+    neighbors = _parse_lldpctl_keyvalue(result['output'])
+    record_inventory_devices([
+        {
+            'ip': neighbor.get('management_address'),
+            'name': neighbor.get('name'),
+            'device_type': neighbor.get('role'),
+            'service_metadata': neighbor,
+        }
+        for neighbor in neighbors if neighbor.get('management_address')
+    ], 'lldp-cdp-discovery', selected_interface)
+    return {'available': result['returncode'] == 0, 'tool': lldpctl, 'neighbors': neighbors, 'message': f'Discovered {len(neighbors)} LLDP/CDP neighbor(s).'}
+
+
+def discover_vlan_context(ssid=None, vlan_id=None, notes=None):
+    """Inventory VLAN-like interfaces and store optional SSID-to-VLAN notes."""
+    command_result = _run_text_command(['ip', '-d', 'link', 'show'], timeout=5) if os.name != 'nt' else {'output': '', 'returncode': 1}
+    vlans = []
+    current = None
+    for line in command_result.get('output', '').splitlines():
+        header = re.match(r'\d+:\s+([^:@]+(?:\.\d+)?)(?:@([^:]+))?:', line.strip())
+        if header:
+            name = header.group(1)
+            parent = header.group(2)
+            current = {'interface': name, 'parent': parent, 'vlan_id': None, 'raw': line.strip()}
+            if '.' in name and name.rsplit('.', 1)[-1].isdigit():
+                current['vlan_id'] = name.rsplit('.', 1)[-1]
+                vlans.append(current)
+            continue
+        if current and 'vlan id' in line:
+            match = re.search(r'vlan id\s+(\d+)', line)
+            if match:
+                current['vlan_id'] = match.group(1)
+                if current not in vlans:
+                    vlans.append(current)
+    note_record = None
+    if ssid or vlan_id or notes:
+        note_record = {
+            'id': uuid.uuid4().hex,
+            'ssid': (ssid or '').strip(),
+            'vlan_id': str(vlan_id or '').strip(),
+            'notes': (notes or '').strip()[:500],
+            'created_at': time.time(),
+            'validation_context': 'Confirm client isolation, gateway ACLs, DHCP scope, DNS policy, and inter-VLAN firewall rules.',
+        }
+        vlan_segmentation_notes.insert(0, note_record)
+        del vlan_segmentation_notes[100:]
+    return {'vlans': vlans, 'notes': list(vlan_segmentation_notes), 'created_note': note_record, 'command': command_result}
+
+
+def build_egress_diagnostics(selected_interface=None):
+    """Collect public egress, DNS, NAT, VPN/proxy, and route context."""
+    public_ip = None
+    try:
+        from urllib.request import urlopen
+        with urlopen('https://api.ipify.org', timeout=4) as response:
+            public_ip = response.read().decode('utf-8').strip()
+    except Exception as exc:
+        public_ip = None
+        public_error = str(exc)
+    else:
+        public_error = None
+    resolvers = []
+    try:
+        with open('/etc/resolv.conf', encoding='utf-8') as handle:
+            resolvers = [line.split()[1] for line in handle if line.startswith('nameserver') and len(line.split()) > 1]
+    except OSError:
+        resolvers = []
+    ipv6_default = _run_text_command(['ip', '-6', 'route', 'show', 'default'], timeout=5) if os.name != 'nt' else {'output': ''}
+    interface_route = _run_text_command(['ip', 'route', 'show', 'dev', selected_interface], timeout=5) if selected_interface and os.name != 'nt' else {'output': ''}
+    proxy_hints = {key: value for key, value in os.environ.items() if key.lower() in {'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'}}
+    route_diag = build_route_diagnostics(public_ip) if public_ip else build_route_diagnostics()
+    private_addresses = [iface.to_dict().get('ip_address') for iface in network_interfaces if getattr(iface, 'ip_address', None)]
+    nat_context = 'Likely NAT/private egress' if any(str(ip).startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.2', '172.30.', '172.31.', '192.168.')) for ip in private_addresses) else 'No RFC1918 interface address detected'
+    return {
+        'public_ip': public_ip,
+        'public_ip_error': public_error,
+        'nat_context': nat_context,
+        'dns_resolvers': resolvers,
+        'ipv6_egress': ipv6_default.get('output'),
+        'vpn_hints': route_diag.get('vpn_hints', []),
+        'proxy_hints': proxy_hints,
+        'interface_route_context': interface_route.get('output'),
+        'per_interface': [{'name': iface.name, 'type': iface.interface_type, 'ip_address': getattr(iface, 'ip_address', None)} for iface in network_interfaces],
+    }
+
+
+def run_iperf3_test(mode, host=None, port=5201, seconds=5):
+    """Run a bounded iperf3 client or one-shot server check."""
+    iperf3 = shutil.which('iperf3')
+    if not iperf3:
+        raise ValueError('iperf3 is not installed')
+    mode = (mode or 'client').strip().lower()
+    port = max(1, min(parse_int(port, 'Port must be an integer'), 65535))
+    seconds = max(1, min(parse_int(seconds, 'Seconds must be an integer'), 30))
+    if mode == 'client':
+        if not host:
+            raise ValueError('Host is required for iperf3 client tests')
+        command = [iperf3, '-c', host, '-p', str(port), '-t', str(seconds), '-J']
+    elif mode == 'server':
+        command = [iperf3, '-s', '-1', '-p', str(port), '-J']
+    else:
+        raise ValueError('Mode must be client or server')
+    result = subprocess.run(command, capture_output=True, text=True, timeout=seconds + 10, check=False)
+    output = (result.stdout or result.stderr or '').strip()
+    parsed = {}
+    try:
+        parsed = json.loads(output) if output.startswith('{') else {}
+    except json.JSONDecodeError:
+        parsed = {}
+    summary = parsed.get('end', {}).get('sum_received') or parsed.get('end', {}).get('sum_sent') or {}
+    return {'command': command, 'returncode': result.returncode, 'summary': summary, 'json': parsed, 'output': output[-2000:]}
+
+
+def run_snmp_inventory(host, community=None, version='2c', oid='system'):
+    """Collect authorized SNMP identity/interface metadata using supplied credentials."""
+    if not host:
+        raise ValueError('SNMP host is required')
+    if not community:
+        raise ValueError('SNMP community or credential is required')
+    snmpwalk = shutil.which('snmpwalk')
+    if not snmpwalk:
+        raise ValueError('snmpwalk is not installed')
+    oid_map = {'system': '1.3.6.1.2.1.1', 'interfaces': '1.3.6.1.2.1.2.2.1.2'}
+    selected_oid = oid_map.get((oid or 'system').strip().lower(), oid_map['system'])
+    command = [snmpwalk, '-v', version or '2c', '-c', community, '-Oqv', host, selected_oid]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+    lines = [line.strip().strip('"') for line in (result.stdout or '').splitlines() if line.strip()]
+    metadata = {'host': host, 'version': version, 'oid': selected_oid, 'values': lines[:50], 'returncode': result.returncode, 'error': (result.stderr or '').strip()}
+    record_inventory_devices([{'ip': host, 'name': lines[0] if lines else host, 'device_type': 'SNMP device', 'service_metadata': metadata}], 'snmp-discovery')
+    return metadata
+
+
+def run_ipv6_assessment(host=None, ports=None):
+    """Run bounded IPv6 reachability, route, neighbor, DNS, and TCP checks."""
+    host = (host or '').strip()
+    ports = [int(port) for port in re.split(r'[,\s]+', ports or '') if port.strip().isdigit()][:10]
+    ping = None
+    trace = None
+    if host:
+        ping = _run_text_command(['ping', '-6', '-c', '3', host], timeout=8)
+        traceroute_tool = shutil.which('traceroute6') or shutil.which('traceroute')
+        if traceroute_tool:
+            trace = _run_text_command([traceroute_tool, '-6', '-n', '-m', '12', host], timeout=15)
+    neighbors = _run_text_command(['ip', '-6', 'neigh', 'show'], timeout=5) if os.name != 'nt' else {'output': ''}
+    routes = _run_text_command(['ip', '-6', 'route', 'show'], timeout=5) if os.name != 'nt' else {'output': ''}
+    dns_records = []
+    if host:
+        try:
+            dns_records = sorted({item[4][0] for item in socket.getaddrinfo(host, None, socket.AF_INET6)})
+        except socket.gaierror:
+            dns_records = []
+    port_results = []
+    for port in ports:
+        status = 'closed'
+        try:
+            with socket.create_connection((host, port, 0, 0), timeout=1):
+                status = 'open'
+        except OSError:
+            status = 'closed'
+        port_results.append({'port': port, 'status': status})
+    return {'host': host, 'ping': ping, 'traceroute': trace, 'neighbors': neighbors.get('output'), 'router_advertisement_visibility': routes.get('output'), 'dns_aaaa': dns_records, 'ports': port_results}
+
+
+def parse_neighbor_table(output):
+    """Parse Linux ip neigh/ARP-like output into device dictionaries."""
+    devices = []
+    for line in (output or '').splitlines():
+        tokens = line.split()
+        if not tokens:
+            continue
+        ip = tokens[0].strip('()')
+        mac = None
+        iface = None
+        arp_match = re.search(r'\(([^)]+)\)\s+at\s+([0-9a-fA-F:.-]+).*\s+on\s+(\S+)', line)
+        if arp_match:
+            ip, mac, iface = arp_match.groups()
+        if 'lladdr' in tokens:
+            mac = tokens[tokens.index('lladdr') + 1]
+        if 'dev' in tokens:
+            iface = tokens[tokens.index('dev') + 1]
+        if mac or ip:
+            devices.append({'ip': ip, 'mac': mac, 'interface': iface, 'discovery_methods': ['neighbor-table'], 'scan_note': 'Observed in local ARP/neighbor table.'})
+    return devices
+
+
+def merge_discovered_devices(groups):
+    """Merge device records from multiple discovery methods by MAC, IP, or name."""
+    merged = {}
+    for method, devices in groups:
+        for raw in devices or []:
+            device = dict(raw)
+            mac = normalize_mac(device.get('mac') or device.get('address') or device.get('bssid'))
+            if mac:
+                device['mac'] = mac
+            key = mac or device.get('ip') or device.get('hostname') or device.get('name') or uuid.uuid4().hex
+            current = merged.setdefault(key, {})
+            methods = set(current.get('discovery_methods') or []) | set(device.get('discovery_methods') or []) | {method}
+            service_metadata = list(current.get('service_metadata_list') or [])
+            if device.get('service_metadata'):
+                service_metadata.append(device.get('service_metadata'))
+            current.update({k: v for k, v in device.items() if v not in (None, '', [])})
+            current['discovery_methods'] = sorted(methods)
+            if service_metadata:
+                current['service_metadata_list'] = service_metadata[-10:]
+    return list(merged.values())
+
+
+def comprehensive_network_device_scan(selected_interface, include_passive=True, include_services=True, sweep_cidr=None):
+    """Combine active, passive, ARP/neighbor, service, and optional ping-sweep discovery."""
+    if not selected_interface:
+        raise ValueError('Missing interface')
+    groups = []
+    errors = []
+    try:
+        groups.append(('active-arp', classify_scan_results(active_scan(selected_interface), selected_interface)))
+    except Exception as exc:
+        errors.append(f'active scan: {exc}')
+    if include_passive:
+        try:
+            groups.append(('passive-observation', classify_scan_results(passive_scan(selected_interface), selected_interface)))
+        except Exception as exc:
+            errors.append(f'passive scan: {exc}')
+    if os.name != 'nt':
+        neigh = _run_text_command(['ip', 'neigh', 'show', 'dev', selected_interface], timeout=5)
+        groups.append(('neighbor-table', parse_neighbor_table(neigh.get('output'))))
+        arp = _run_text_command(['arp', '-an'], timeout=5)
+        groups.append(('arp-cache', parse_neighbor_table(arp.get('output'))))
+    if sweep_cidr:
+        try:
+            sweep = run_ping_sweep(sweep_cidr, count=1, timeout=1)
+            groups.append(('ping-sweep', [{'ip': item.get('host'), 'discovery_methods': ['ping-sweep'], 'reachable': item.get('reachable')} for item in sweep.get('results', []) if item.get('reachable')]))
+        except Exception as exc:
+            errors.append(f'ping sweep: {exc}')
+    if include_services:
+        mdns = discover_mdns_services(selected_interface)
+        groups.append(('mdns', [{'ip': service.get('ip'), 'hostname': service.get('hostname'), 'name': service.get('name'), 'device_type': service.get('role'), 'service_metadata': service, 'discovery_methods': ['mdns']} for service in mdns.get('services', [])]))
+        upnp = discover_upnp_devices(timeout=2)
+        groups.append(('upnp-ssdp', [{'ip': device.get('ip'), 'name': device.get('friendly_name'), 'manufacturer': device.get('manufacturer'), 'device_type': device.get('role'), 'service_metadata': device, 'discovery_methods': ['upnp-ssdp']} for device in upnp.get('devices', [])]))
+        lldp = discover_lldp_neighbors(selected_interface)
+        groups.append(('lldp-cdp', [{'ip': neighbor.get('management_address'), 'name': neighbor.get('name'), 'device_type': neighbor.get('role'), 'service_metadata': neighbor, 'discovery_methods': ['lldp-cdp']} for neighbor in lldp.get('neighbors', [])]))
+    merged = merge_discovered_devices(groups)
+    enriched = record_inventory_devices(merged, 'comprehensive-network-scan', selected_interface)
+    return {
+        'devices': enriched,
+        'methods': [method for method, _devices in groups],
+        'errors': errors,
+        'summary': {
+            'total_devices': len(enriched),
+            'host_like': len([item for item in enriched if not item.get('is_control_traffic')]),
+            'with_services': len([item for item in enriched if item.get('service_metadata') or item.get('service_metadata_list')]),
+        },
+    }
 
 
 def _scan_result_counts(result):
@@ -1022,7 +2587,7 @@ def run_port_scan_job(job_id):
     scanned = 0
 
     def on_open(port):
-        service_detail = identify_port_service(port)
+        service_detail = enrich_web_port_metadata(host, identify_port_service(port))
         with port_scan_jobs_lock:
             current = port_scan_jobs.get(job_id)
             if not current:
@@ -1034,6 +2599,7 @@ def run_port_scan_job(job_id):
                 current['open_port_details'] = sorted(current['open_port_details'], key=lambda item: item['port'])
             current['message'] = f"Open port found: {port} ({service_detail['service']})"
             current['updated_at'] = time.time()
+        record_device_open_ports(host, [service_detail], source='port-scan-live')
 
     def should_cancel():
         with port_scan_jobs_lock:
@@ -1056,11 +2622,13 @@ def run_port_scan_job(job_id):
         if should_cancel():
             update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
             return
+        final_details = [enrich_web_port_metadata(host, detail) for detail in describe_open_ports(ports)]
+        record_device_open_ports(host, final_details, source='port-scan')
         update_port_scan_job(
             job_id,
             status='complete',
             open_ports=ports,
-            open_port_details=describe_open_ports(ports),
+            open_port_details=final_details,
             scanned_ports=total,
             current_port=end,
             progress=100,
@@ -1466,15 +3034,39 @@ def network_scan():
 
 
 @app.route('/inventory')
-def inventory_page():
+def inventory_page(import_result=None):
     records = inventory_records()
     return render_template(
         'inventory.html',
         title='Device Inventory',
         devices=records,
         insights=manufacturer_insights(records),
+        import_result=import_result,
         **current_context(),
     )
+
+
+@app.route('/inventory/export.json')
+def inventory_export_json():
+    return jsonify(inventory_export_payload())
+
+
+@app.route('/inventory/import', methods=['POST'])
+def inventory_import_route():
+    artifact = request.files.get('inventoryFile')
+    try:
+        if artifact and artifact.filename:
+            payload = json.load(artifact.stream)
+        else:
+            payload = request.get_json(silent=True) or json.loads(request.form.get('inventoryJson') or '{}')
+        result = import_inventory_payload(payload)
+    except (ValueError, json.JSONDecodeError) as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error(str(e))
+        return inventory_page(import_result={'status': 'error', 'message': str(e)})
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_success(**result)
+    return inventory_page(import_result={'status': 'success', **result})
 
 
 @app.route('/alerts')
@@ -1522,6 +3114,40 @@ def traceroute_page():
     return render_template('traceroute.html', title='Traceroute', **current_context())
 
 
+@app.route('/diagnostics')
+def diagnostics_page():
+    return render_template('diagnostics.html', title='Diagnostics', **current_context())
+
+
+@app.route('/service-discovery')
+def service_discovery_page():
+    return render_template('service_discovery.html', title='Service Discovery', **current_context())
+
+
+@app.route('/advanced-diagnostics')
+def advanced_diagnostics_page():
+    return render_template('advanced_diagnostics.html', title='Advanced Diagnostics', **current_context())
+
+
+
+
+@app.route('/http-previews/<path:filename>')
+def http_preview_file(filename):
+    """Serve locally captured HTTP preview thumbnails."""
+    return send_from_directory(HTTP_PREVIEW_DIR, filename)
+
+
+@app.route('/clients/<identifier>/services/<int:port>')
+def client_service_detail(identifier, port):
+    """Show a focused saved-service detail page for an IP client port."""
+    device = enrich_ip_client_display_name(identifier, find_inventory_device(identifier) or {})
+    host = device.get('ip') or identifier
+    service = next((dict(item) for item in device.get('open_port_details', []) if int(item.get('port') or 0) == int(port)), None)
+    if not service:
+        return render_template('service_detail.html', title='Service not found', host=host, port=port, service=None, device=device, **current_context()), 404
+    return render_template('service_detail.html', title=f"{host}:{port} Service", host=host, port=port, service=service, device=device, **current_context())
+
+
 @app.route('/clients/<identifier>')
 def client_detail(identifier):
     """Display details for a client identified by MAC or IP address."""
@@ -1544,14 +3170,21 @@ def client_detail(identifier):
     if is_bluetooth:
         ip = None
 
+    if not is_bluetooth and ip:
+        inventory_device = enrich_ip_client_display_name(ip, inventory_device)
+        mac = (inventory_device or {}).get('mac') or mac
+
     manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
-    display_name = (
-        (inventory_device or {}).get('name')
-        or (inventory_device or {}).get('display_name')
-        or mac
-        or ip
-        or identifier
-    )
+    display_name = display_name_for_inventory_device(inventory_device or {}, mac or ip or identifier)
+
+    last_port_scan = None if is_bluetooth else (inventory_device or {}).get('last_port_scan')
+    health_summary = None if is_bluetooth else client_health_summary(inventory_device or {}, ip)
+    timeline = [] if is_bluetooth else client_timeline(ip or mac or identifier, inventory_device)
+    watched = False if is_bluetooth else is_client_watched(ip or identifier)
+    reachability = [] if is_bluetooth else client_reachability_history(ip or identifier)
+    baseline_diff = None if is_bluetooth else client_baseline_diff(inventory_device or {})
+    relationship_map = None if is_bluetooth else client_relationship_map(ip or identifier)
+    scheduled_check = None if is_bluetooth else scheduled_client_checks.get(ip or identifier)
 
     return render_template(
         'client_detail.html',
@@ -1560,7 +3193,23 @@ def client_detail(identifier):
         mac=mac,
         manufacturer=manufacturer,
         display_name=display_name,
+        display_name_source=(inventory_device or {}).get('display_name_source'),
+        inventory_device=inventory_device or {},
         is_bluetooth=is_bluetooth,
+        open_port_details=[] if is_bluetooth else (inventory_device or {}).get('open_port_details', []),
+        open_ports=[] if is_bluetooth else (inventory_device or {}).get('open_ports', []),
+        last_port_scan_label=(
+            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last_port_scan))
+            if last_port_scan
+            else None
+        ),
+        health_summary=health_summary,
+        client_timeline=timeline,
+        watched_client=watched,
+        reachability_history=reachability,
+        baseline_diff=baseline_diff,
+        relationship_map=relationship_map,
+        scheduled_check=scheduled_check,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
@@ -1568,6 +3217,135 @@ def client_detail(identifier):
         bluetooth_action_history=bluetooth_action_history(mac) if is_bluetooth else [],
         **current_context(),
     )
+
+
+@app.route('/clients/<identifier>/watch', methods=['POST'])
+def watch_client(identifier):
+    """Toggle watch notifications for an IP client."""
+    watch = request.form.get('watch', 'on') == 'on'
+    target = str(identifier or '').strip()
+    if not target:
+        return json_error('Missing client identifier')
+    if watch:
+        watched_clients.add(target)
+        append_client_timeline_event(target, 'Watch enabled', 'This client will create alerts for notable profile changes.', 'client-watch')
+        return json_success(watched=True, message='Client watch enabled.')
+    watched_clients.discard(target)
+    append_client_timeline_event(target, 'Watch disabled', 'Client watch notifications were disabled.', 'client-watch')
+    return json_success(watched=False, message='Client watch disabled.')
+
+
+@app.route('/clients/<identifier>/http-inspect', methods=['POST'])
+def client_http_inspect(identifier):
+    """Inspect saved or supplied HTTP-like services for an IP client."""
+    inventory_device = find_inventory_device(identifier) or {}
+    host = inventory_device.get('ip') or identifier
+    raw_ports = request.form.get('ports')
+    try:
+        if raw_ports:
+            candidates = [parse_int(item.strip(), 'Ports must be integers') for item in raw_ports.split(',') if item.strip()]
+        else:
+            http_names = ('http', 'https', 'web', 'proxy')
+            candidates = [
+                item['port'] for item in inventory_device.get('open_port_details', [])
+                if any(name in str(item.get('service', '')).lower() for name in http_names) or item.get('port') in (80, 443, 8080, 8443, 8000, 9443)
+            ]
+    except ValueError as e:
+        return json_error(str(e))
+    candidates = sorted(set(port for port in candidates if 1 <= port <= 65535))[:8]
+    if not candidates:
+        return json_error('No HTTP-like saved ports are available for this client. Run a port scan first or supply ports.', 400)
+    results = inspect_http_services(host, candidates)
+    append_client_timeline_event(host, 'HTTP inspected', f"Inspected {len(results)} web service candidate(s).", 'http-inspector')
+    return json_success(results=results)
+
+
+
+
+@app.route('/clients/<identifier>/summary')
+def client_summary_route(identifier):
+    """Return the latest saved profile fields needed by inline device cards."""
+    device = enrich_ip_client_display_name(identifier, find_inventory_device(identifier) or {})
+    host = device.get('ip') or identifier
+    return json_success(device={
+        'ip': host,
+        'mac': device.get('mac'),
+        'display_name': display_name_for_inventory_device(device, host),
+        'manufacturer': device.get('manufacturer') or 'Unknown',
+        'open_port_details': device.get('open_port_details', []),
+        'open_ports': device.get('open_ports', []),
+        'client_tags': device.get('client_tags', []),
+        'client_notes': device.get('client_notes'),
+        'last_port_scan': device.get('last_port_scan'),
+    })
+
+
+@app.route('/clients/<identifier>/metadata', methods=['POST'])
+def client_metadata_route(identifier):
+    """Save user-maintained IP client profile metadata."""
+    try:
+        device = update_client_metadata(identifier, request.form)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(device=device, message='Client profile metadata saved.')
+
+
+@app.route('/clients/<identifier>/baseline', methods=['POST'])
+def client_baseline_route(identifier):
+    """Save current device observations as the expected baseline."""
+    device = save_client_baseline(identifier)
+    return json_success(device=device, baseline=client_baseline_diff(device), message='Client baseline saved.')
+
+
+@app.route('/clients/<identifier>/export.<fmt>')
+def client_export_route(identifier, fmt):
+    """Export an individual IP client profile."""
+    profile = client_profile_export(identifier)
+    if fmt == 'json':
+        return jsonify(profile)
+    if fmt == 'md':
+        device = profile['device']
+        lines = [
+            f"# Client profile: {profile['host']}",
+            '',
+            f"- Manufacturer: {device.get('manufacturer') or 'Unknown'}",
+            f"- MAC: {device.get('mac') or 'Unknown'}",
+            f"- Tags: {', '.join(device.get('client_tags', [])) or 'None'}",
+            f"- Owner: {device.get('client_owner') or 'Unknown'}",
+            f"- Location: {device.get('client_location') or 'Unknown'}",
+            f"- Health: {profile['health']['level']} ({profile['health']['score']}/100)",
+            f"- Baseline: {profile['baseline']['status']}",
+            '',
+            '## Open ports',
+        ]
+        for item in device.get('open_port_details', []):
+            lines.append(f"- {item.get('port')}/tcp {item.get('service') or 'Unknown'} — {item.get('description') or ''}")
+        if not device.get('open_port_details'):
+            lines.append('- No open ports saved.')
+        lines.extend(['', '## Timeline'])
+        for event in profile['timeline']:
+            lines.append(f"- {event.get('time_label')}: {event.get('type')} — {event.get('message')}")
+        return Response('\n'.join(lines), mimetype='text/markdown', headers={'Content-Disposition': f'attachment; filename=client-{profile["host"]}.md'})
+    return json_error('Unsupported client export format', 404)
+
+
+@app.route('/clients/<identifier>/relationship-map')
+def client_relationship_map_route(identifier):
+    return json_success(map=client_relationship_map(identifier))
+
+
+@app.route('/clients/<identifier>/fingerprint', methods=['POST'])
+def client_fingerprint_route(identifier):
+    return json_success(fingerprints=fingerprint_client_services(identifier))
+
+
+@app.route('/clients/<identifier>/scheduled-check', methods=['POST'])
+def client_scheduled_check_route(identifier):
+    try:
+        plan = save_scheduled_client_check(identifier, request.form)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(plan=plan, message='Scheduled client check saved.')
 
 
 @app.route('/active-scan', methods=['POST'])
@@ -1590,6 +3368,20 @@ def passive_scan_route():
     return jsonify({'devices': enriched_devices})
 
 
+@app.route('/comprehensive-scan', methods=['POST'])
+def comprehensive_scan_route():
+    try:
+        result = comprehensive_network_device_scan(
+            request.form.get('selectedInterface'),
+            include_passive=request.form.get('includePassive', 'on') == 'on',
+            include_services=request.form.get('includeServices', 'on') == 'on',
+            sweep_cidr=(request.form.get('sweepCidr') or '').strip() or None,
+        )
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(result=result)
+
+
 @app.route('/port-scan', methods=['POST'])
 def port_scan_route():
     data = request.form
@@ -1609,7 +3401,9 @@ def port_scan_route():
     except PortScanError as e:
         return json_error(str(e))
 
-    return jsonify({'ports': ports, 'port_details': describe_open_ports(ports)})
+    port_details = [enrich_web_port_metadata(data.get('host'), detail) for detail in describe_open_ports(ports)]
+    record_device_open_ports(data.get('host'), port_details, source='port-scan')
+    return jsonify({'ports': ports, 'port_details': port_details})
 
 
 @app.route('/port-scan-jobs', methods=['POST'])
@@ -1674,6 +3468,136 @@ def traceroute_route():
     return jsonify({'hops': hops})
 
 
+@app.route('/ping', methods=['POST'])
+def ping_route():
+    try:
+        result = run_ping_check(request.form.get('host'), request.form.get('count') or 4, request.form.get('timeout') or 2)
+    except ValueError as e:
+        return json_error(str(e))
+    except subprocess.TimeoutExpired:
+        return json_error('Ping timed out', 504)
+    return json_success(result=result, history=ping_history[-10:])
+
+
+@app.route('/ping-sweep', methods=['POST'])
+def ping_sweep_route():
+    try:
+        sweep = run_ping_sweep(request.form.get('cidr'), request.form.get('count') or 1, request.form.get('timeout') or 1)
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(sweep=sweep, history=ping_history[-10:])
+
+
+@app.route('/route-diagnostics', methods=['POST'])
+def route_diagnostics_route():
+    diagnostics = build_route_diagnostics(request.form.get('target'))
+    return json_success(diagnostics=diagnostics)
+
+
+@app.route('/mdns-discovery', methods=['POST'])
+def mdns_discovery_route():
+    result = discover_mdns_services(request.form.get('selectedInterface'))
+    return json_success(result=result)
+
+
+@app.route('/upnp-discovery', methods=['POST'])
+def upnp_discovery_route():
+    try:
+        timeout = parse_int(request.form.get('timeout') or 2, 'Timeout must be an integer')
+    except ValueError as e:
+        return json_error(str(e))
+    result = discover_upnp_devices(timeout=max(1, min(timeout, 5)))
+    return json_success(result=result)
+
+
+@app.route('/neighbor-discovery', methods=['POST'])
+def neighbor_discovery_route():
+    result = discover_lldp_neighbors(request.form.get('selectedInterface'))
+    return json_success(result=result)
+
+
+@app.route('/vlan-discovery', methods=['POST'])
+def vlan_discovery_route():
+    result = discover_vlan_context(request.form.get('ssid'), request.form.get('vlanId'), request.form.get('notes'))
+    return json_success(result=result)
+
+
+@app.route('/egress-diagnostics', methods=['POST'])
+def egress_diagnostics_route():
+    return json_success(result=build_egress_diagnostics(request.form.get('selectedInterface')))
+
+
+@app.route('/iperf3-test', methods=['POST'])
+def iperf3_test_route():
+    try:
+        result = run_iperf3_test(request.form.get('mode'), request.form.get('host'), request.form.get('port') or 5201, request.form.get('seconds') or 5)
+    except (ValueError, subprocess.TimeoutExpired) as e:
+        return json_error(str(e))
+    return json_success(result=result)
+
+
+@app.route('/snmp-discovery', methods=['POST'])
+def snmp_discovery_route():
+    if request.form.get('authorized') != 'on':
+        return json_error('Confirm this is an authorized SNMP inventory check')
+    try:
+        result = run_snmp_inventory(request.form.get('host'), request.form.get('community'), request.form.get('version') or '2c', request.form.get('oid') or 'system')
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(result=result)
+
+
+@app.route('/ipv6-assessment', methods=['POST'])
+def ipv6_assessment_route():
+    result = run_ipv6_assessment(request.form.get('host'), request.form.get('ports'))
+    return json_success(result=result)
+
+
+@app.route('/wireless/network/label', methods=['POST'])
+def wireless_network_client_label_route():
+    """Save an SSID-scoped custom label for a network client card."""
+    interface = request.form.get('interface')
+    ssid = request.form.get('ssid')
+    bssid = request.form.get('bssid')
+    identity = request.form.get('identity') or request.form.get('ip') or request.form.get('mac')
+    label = (request.form.get('label') or '').strip()[:80]
+    if not interface or not ssid or not identity:
+        return json_error('Interface, SSID, and client identity are required')
+    key = wireless_network_client_label_key(interface, ssid, bssid, identity)
+    if label:
+        wireless_network_labels[key] = label
+    else:
+        wireless_network_labels.pop(key, None)
+    return json_success(label=label, message='Network client label saved.')
+
+
+@app.route('/wireless/network/clients.csv')
+def wireless_network_clients_export():
+    """Export the persisted Wi-Fi network device list as CSV."""
+    from scripts.wifi import utils as wifi_utils
+    network = wifi_utils.get_network_detail(ssid=request.args.get('ssid'), bssid=request.args.get('bssid'), interface_name=request.args.get('interface'))
+    network = merge_wireless_network_clients(network)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=['display_name', 'ip', 'mac', 'manufacturer', 'tags', 'notes', 'open_ports', 'open_port_details_json', 'first_seen', 'last_seen', 'state'])
+    writer.writeheader()
+    for client in network.get('clients', []) + network.get('disappeared_clients', []):
+        writer.writerow({
+            'display_name': client.get('display_name'),
+            'ip': client.get('ip'),
+            'mac': client.get('mac'),
+            'manufacturer': client.get('manufacturer'),
+            'tags': ', '.join(client.get('client_tags') or []),
+            'notes': client.get('client_notes') or '',
+            'open_ports': ', '.join(str(item.get('port')) for item in client.get('open_port_details') or []),
+            'open_port_details_json': json.dumps(client.get('open_port_details') or []),
+            'first_seen': client.get('network_first_seen'),
+            'last_seen': client.get('network_last_seen'),
+            'state': 'disappeared' if client in network.get('disappeared_clients', []) else 'visible',
+        })
+    filename = secure_filename(f"{network.get('ssid') or 'wireless-network'}-clients.csv")
+    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+
+
 @app.route('/wireless/network')
 def wireless_network_detail():
     ssid = request.args.get('ssid')
@@ -1685,6 +3609,7 @@ def wireless_network_detail():
 
     from scripts.wifi import utils as wifi_utils
     network = wifi_utils.get_network_detail(ssid=ssid, bssid=bssid, interface_name=selected_interface)
+    network = merge_wireless_network_clients(network)
     back_url = f"/wireless/{selected_interface}" if selected_interface else "/wireless"
     return render_template(
         'wireless_network_detail.html',
@@ -1990,6 +3915,68 @@ def deauth_route():
         return json_success(message=f'Sent {frames} authorized lab deauth frames on {selected_interface}')
     except Exception as e:
         return json_error(f'Deauth error: {str(e)}', 500)
+
+
+@app.route('/evil-twin-lab', methods=['POST'])
+def evil_twin_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+
+    if missing_fields(data, 'selectedInterface', 'ssid', 'bssid', 'channel'):
+        return json_error('Missing required parameters')
+
+    try:
+        lab = validate_evil_twin_lab_request(data)
+        run = record_evil_twin_lab_run(selected_interface, lab)
+    except ValueError as e:
+        return json_error(str(e))
+
+    action_messages = {
+        'plan': 'Prepared evil twin and captive portal lab plan; no radio services were started by Mobile Router.',
+        'start': 'Logged authorized evil twin lab start checklist; run AP services only in your isolated lab environment.',
+        'cleanup': 'Logged evil twin lab cleanup checklist; verify rogue AP, DHCP, DNS, and portal services are stopped.',
+    }
+    return json_success(message=action_messages[run['action']], run=run)
+
+
+@app.route('/pineap-lab', methods=['POST'])
+def pineap_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    if missing_fields(data, 'selectedInterface'):
+        return json_error('Missing required parameters')
+    try:
+        lab = validate_pineap_lab_request(data)
+        run = build_pineap_lab_result(selected_interface, lab)
+    except ValueError as e:
+        return json_error(str(e))
+    except Exception as e:
+        return json_error(f'PineAP-style lab error: {str(e)}', 500)
+    return json_success(message=f"Recorded {run['action']} workflow with {len(run['module_status'])} module(s).", run=run)
+
+
+@app.route('/handshake-lab', methods=['POST'])
+def handshake_lab_route():
+    data = request.form
+    selected_interface = data.get('selectedInterface')
+    if missing_fields(data, 'selectedInterface', 'ssid', 'bssid', 'channel'):
+        return json_error('Missing required parameters')
+    try:
+        lab = validate_handshake_lab_request(data)
+        record = record_handshake_lab_evidence(selected_interface, lab, request.files.get('capture'))
+    except ValueError as e:
+        return json_error(str(e))
+    return json_success(message='Cataloged WPA handshake/PMKID lab evidence for validation and export.', record=record)
+
+
+@app.route('/handshake-lab.<fmt>')
+def export_handshake_lab(fmt):
+    records = handshake_lab_export_records()
+    if fmt == 'json':
+        return jsonify({'handshakes': records, 'exported_at': time.time()})
+    if fmt == 'csv':
+        return Response(handshake_records_as_csv(records), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=handshake-lab.csv'})
+    return json_error('Unsupported handshake export format', 404)
 
 
 @app.route('/aireplay-deauth', methods=['POST'])
