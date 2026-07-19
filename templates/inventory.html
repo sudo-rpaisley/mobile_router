@@ -7,7 +7,31 @@
   <div class="page-hero-copy">
     <p class="page-kicker">Network visibility</p>
     <h1 class="page-title">Device Inventory</h1>
-    <p class="page-subtitle">Review discovered IPs, MAC addresses, manufacturers, interfaces, sources, and first/last seen timestamps in one place.</p>
+    <p class="page-subtitle">Review discovered IPs, MAC addresses, manufacturers, interfaces, sources, saved ports, and first/last seen timestamps in one place.</p>
+  </div>
+  <div class="theme-actions">
+    <a class="btn btn-outline-primary" href="/inventory/export.json">Export devices + ports</a>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Inventory import/export</h2>
+    <p class="text-muted">Export saves device records and saved port/service profiles so you can restore them later and avoid re-running large port scans.</p>
+    {% if import_result %}
+      {% if import_result.status == 'success' %}
+        <div class="alert alert-success" role="alert">Imported {{ import_result.imported_devices }} device record(s) and {{ import_result.imported_port_profiles }} saved port profile(s).</div>
+      {% else %}
+        <div class="alert alert-danger" role="alert">{{ import_result.message }}</div>
+      {% endif %}
+    {% endif %}
+    <form class="theme-form" action="/inventory/import" method="post" enctype="multipart/form-data">
+      <div class="form-group">
+        <label for="inventoryFile">Import exported inventory JSON</label>
+        <input id="inventoryFile" class="form-control-file" type="file" name="inventoryFile" accept="application/json,.json" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Import devices + ports</button>
+    </form>
   </div>
 </section>
 

@@ -1785,6 +1785,73 @@ def merge_wireless_network_clients(network):
     return network
 
 
+def inventory_export_payload(records=None):
+    """Build a portable inventory export that includes saved port/service details."""
+    records = records if records is not None else inventory_records()
+    devices = []
+    for device in records:
+        devices.append({
+            'id': device.get('id'),
+            'display_name': device.get('display_name'),
+            'ip': device.get('ip'),
+            'mac': device.get('mac'),
+            'bssid': device.get('bssid'),
+            'manufacturer': device.get('manufacturer'),
+            'hostname': device.get('hostname'),
+            'name': device.get('name'),
+            'device_type': device.get('device_type'),
+            'sources': device.get('sources', []),
+            'interfaces': device.get('interfaces', []),
+            'first_seen': device.get('first_seen'),
+            'last_seen': device.get('last_seen'),
+            'client_tags': device.get('client_tags', []),
+            'client_notes': device.get('client_notes'),
+            'expected_open_ports': device.get('expected_open_ports', []),
+            'open_ports': device.get('open_ports', []),
+            'open_port_details': device.get('open_port_details', []),
+            'last_port_scan': device.get('last_port_scan'),
+        })
+    return {'exported_at': time.time(), 'schema': 'mobile-router-inventory-v1', 'devices': devices}
+
+
+def import_inventory_payload(payload, source='inventory-import'):
+    """Import devices and saved port/service profiles from a portable JSON export."""
+    if not isinstance(payload, dict):
+        raise ValueError('Inventory import must be a JSON object')
+    devices = payload.get('devices')
+    if not isinstance(devices, list):
+        raise ValueError('Inventory import must contain a devices list')
+    imported_devices = 0
+    imported_port_profiles = 0
+    for raw in devices[:1000]:
+        if not isinstance(raw, dict):
+            continue
+        device = {key: raw.get(key) for key in ('ip', 'mac', 'bssid', 'hostname', 'name', 'device_type', 'manufacturer') if raw.get(key)}
+        device['sources'] = sorted(set(raw.get('sources') or []) | {source})
+        interfaces = raw.get('interfaces') or []
+        interface = interfaces[0] if interfaces else None
+        enriched = record_inventory_devices([device], source, interface)
+        identifier = raw.get('ip') or raw.get('mac') or raw.get('bssid')
+        if not identifier:
+            continue
+        imported_devices += len(enriched)
+        updates = {}
+        for field in ('client_tags', 'client_notes', 'expected_open_ports', 'last_port_scan'):
+            if raw.get(field) not in (None, ''):
+                updates[field] = raw.get(field)
+        if updates:
+            target = find_inventory_device(identifier) or {}
+            key = target.get('id') or inventory_key({**device, 'ip': raw.get('ip'), 'mac': raw.get('mac'), 'bssid': raw.get('bssid')})
+            with device_inventory_lock:
+                if key in device_inventory:
+                    device_inventory[key].update(updates)
+        port_details = raw.get('open_port_details') or []
+        if raw.get('ip') and port_details:
+            record_device_open_ports(raw.get('ip'), port_details, source=source)
+            imported_port_profiles += 1
+    return {'imported_devices': imported_devices, 'imported_port_profiles': imported_port_profiles}
+
+
 def manufacturer_insights(records=None):
     """Summarize the current inventory by manufacturer/OUI."""
     records = records if records is not None else inventory_records()
@@ -2967,15 +3034,39 @@ def network_scan():
 
 
 @app.route('/inventory')
-def inventory_page():
+def inventory_page(import_result=None):
     records = inventory_records()
     return render_template(
         'inventory.html',
         title='Device Inventory',
         devices=records,
         insights=manufacturer_insights(records),
+        import_result=import_result,
         **current_context(),
     )
+
+
+@app.route('/inventory/export.json')
+def inventory_export_json():
+    return jsonify(inventory_export_payload())
+
+
+@app.route('/inventory/import', methods=['POST'])
+def inventory_import_route():
+    artifact = request.files.get('inventoryFile')
+    try:
+        if artifact and artifact.filename:
+            payload = json.load(artifact.stream)
+        else:
+            payload = request.get_json(silent=True) or json.loads(request.form.get('inventoryJson') or '{}')
+        result = import_inventory_payload(payload)
+    except (ValueError, json.JSONDecodeError) as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error(str(e))
+        return inventory_page(import_result={'status': 'error', 'message': str(e)})
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_success(**result)
+    return inventory_page(import_result={'status': 'success', **result})
 
 
 @app.route('/alerts')
@@ -3487,7 +3578,7 @@ def wireless_network_clients_export():
     network = wifi_utils.get_network_detail(ssid=request.args.get('ssid'), bssid=request.args.get('bssid'), interface_name=request.args.get('interface'))
     network = merge_wireless_network_clients(network)
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=['display_name', 'ip', 'mac', 'manufacturer', 'tags', 'notes', 'open_ports', 'first_seen', 'last_seen', 'state'])
+    writer = csv.DictWriter(output, fieldnames=['display_name', 'ip', 'mac', 'manufacturer', 'tags', 'notes', 'open_ports', 'open_port_details_json', 'first_seen', 'last_seen', 'state'])
     writer.writeheader()
     for client in network.get('clients', []) + network.get('disappeared_clients', []):
         writer.writerow({
@@ -3498,6 +3589,7 @@ def wireless_network_clients_export():
             'tags': ', '.join(client.get('client_tags') or []),
             'notes': client.get('client_notes') or '',
             'open_ports': ', '.join(str(item.get('port')) for item in client.get('open_port_details') or []),
+            'open_port_details_json': json.dumps(client.get('open_port_details') or []),
             'first_seen': client.get('network_first_seen'),
             'last_seen': client.get('network_last_seen'),
             'state': 'disappeared' if client in network.get('disappeared_clients', []) else 'visible',

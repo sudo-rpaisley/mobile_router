@@ -1301,6 +1301,35 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertEqual(response.data.count(b'Device scan'), 1)
         self.assertEqual(response.data.count(b'Tools scan'), 1)
+        self.assertIn(b'Export devices + ports', response.data)
+        self.assertIn(b'Import devices + ports', response.data)
+
+    def test_inventory_export_and_import_preserves_open_ports(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.88', 'mac': '48:b0:2d:ef:ec:f8', 'hostname': 'nas.local', 'manufacturer': 'StorageCo'},
+        ], 'test-scan', 'eth0')
+        app_module.record_device_open_ports('192.168.20.88', [
+            {'port': 443, 'service': 'HTTPS', 'description': 'Secure web server', 'http_title': 'NAS Admin'},
+        ])
+
+        response = self.client.get('/inventory/export.json')
+
+        self.assertEqual(response.status_code, 200)
+        exported = response.get_json()
+        self.assertEqual(exported['schema'], 'mobile-router-inventory-v1')
+        exported_device = next(item for item in exported['devices'] if item.get('ip') == '192.168.20.88')
+        self.assertEqual(exported_device['open_port_details'][0]['port'], 443)
+
+        app_module.device_inventory.clear()
+        response = self.client.post('/inventory/import', json=exported, headers={'X-Requested-With': 'XMLHttpRequest'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['imported_port_profiles'], 1)
+        device = app_module.find_inventory_device('192.168.20.88')
+        self.assertEqual(device['open_port_details'][0]['port'], 443)
+        self.assertEqual(device['open_port_details'][0]['http_title'], 'NAS Admin')
 
     @patch('scripts.portScanner.scan_ports', return_value=[80, 443])
     def test_port_scan_route_saves_open_ports_to_device_profile(self, _scan_ports):
@@ -1715,6 +1744,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Living room TV', response.data)
         self.assertIn(b'disappeared', response.data)
+        self.assertIn(b'open_port_details_json', response.data)
 
     def test_service_detail_page_and_port_card_links(self):
         app_module.device_inventory.clear()
