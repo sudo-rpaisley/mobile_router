@@ -21,7 +21,13 @@
         </div>
       </div>
       <div class="interface-actions">
-        {% if network.interface %}<a class="btn btn-primary" href="#network-device-scan">Device scan</a>{% endif %}
+        {% if network.interface %}
+          <label class="btn btn-outline-success mb-0" title="Continuously poll passive ARP/neighbor observations without refreshing this page. The app does not send probe packets for this mode.">
+            <input class="mr-1" type="checkbox" data-passive-monitor-toggle data-interface="{{ network.interface }}"> Continuous passive capture
+          </label>
+          <label class="small mb-0 text-muted">Every <input class="form-control form-control-sm d-inline-block" style="width: 4.5rem;" data-passive-monitor-interval value="10" inputmode="numeric"> sec</label>
+          <span class="small text-muted" data-passive-monitor-status>Passive monitor is off.</span>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>
       </div>
     </section>
@@ -80,7 +86,7 @@
             <div class="card-body">
               <h2 class="interface-section-title">Network Device Scan</h2>
               <p class="text-muted">Run device scans from this tab. Results are saved into inventory and this device list refreshes instead of rendering a separate scan result list.</p>
-              <form id="scan-form" class="theme-form interface-scan-form" data-network-device-list-scan>
+              <form id="scan-form" class="theme-form interface-scan-form" data-network-device-list-scan data-interface="{{ network.interface }}" data-ssid="{{ network.ssid }}" data-bssid="{{ network.bssid or '' }}">
                 <select id="interface-select-Scan" class="d-none" aria-hidden="true">
                   <option value="{{ network.interface }}" selected>{{ network.interface }}</option>
                 </select>
@@ -104,20 +110,6 @@
           <div class="card-body">
             <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
             <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
-            <div class="network-scan-all-toolbar alert alert-secondary" role="region" aria-label="Continuous passive device capture">
-              <div>
-                <strong>Continuous passive capture</strong>
-                <p class="mb-0 small">Polls local ARP/neighbor observations in the background. The app does not send probe packets for this mode, but normal host traffic can still exist.</p>
-              </div>
-              <div class="theme-actions mb-0">
-                <label class="form-check form-switch mb-0">
-                  <input class="form-check-input" type="checkbox" data-passive-monitor-toggle data-interface="{{ network.interface }}">
-                  <span class="form-check-label">Keep passive capture running</span>
-                </label>
-                <label class="small mb-0">Every <input class="form-control form-control-sm d-inline-block" style="width: 5rem;" data-passive-monitor-interval value="10" inputmode="numeric"> sec</label>
-              </div>
-              <div class="network-scan-all-status small text-muted" data-passive-monitor-status>Passive monitor is off.</div>
-            </div>
             <div class="network-scan-all-toolbar alert alert-secondary" role="region" aria-label="Port scan all network devices">
               <div><strong>Port scan all listed IP devices</strong><p class="mb-0 small">These buttons start background scans for every IP device currently listed in this tab.</p></div>
               <div class="theme-actions mb-0">
@@ -141,7 +133,7 @@
                 </div>
                 <a class="btn btn-outline-primary btn-sm" href="/wireless/network/clients.csv?interface={{ network.interface|urlencode }}&ssid={{ network.ssid|urlencode }}&bssid={{ (network.bssid or '')|urlencode }}">Export device list</a>
               </div>
-              <div class="wireless-network-grid network-device-card-grid">
+              <div class="wireless-network-grid network-device-card-grid" data-network-device-list>
                 {% for client in network.clients %}
                   <article class="wireless-network-card network-device-card" data-network-device-card data-host="{{ client.ip or '' }}" data-role="{{ client.network_role or '' }}" data-known-state="{{ client.network_known_state or 'Known' }}" data-has-open-ports="{{ 'true' if client.open_port_details else 'false' }}" data-unknown="{{ 'true' if not client.ip or client.manufacturer == 'Unknown' else 'false' }}">
                     <div class="wireless-network-main">
@@ -227,7 +219,8 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="text-muted mb-0">No client devices have been discovered for this SSID/interface yet. Wireless packet observations or device scans can populate this section.</p>
+              <div class="wireless-network-grid network-device-card-grid" data-network-device-list></div>
+              <p class="text-muted mb-0" data-network-device-empty>No client devices have been discovered for this SSID/interface yet. Wireless packet observations or device scans can populate this section.</p>
             {% endif %}
           </div>
         </article>

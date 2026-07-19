@@ -78,12 +78,18 @@ $(document).ready(function () {
       </div>`;
   }
 
+  function updateNetworkScanAllHosts(items) {
+    const hostList = hostDevices(items).map((item) => item.ip).join(',');
+    $('[data-port-scan-all]').attr('data-hosts', hostList);
+  }
+
   function detailsHasPorts(item) {
     return Array.isArray(item.open_port_details) && item.open_port_details.length ? 'true' : 'false';
   }
 
-  function renderDeviceCards(items, mode) {
-    let html = renderScanAllToolbar(items);
+  function renderDeviceCards(items, mode, includeToolbar) {
+    const showToolbar = includeToolbar !== false;
+    let html = showToolbar ? renderScanAllToolbar(items) : '';
     html += '<div class="wireless-network-grid network-device-card-grid">';
     items.forEach(function (item) {
       const ip = item.ip || '';
@@ -231,10 +237,40 @@ $(document).ready(function () {
     $('#scan-results').html(`<div class="alert alert-${klass}" role="status">${escapeHtml(message)}</div>`);
   }
 
+  function networkDeviceListParams() {
+    const form = $('[data-network-device-list-scan]');
+    return {
+      interface: form.attr('data-interface') || $('#interface-select-Scan').val() || $('[data-passive-monitor-toggle]').attr('data-interface') || '',
+      ssid: form.attr('data-ssid') || '',
+      bssid: form.attr('data-bssid') || ''
+    };
+  }
+
+  function renderNetworkDeviceListItems(items) {
+    const list = $('[data-network-device-list]');
+    if (!list.length) return;
+    const cards = renderDeviceCards(items || [], 'wireless-network', false);
+    const inner = $(cards).filter('.network-device-card-grid').html() || '';
+    list.html(inner);
+    $('[data-network-device-empty]').toggleClass('d-none', !!(items || []).length);
+    updateNetworkScanAllHosts(items || []);
+  }
+
   function refreshNetworkDeviceList(message) {
-    showNetworkDeviceListStatus(message || 'Scan complete. Refreshing device list...', 'success');
-    window.location.hash = 'network-devices-pane';
-    window.setTimeout(function () { window.location.reload(); }, 900);
+    const params = networkDeviceListParams();
+    showNetworkDeviceListStatus(message || 'Updating device list...', 'success');
+    $.ajax({
+      url: '/wireless/network/clients.json',
+      method: 'GET',
+      data: params,
+      success: function (resp) {
+        renderNetworkDeviceListItems(resp.clients || []);
+        showNetworkDeviceListStatus(message || `Device list updated with ${(resp.clients || []).length} device(s).`, 'success');
+      },
+      error: function (xhr) {
+        showNetworkDeviceListStatus(xhr.responseJSON?.message || 'Device list refresh failed. The saved inventory was updated, but this tab could not redraw.', 'warning');
+      }
+    });
   }
 
   function activateNetworkDeviceTabFromHash() {
@@ -288,9 +324,7 @@ $(document).ready(function () {
           const count = status.last_count == null ? 'no' : status.last_count;
           setPassiveMonitorStatus(`Passive capture running every ${status.interval || 10}s; last update saw ${count} device(s).`, status.error ? 'warning' : 'success');
           if (status.last_update && passiveMonitorLastUpdate && status.last_update !== passiveMonitorLastUpdate) {
-            window.location.hash = 'network-devices-pane';
-            window.location.reload();
-            return;
+            refreshNetworkDeviceList(`Passive capture added ${count} observed device(s).`);
           }
           passiveMonitorLastUpdate = status.last_update || passiveMonitorLastUpdate;
         } else {
@@ -357,7 +391,7 @@ $(document).ready(function () {
       success: function (resp) {
         const result = resp.result;
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Comprehensive scan saved ${result.summary.total_devices} device(s). Refreshing the device list...`);
+          refreshNetworkDeviceList(`Comprehensive scan saved ${result.summary.total_devices} device(s). Updating the device list...`);
           return;
         }
         let html = '<h3>Comprehensive Device Scan Results</h3>';
@@ -387,7 +421,7 @@ $(document).ready(function () {
       data: { selectedInterface: iface },
       success: function (resp) {
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Active scan saved ${resp.hosts.length} host(s). Refreshing the device list...`);
+          refreshNetworkDeviceList(`Active scan saved ${resp.hosts.length} host(s). Updating the device list...`);
           return;
         }
         let html = '<h3>Active Scan Results</h3>';
@@ -413,7 +447,7 @@ $(document).ready(function () {
       data: { selectedInterface: iface },
       success: function (resp) {
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Refreshing the device list...`);
+          refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Updating the device list...`);
           return;
         }
         let html = '<h3>Passive Scan Results</h3>';

@@ -1093,6 +1093,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('/wireless/network/label', network_js)
         self.assertIn('isNetworkDeviceListMode', network_js)
         self.assertIn('refreshNetworkDeviceList', network_js)
+        self.assertIn('/wireless/network/clients.json', network_js)
+        self.assertNotIn('window.location.reload()', network_js)
         self.assertIn('Active scan saved', network_js)
 
     def test_client_summary_returns_latest_card_fields(self):
@@ -1664,12 +1666,15 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'WPS exposed', response.data)
         self.assertIn(b'Training Vendor', response.data)
         self.assertIn(b'11:22:33:44:55:66', response.data)
-        self.assertIn(b'href="#network-device-scan"', response.data)
+        self.assertNotIn(b'href="#network-device-scan"', response.data)
+        self.assertIn(b'Continuous passive capture', response.data)
+        self.assertIn(b'data-passive-monitor-toggle', response.data)
         self.assertIn(b'Network Device Scan', response.data)
         self.assertIn(b'id="comprehensive-scan-btn"', response.data)
         self.assertIn(b'<option value="wlan0" selected>', response.data)
         self.assertLess(response.data.index(b'id="network-devices-pane"'), response.data.index(b'id="network-device-scan"'))
         self.assertIn(b'data-network-device-list-scan', response.data)
+        self.assertIn(b'data-network-device-list', response.data)
         self.assertIn(b'Scan all common ports', response.data)
         self.assertIn(b'Scan all ports', response.data)
         self.assertIn(b'network_scan.js', response.data)
@@ -1908,6 +1913,19 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'192.168.20.80:80', response.data)
         self.assertIn(b'Router Console', response.data)
+
+    def test_wireless_network_clients_json_returns_persisted_device_list(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.77.10', 'mac': '48:b0:2d:ef:77:10', 'manufacturer': 'ClientCo', 'interfaces': ['wlan0']},
+        ], 'active-scan', 'wlan0')
+
+        response = self.client.get('/wireless/network/clients.json?interface=wlan0&ssid=TrainingNet')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(any(client.get('ip') == '192.168.77.10' for client in payload['clients']))
+        self.assertGreaterEqual(payload['client_count'], 1)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

@@ -3241,6 +3241,19 @@ def wireless_network_client_label_route():
     return json_success(label=label, message='Network client label saved.')
 
 
+@app.route('/wireless/network/clients.json')
+def wireless_network_clients_json():
+    """Return the persisted Wi-Fi network device list for in-page refreshes."""
+    from scripts.wifi import utils as wifi_utils
+    network = wifi_utils.get_network_detail(ssid=request.args.get('ssid'), bssid=request.args.get('bssid'), interface_name=request.args.get('interface'))
+    network = merge_wireless_network_clients(network)
+    return json_success(
+        clients=network.get('clients', []),
+        disappeared_clients=network.get('disappeared_clients', []),
+        client_count=network.get('client_count', 0),
+    )
+
+
 @app.route('/wireless/network/clients.csv')
 def wireless_network_clients_export():
     """Export the persisted Wi-Fi network device list as CSV."""
