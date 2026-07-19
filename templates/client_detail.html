@@ -88,6 +88,28 @@
         </div>
       </section>
     {% elif ip %}
+      <section class="theme-card card" data-ip-client-tools data-host="{{ ip }}">
+        <div class="card-body">
+          <h2 class="theme-section-title">IP Client Actions</h2>
+          <p class="text-muted">Run quick reachability and path checks, jump to deeper diagnostics, or save investigation notes for this client profile.</p>
+          <div class="theme-actions">
+            <button type="button" class="btn btn-outline-success" data-ip-client-ping>Ping client</button>
+            <button type="button" class="btn btn-outline-info" data-ip-client-route>Route diagnostics</button>
+            <button type="button" class="btn btn-outline-secondary" data-ip-client-traceroute>Traceroute</button>
+            <a class="btn btn-outline-primary" href="/diagnostics">Open diagnostics</a>
+          </div>
+          <form class="theme-form mt-3" data-ip-client-evidence-form>
+            <label for="ip-client-evidence">Evidence / investigation note</label>
+            <textarea id="ip-client-evidence" class="form-control" data-ip-client-evidence-notes rows="3" placeholder="Example: Gateway responded to ping; SSH and HTTPS open during authorized baseline." required></textarea>
+            <div class="theme-actions">
+              <button type="submit" class="btn btn-primary">Save evidence note</button>
+              <a class="btn btn-link" href="/evidence">Open Evidence Vault</a>
+            </div>
+          </form>
+          <div class="theme-results mt-3" data-ip-client-output><p class="text-muted mb-0">No IP client action has run yet.</p></div>
+        </div>
+      </section>
+
       {% if open_port_details %}
         <section class="theme-card card">
           <div class="card-body">
@@ -149,6 +171,7 @@
 <script src="/static/js/bluetooth-scan.js"></script>
 {% else %}
 <script src="/static/js/port_scan_live.js"></script>
+<script src="/static/js/ip_client.js"></script>
 {% endif %}
 </body>
 {% include '_footer.html' %}

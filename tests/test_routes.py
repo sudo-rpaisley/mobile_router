@@ -955,7 +955,22 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Common ports', response.data)
         self.assertIn(b'All ports', response.data)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
+        self.assertIn(b'IP Client Actions', response.data)
+        self.assertIn(b'data-ip-client-ping', response.data)
+        self.assertIn(b'data-ip-client-route', response.data)
+        self.assertIn(b'data-ip-client-traceroute', response.data)
+        self.assertIn(b'Save evidence note', response.data)
         self.assertIn(b'port_scan_live.js', response.data)
+        self.assertIn(b'ip_client.js', response.data)
+
+    def test_ip_client_actions_script_posts_diagnostics_and_evidence(self):
+        js = open('static/js/ip_client.js').read()
+
+        self.assertIn("url: '/ping'", js)
+        self.assertIn("url: '/route-diagnostics'", js)
+        self.assertIn("url: '/traceroute'", js)
+        self.assertIn("url: '/evidence'", js)
+        self.assertIn('data-ip-client-evidence-form', js)
 
 
     def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
@@ -991,7 +1006,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'bluetooth-scan.js', response.data)
         self.assertNotIn(b'Bluetooth Notes', response.data)
         self.assertNotIn(b'Device Port Scan', response.data)
+        self.assertNotIn(b'IP Client Actions', response.data)
         self.assertNotIn(b'port_scan_live.js', response.data)
+        self.assertNotIn(b'ip_client.js', response.data)
 
 
     def test_bluetooth_client_detail_uses_contextual_connected_actions(self):
