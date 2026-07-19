@@ -32,32 +32,6 @@
       </div>
     {% endif %}
 
-    {% if network.interface %}
-      <section id="network-device-scan" class="card shadow-sm interface-network-scan-card mt-3">
-        <div class="card-body">
-          <h2 class="interface-section-title">Network Device Scan</h2>
-          <p class="text-muted">Scan the adapter that found this SSID for IP devices on the associated local network. Results link to device profiles where port scans and saved service findings can be reviewed.</p>
-          <form id="scan-form" class="theme-form interface-scan-form">
-            <select id="interface-select-Scan" class="d-none" aria-hidden="true">
-              <option value="{{ network.interface }}" selected>{{ network.interface }}</option>
-            </select>
-            <div class="theme-actions">
-              <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
-              <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
-              <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
-            </div>
-            <div class="form-group mb-0">
-              <label for="sweep-cidr">Optional ping sweep CIDR</label>
-              <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
-            </div>
-            <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
-            <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
-          </form>
-          <div id="scan-results" class="theme-results"></div>
-        </div>
-      </section>
-    {% endif %}
-
     <ul class="nav nav-tabs mt-3 network-detail-tabs" role="tablist">
       <li class="nav-item"><a class="nav-link active" id="network-overview-tab" data-toggle="tab" href="#network-overview-pane" role="tab" aria-controls="network-overview-pane" aria-selected="true">Overview</a></li>
       <li class="nav-item"><a class="nav-link" id="network-devices-tab" data-toggle="tab" href="#network-devices-pane" role="tab" aria-controls="network-devices-pane" aria-selected="false">Devices <span class="badge badge-light border">{{ network.client_count }}</span></a></li>
@@ -101,10 +75,43 @@
       </section>
 
       <section class="tab-pane fade" id="network-devices-pane" role="tabpanel" aria-labelledby="network-devices-tab">
+        {% if network.interface %}
+          <section id="network-device-scan" class="card shadow-sm interface-network-scan-card mt-3">
+            <div class="card-body">
+              <h2 class="interface-section-title">Network Device Scan</h2>
+              <p class="text-muted">Run device scans from this tab. Results are saved into inventory and this device list refreshes instead of rendering a separate scan result list.</p>
+              <form id="scan-form" class="theme-form interface-scan-form" data-network-device-list-scan>
+                <select id="interface-select-Scan" class="d-none" aria-hidden="true">
+                  <option value="{{ network.interface }}" selected>{{ network.interface }}</option>
+                </select>
+                <div class="theme-actions">
+                  <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
+                  <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
+                  <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
+                </div>
+                <div class="form-group mb-0">
+                  <label for="sweep-cidr">Optional ping sweep CIDR</label>
+                  <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
+                </div>
+                <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
+                <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
+              </form>
+              <div id="scan-results" class="theme-results" data-network-device-list-status></div>
+            </div>
+          </section>
+        {% endif %}
         <article class="card shadow-sm interface-address-card mt-3">
           <div class="card-body">
             <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
             <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
+            <div class="network-scan-all-toolbar alert alert-secondary" role="region" aria-label="Port scan all network devices">
+              <div><strong>Port scan all listed IP devices</strong><p class="mb-0 small">These buttons start background scans for every IP device currently listed in this tab.</p></div>
+              <div class="theme-actions mb-0">
+                <button class="btn btn-outline-primary btn-sm" data-port-scan-all data-hosts="{{ network.clients | selectattr('ip') | map(attribute='ip') | join(',') }}" data-start="1" data-end="1024" data-label="common port scan">Scan all common ports</button>
+                <button class="btn btn-outline-danger btn-sm" data-port-scan-all data-hosts="{{ network.clients | selectattr('ip') | map(attribute='ip') | join(',') }}" data-start="1" data-end="65535" data-label="all-port scan">Scan all ports</button>
+              </div>
+              <div class="network-scan-all-status small text-muted" data-port-scan-all-status></div>
+            </div>
             {% if network.clients %}
               <div class="network-device-filterbar mb-3" role="region" aria-label="Network device filters">
                 <div>

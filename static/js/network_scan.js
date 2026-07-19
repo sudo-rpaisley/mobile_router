@@ -220,6 +220,28 @@ $(document).ready(function () {
     });
   }
 
+  function isNetworkDeviceListMode() {
+    return $('[data-network-device-list-scan]').length > 0;
+  }
+
+  function showNetworkDeviceListStatus(message, level) {
+    const klass = level || 'info';
+    $('#scan-results').html(`<div class="alert alert-${klass}" role="status">${escapeHtml(message)}</div>`);
+  }
+
+  function refreshNetworkDeviceList(message) {
+    showNetworkDeviceListStatus(message || 'Scan complete. Refreshing device list...', 'success');
+    window.location.hash = 'network-devices-pane';
+    window.setTimeout(function () { window.location.reload(); }, 900);
+  }
+
+  function activateNetworkDeviceTabFromHash() {
+    if (!isNetworkDeviceListMode()) return;
+    if (window.location.hash === '#network-device-scan' || window.location.hash === '#network-devices-pane') {
+      $('#network-devices-tab').tab('show');
+    }
+  }
+
   function applyNetworkDeviceFilter(filter) {
     $('[data-network-device-card]').each(function () {
       const card = $(this);
@@ -233,10 +255,19 @@ $(document).ready(function () {
     });
   }
 
+  activateNetworkDeviceTabFromHash();
+
+  $(document).on('click', 'a[href="#network-device-scan"]', function () {
+    if (isNetworkDeviceListMode()) {
+      $('#network-devices-tab').tab('show');
+    }
+  });
+
   $('#comprehensive-scan-btn').on('click', function (e) {
     e.preventDefault();
     const iface = $('#interface-select-Scan').val();
-    $('#scan-results').html('<p>Comprehensive scan running...</p>');
+    if (isNetworkDeviceListMode()) showNetworkDeviceListStatus('Comprehensive scan running. Devices will be saved into this tab...', 'info');
+    else $('#scan-results').html('<p>Comprehensive scan running...</p>');
     $.ajax({
       url: '/comprehensive-scan',
       method: 'POST',
@@ -248,6 +279,10 @@ $(document).ready(function () {
       },
       success: function (resp) {
         const result = resp.result;
+        if (isNetworkDeviceListMode()) {
+          refreshNetworkDeviceList(`Comprehensive scan saved ${result.summary.total_devices} device(s). Refreshing the device list...`);
+          return;
+        }
         let html = '<h3>Comprehensive Device Scan Results</h3>';
         html += `<div class="alert alert-info" role="status">${result.summary.total_devices} total devices, ${result.summary.host_like} host-like devices, ${result.summary.with_services} with service metadata. Methods: ${escapeHtml(result.methods.join(', '))}</div>`;
         if (result.errors.length) {
@@ -261,7 +296,7 @@ $(document).ready(function () {
         $('#scan-results').html(html);
       },
       error: function (xhr) {
-        $('#scan-results').html(`<p>${escapeHtml(xhr.responseJSON?.message || 'Comprehensive scan failed')}</p>`);
+        showNetworkDeviceListStatus(xhr.responseJSON?.message || 'Comprehensive scan failed', 'danger');
       }
     });
   });
@@ -274,6 +309,10 @@ $(document).ready(function () {
       method: 'POST',
       data: { selectedInterface: iface },
       success: function (resp) {
+        if (isNetworkDeviceListMode()) {
+          refreshNetworkDeviceList(`Active scan saved ${resp.hosts.length} host(s). Refreshing the device list...`);
+          return;
+        }
         let html = '<h3>Active Scan Results</h3>';
         if (resp.hosts.length === 0) {
           html += '<p>No hosts found</p>';
@@ -283,7 +322,7 @@ $(document).ready(function () {
         $('#scan-results').html(html);
       },
       error: function () {
-        $('#scan-results').html('<p>Scan failed</p>');
+        showNetworkDeviceListStatus('Scan failed', 'danger');
       }
     });
   });
@@ -296,6 +335,10 @@ $(document).ready(function () {
       method: 'POST',
       data: { selectedInterface: iface },
       success: function (resp) {
+        if (isNetworkDeviceListMode()) {
+          refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Refreshing the device list...`);
+          return;
+        }
         let html = '<h3>Passive Scan Results</h3>';
         if (resp.devices.length === 0) {
           html += '<p>No devices found</p>';
@@ -305,7 +348,7 @@ $(document).ready(function () {
         $('#scan-results').html(html);
       },
       error: function () {
-        $('#scan-results').html('<p>Scan failed</p>');
+        showNetworkDeviceListStatus('Scan failed', 'danger');
       }
     });
   });

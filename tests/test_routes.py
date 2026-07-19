@@ -1066,6 +1066,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('data-port-scan-quick-progress', network_js)
         self.assertIn('data-network-device-label-form', network_js)
         self.assertIn('/wireless/network/label', network_js)
+        self.assertIn('isNetworkDeviceListMode', network_js)
+        self.assertIn('refreshNetworkDeviceList', network_js)
+        self.assertIn('Active scan saved', network_js)
 
     def test_client_summary_returns_latest_card_fields(self):
         app_module.device_inventory.clear()
@@ -1581,6 +1584,10 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Network Device Scan', response.data)
         self.assertIn(b'id="comprehensive-scan-btn"', response.data)
         self.assertIn(b'<option value="wlan0" selected>', response.data)
+        self.assertLess(response.data.index(b'id="network-devices-pane"'), response.data.index(b'id="network-device-scan"'))
+        self.assertIn(b'data-network-device-list-scan', response.data)
+        self.assertIn(b'Scan all common ports', response.data)
+        self.assertIn(b'Scan all ports', response.data)
         self.assertIn(b'network_scan.js', response.data)
 
     @patch('scripts.wifi.utils.get_network_detail')
@@ -1660,6 +1667,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Export device list', response.data)
         self.assertIn(b'data-network-device-label-form', response.data)
         self.assertIn(b'data-port-scan-quick-progress', response.data)
+        self.assertIn(b'Scan all common ports', response.data)
+        self.assertIn(b'data-hosts="192.168.50.22"', response.data)
 
     @patch('scripts.wifi.utils.get_network_detail')
     def test_wireless_network_labels_disappeared_and_export(self, get_detail):
