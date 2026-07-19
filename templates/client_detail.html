@@ -10,7 +10,7 @@
           {% if is_bluetooth %}
             Bluetooth identity and device details discovered from scan results. The MAC address remains the unique device ID.
           {% else %}
-            Device identity and manufacturer details discovered from scan results.
+            Device identity and manufacturer details discovered from scan results{% if display_name_source %}; display name learned from {{ display_name_source }}{% endif %}.
           {% endif %}
         </p>
       </div>

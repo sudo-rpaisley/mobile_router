@@ -1171,6 +1171,110 @@ def record_device_open_ports(host, port_details, source='port-scan'):
     return updated
 
 
+def _clean_detected_client_name(name, ip=None):
+    """Normalize display names learned from local naming protocols."""
+    value = str(name or '').strip().strip('.')
+    if not value or value == str(ip or ''):
+        return ''
+    if value.endswith('.local'):
+        return value
+    return value[:120]
+
+
+def _reverse_dns_display_name(ip):
+    """Attempt a reverse-DNS/PTR lookup for an IP client."""
+    try:
+        hostname, _aliases, _addresses = socket.gethostbyaddr(ip)
+    except (OSError, socket.herror, socket.gaierror):
+        return ''
+    return _clean_detected_client_name(hostname, ip)
+
+
+def _dhcp_lease_display_name(ip):
+    """Look for a client hostname in common local DHCP lease files."""
+    lease_paths = [
+        '/var/lib/misc/dnsmasq.leases',
+        '/tmp/dhcp.leases',
+        '/var/lib/dhcp/dhcpd.leases',
+        '/var/lib/dhcp/dhclient.leases',
+    ]
+    for path in lease_paths:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding='utf-8', errors='ignore') as handle:
+                content = handle.read()
+        except OSError:
+            continue
+        for line in content.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and parts[2] == ip:
+                return _clean_detected_client_name(parts[3], ip)
+        block_match = re.search(rf'lease\s+{re.escape(ip)}\s+\{{(.*?)\}}', content, re.S)
+        if block_match:
+            host_match = re.search(r'client-hostname\s+"([^"]+)"', block_match.group(1))
+            if host_match:
+                return _clean_detected_client_name(host_match.group(1), ip)
+    return ''
+
+
+def display_name_for_inventory_device(device, fallback=None):
+    """Choose the best human-readable name for an inventory device."""
+    device = device or {}
+    return (
+        device.get('preferred_name')
+        or device.get('detected_display_name')
+        or device.get('name')
+        or device.get('hostname')
+        or device.get('friendly_name')
+        or device.get('ssid')
+        or device.get('ip')
+        or device.get('mac')
+        or fallback
+        or 'Unknown device'
+    )
+
+
+def enrich_ip_client_display_name(identifier, device=None):
+    """Detect and persist a better display name for an IP client when possible."""
+    device = dict(device or find_inventory_device(identifier) or {})
+    ip = device.get('ip') or (identifier if identifier and not MAC_RE.match(str(identifier)) else None)
+    if not ip:
+        return device
+    existing = display_name_for_inventory_device(device, ip)
+    if existing and existing not in {ip, device.get('mac'), device.get('id')}:
+        device['display_name'] = existing
+        return device
+    detected = _clean_detected_client_name(device.get('hostname') or device.get('name'), ip)
+    source = 'inventory'
+    if not detected:
+        detected = _dhcp_lease_display_name(ip)
+        source = 'dhcp-lease'
+    if not detected:
+        detected = _reverse_dns_display_name(ip)
+        source = 'reverse-dns'
+    if not detected:
+        device['display_name'] = existing or ip
+        return device
+    updates = {'detected_display_name': detected, 'display_name': detected, 'hostname': device.get('hostname') or detected, 'display_name_source': source}
+    with device_inventory_lock:
+        key = device.get('id') or f'ip:{ip}'
+        existing_record = device_inventory.get(key)
+        if existing_record is None:
+            for candidate_key, item in device_inventory.items():
+                if item.get('ip') == ip or item.get('mac') == device.get('mac'):
+                    key = candidate_key
+                    existing_record = item
+                    break
+        existing_record = dict(existing_record or {'id': key, 'ip': ip, 'manufacturer': device.get('manufacturer') or 'Unknown', 'first_seen': time.time(), 'sources': [], 'interfaces': []})
+        existing_record.update({k: v for k, v in updates.items() if v})
+        existing_record['last_seen'] = time.time()
+        device_inventory[key] = existing_record
+        device = dict(existing_record)
+    append_client_timeline_event(ip, 'Display name detected', f'Detected "{detected}" from {source}.', source)
+    return device
+
+
 def append_client_timeline_event(identifier, event_type, message, source=None):
     """Record a lightweight per-client event shown on the client profile."""
     key = str(identifier or '').strip()
@@ -1515,7 +1619,7 @@ def inventory_records():
     with device_inventory_lock:
         records = [dict(item) for item in device_inventory.values()]
     for item in records:
-        item['display_name'] = item.get('name') or item.get('hostname') or item.get('ssid') or item.get('ip') or item.get('mac') or 'Unknown device'
+        item['display_name'] = display_name_for_inventory_device(item)
         item['manufacturer'] = item.get('manufacturer') or 'Unknown'
         item['is_unknown_manufacturer'] = item['manufacturer'] == 'Unknown'
         item['client_health'] = client_health_summary(item, item.get('ip')) if item.get('ip') and not item.get('is_control_traffic') else None
@@ -2801,14 +2905,12 @@ def client_detail(identifier):
     if is_bluetooth:
         ip = None
 
+    if not is_bluetooth and ip:
+        inventory_device = enrich_ip_client_display_name(ip, inventory_device)
+        mac = (inventory_device or {}).get('mac') or mac
+
     manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
-    display_name = (
-        (inventory_device or {}).get('name')
-        or (inventory_device or {}).get('display_name')
-        or mac
-        or ip
-        or identifier
-    )
+    display_name = display_name_for_inventory_device(inventory_device or {}, mac or ip or identifier)
 
     last_port_scan = None if is_bluetooth else (inventory_device or {}).get('last_port_scan')
     health_summary = None if is_bluetooth else client_health_summary(inventory_device or {}, ip)
@@ -2826,6 +2928,7 @@ def client_detail(identifier):
         mac=mac,
         manufacturer=manufacturer,
         display_name=display_name,
+        display_name_source=(inventory_device or {}).get('display_name_source'),
         inventory_device=inventory_device or {},
         is_bluetooth=is_bluetooth,
         open_port_details=[] if is_bluetooth else (inventory_device or {}).get('open_port_details', []),

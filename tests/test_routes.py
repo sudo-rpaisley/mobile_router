@@ -981,6 +981,34 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'port_scan_live.js', response.data)
         self.assertIn(b'ip_client.js', response.data)
 
+    def test_ip_client_detail_uses_detected_inventory_name_as_title(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.30', 'hostname': 'printer.local', 'name': 'Lab Printer', 'manufacturer': 'PrinterCo'},
+        ], 'mdns-discovery', 'eth0')
+
+        response = self.client.get('/clients/192.168.20.30')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<h1 class="page-title">Lab Printer</h1>', response.data)
+        self.assertIn(b'Device identity and manufacturer details', response.data)
+
+    @patch('app._dhcp_lease_display_name', return_value='')
+    @patch('app.socket.gethostbyaddr', return_value=('camera.lab.local', [], ['192.168.20.31']))
+    def test_ip_client_detail_detects_reverse_dns_name(self, _reverse_dns, _dhcp):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.31', 'mac': '48:b0:2d:ef:ec:f3', 'manufacturer': 'CameraCo'},
+        ], 'active-scan', 'eth0')
+
+        response = self.client.get('/clients/192.168.20.31')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<h1 class="page-title">camera.lab.local</h1>', response.data)
+        self.assertIn(b'display name learned from reverse-dns', response.data)
+        device = app_module.find_inventory_device('192.168.20.31')
+        self.assertEqual(device['detected_display_name'], 'camera.lab.local')
+
     def test_ip_client_actions_script_posts_diagnostics_and_evidence(self):
         js = open('static/js/ip_client.js').read()
 
