@@ -605,10 +605,8 @@ def get_networks_summary():
 
 
 def _mac_manufacturer(mac):
-    try:
-        from scripts.interfaceTools import lookup_manufacturer
-    except ImportError:
-        return 'Unknown'
+    from services.oui import lookup_manufacturer
+
     return lookup_manufacturer(mac)
 
 

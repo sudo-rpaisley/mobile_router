@@ -6,7 +6,7 @@ import subprocess
 import sys
 from typing import Dict, List
 
-from scripts.interfaceTools import oui_database_status
+from services.oui import oui_database_status
 
 CORE_COMMANDS = ["ip", "ifconfig", "ipconfig", "arp", "ping", "traceroute", "tracepath", "tracert"]
 OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "busctl", "powershell", "pwsh", "wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"]

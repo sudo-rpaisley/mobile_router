@@ -25,12 +25,14 @@ from services import diagnostics as diagnostics_service
 from services import port_scans as port_scan_service
 from services import wireless_clients as wireless_client_service
 from services import persistence as persistence_service
+from services import oui as oui_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
     get_network_interfaces,
-    lookup_manufacturer,
     spoof_mac,
 )
+
+lookup_manufacturer = oui_service.lookup_manufacturer
 from scripts.bluetooth_phone import (
     BluetoothPhoneSettingsError,
     bluetooth_pairing_mode_capability,

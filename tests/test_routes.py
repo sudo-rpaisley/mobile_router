@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import app as app_module
 from app import app
-from scripts.interfaceTools import lookup_manufacturer, oui_database_status
+from services.oui import lookup_manufacturer, oui_database_status
 
 
 class RouteSmokeTest(unittest.TestCase):
@@ -884,6 +884,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(lookup_manufacturer('52:54:00:12:34:56'), 'QEMU/KVM Virtual NIC')
         self.assertEqual(lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('8C-49-62-BD-7D-37'), 'Roku, Inc.')
+        from scripts.wifi import utils as wifi_utils
+        self.assertEqual(wifi_utils._mac_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
+        self.assertEqual(app_module.lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('not-a-mac'), 'Unknown')
 
     def test_oui_downloader_tries_fallback_urls(self):

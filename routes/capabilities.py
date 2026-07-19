@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, render_template, request
 
 from scripts.capabilities import build_capabilities, install_host_dependency, install_optional_package
-from scripts.interfaceTools import refresh_oui_database
+from services.oui import refresh_oui_database
 from scripts.update_oui_db import download_oui_database
 
 
