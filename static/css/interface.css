@@ -622,6 +622,29 @@ body.wireless-map-open {
   gap: 0.35rem;
 }
 
+.client-timeline {
+  border-left: 2px solid rgba(56, 189, 248, 0.35);
+  list-style: none;
+  margin: 1rem 0 0;
+  padding-left: 1rem;
+}
+
+.client-timeline li {
+  margin-bottom: 0.85rem;
+  position: relative;
+}
+
+.client-timeline li::before {
+  background: #38bdf8;
+  border-radius: 999px;
+  content: '';
+  height: 0.65rem;
+  left: -1.4rem;
+  position: absolute;
+  top: 0.35rem;
+  width: 0.65rem;
+}
+
 @media (max-width: 768px) {
   .network-device-bottom {
     grid-template-columns: 1fr;

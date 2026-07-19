@@ -35,6 +35,16 @@ $(document).ready(function () {
     return `<div class="alert alert-info"><strong>Traceroute hops</strong><ol class="mb-0">${hops.map((hop) => `<li>${escapeHtml(typeof hop === 'string' ? hop : JSON.stringify(hop))}</li>`).join('')}</ol></div>`;
   }
 
+  function renderHttpInspect(results) {
+    if (!results || !results.length) return '<div class="alert alert-warning">No web services were inspected.</div>';
+    return `<div class="alert alert-info"><strong>HTTP service inspection</strong></div><div class="port-service-grid">${results.map((item) => `
+      <div class="port-service-card">
+        <strong>${escapeHtml(item.port)}/tcp</strong>
+        <span>${escapeHtml(item.title || item.status || 'No title/status')}</span>
+        <small>${escapeHtml(item.server || item.error || item.url)}</small>
+      </div>`).join('')}</div>`;
+  }
+
   $('[data-ip-client-ping]').on('click', function () {
     const host = clientHost();
     output('<p class="text-muted">Pinging client...</p>');
@@ -93,6 +103,36 @@ $(document).ready(function () {
         output(`<div class="alert alert-success">Evidence note saved for ${escapeHtml(resp.evidence?.device || host)}.</div>`);
       },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Evidence note failed')}</div>`); }
+    });
+  });
+
+  $('[data-ip-client-watch]').on('click', function () {
+    const button = $(this);
+    const host = clientHost();
+    const nextWatch = button.attr('data-watched') !== 'true';
+    output('<p class="text-muted">Updating client watch...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/watch`,
+      method: 'POST',
+      data: { watch: nextWatch ? 'on' : '' },
+      success: function (resp) {
+        button.attr('data-watched', resp.watched ? 'true' : 'false');
+        button.toggleClass('btn-warning', resp.watched).toggleClass('btn-outline-warning', !resp.watched);
+        button.text(resp.watched ? 'Watching client' : 'Watch this device');
+        output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client watch updated.')}</div>`);
+      },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Client watch update failed')}</div>`); }
+    });
+  });
+
+  $('[data-ip-client-http-inspect]').on('click', function () {
+    const host = clientHost();
+    output('<p class="text-muted">Inspecting saved web-service candidates...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/http-inspect`,
+      method: 'POST',
+      success: function (resp) { output(renderHttpInspect(resp.results || [])); },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'HTTP inspection failed')}</div>`); }
     });
   });
 });

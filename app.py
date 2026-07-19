@@ -14,6 +14,8 @@ import io
 import ipaddress
 import socket
 from urllib.parse import quote
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 from werkzeug.utils import secure_filename
 
 from routes import register_blueprints
@@ -67,6 +69,9 @@ handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
 ping_history = []
 vlan_segmentation_notes = []
+watched_clients = set()
+client_timelines = {}
+client_timelines_lock = threading.Lock()
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -1114,6 +1119,8 @@ def record_device_open_ports(host, port_details, source='port-scan'):
         key=lambda item: item['port'],
     )
     now = time.time()
+    added_ports = []
+    changed_ports = []
     with device_inventory_lock:
         key = f'ip:{host}'
         existing_key = key if key in device_inventory else None
@@ -1135,6 +1142,11 @@ def record_device_open_ports(host, port_details, source='port-scan'):
         device = device_inventory[existing_key]
         existing_details = {item.get('port'): dict(item) for item in device.get('open_port_details', []) if item.get('port')}
         for detail in details:
+            previous = existing_details.get(detail['port'])
+            if previous is None:
+                added_ports.append(detail)
+            elif previous.get('service') != detail.get('service') or previous.get('description') != detail.get('description'):
+                changed_ports.append({'previous': previous, 'current': detail})
             existing_details[detail['port']] = detail
         device['open_port_details'] = [existing_details[port] for port in sorted(existing_details)]
         device['open_ports'] = sorted(existing_details)
@@ -1142,7 +1154,137 @@ def record_device_open_ports(host, port_details, source='port-scan'):
         device['last_seen'] = now
         device['sources'] = sorted(set(device.get('sources', [])) | {source})
         device_inventory[existing_key] = device
-        return dict(device)
+        updated = dict(device)
+    if added_ports:
+        append_client_timeline_event(host, 'New open ports', f"Added {', '.join(f'{item['port']}/tcp {item.get('service') or 'Unknown'}' for item in added_ports)} from {source}.", source)
+        if is_client_watched(host):
+            create_client_watch_alert(host, 'New open port discovered', f"{len(added_ports)} new port(s): {', '.join(str(item['port']) for item in added_ports)}")
+    for change in changed_ports:
+        current = change['current']
+        append_client_timeline_event(host, 'Service changed', f"{current['port']}/tcp is now {current.get('service') or 'Unknown'} from {source}.", source)
+    return updated
+
+
+def append_client_timeline_event(identifier, event_type, message, source=None):
+    """Record a lightweight per-client event shown on the client profile."""
+    key = str(identifier or '').strip()
+    if not key:
+        return None
+    event = {'timestamp': time.time(), 'type': event_type, 'message': message, 'source': source or 'client-profile'}
+    with client_timelines_lock:
+        client_timelines.setdefault(key, []).insert(0, event)
+        del client_timelines[key][50:]
+    return event
+
+
+def client_timeline(identifier, inventory_device=None):
+    """Return explicit and inferred timeline entries for a client."""
+    keys = {str(identifier or '').strip()}
+    for field in ('ip', 'mac', 'id'):
+        value = (inventory_device or {}).get(field)
+        if value:
+            keys.add(str(value))
+    events = []
+    with client_timelines_lock:
+        for key in keys:
+            events.extend(dict(item) for item in client_timelines.get(key, []))
+    if inventory_device:
+        if inventory_device.get('first_seen'):
+            events.append({'timestamp': inventory_device['first_seen'], 'type': 'First discovered', 'message': 'Device first entered inventory.', 'source': ', '.join(inventory_device.get('sources', []))})
+        if inventory_device.get('last_seen'):
+            events.append({'timestamp': inventory_device['last_seen'], 'type': 'Last seen', 'message': 'Device was refreshed by discovery or scan activity.', 'source': ', '.join(inventory_device.get('sources', []))})
+        if inventory_device.get('last_port_scan'):
+            events.append({'timestamp': inventory_device['last_port_scan'], 'type': 'Port scan', 'message': f"{len(inventory_device.get('open_ports', []))} open port(s) saved to this profile.", 'source': 'port-scan'})
+    unique = {(round(item.get('timestamp', 0), 3), item.get('type'), item.get('message')): item for item in events}
+    ordered = sorted(unique.values(), key=lambda item: item.get('timestamp', 0), reverse=True)[:12]
+    for item in ordered:
+        item['time_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('timestamp', time.time())))
+    return ordered
+
+
+def client_health_summary(device, ip=None):
+    """Build a simple client health/risk summary from inventory evidence."""
+    device = device or {}
+    flags = []
+    score = 100
+    open_ports = device.get('open_port_details') or []
+    if not device.get('manufacturer') or device.get('manufacturer') == 'Unknown':
+        flags.append('Unknown manufacturer')
+        score -= 10
+    risky_ports = {21: 'FTP', 23: 'Telnet', 445: 'SMB', 3389: 'RDP', 5900: 'VNC'}
+    exposed = [item for item in open_ports if item.get('port') in risky_ports]
+    if exposed:
+        flags.append(f"{len(exposed)} sensitive service(s) exposed")
+        score -= 25
+    if len(open_ports) >= 8:
+        flags.append('Large open-port surface')
+        score -= 15
+    if not device.get('hostname') and not device.get('name'):
+        flags.append('No hostname learned')
+        score -= 5
+    if not open_ports:
+        flags.append('No service baseline yet')
+        score -= 5
+    score = max(0, min(100, score))
+    if score >= 85:
+        level = 'Good'
+        badge = 'success'
+    elif score >= 60:
+        level = 'Review'
+        badge = 'warning'
+    else:
+        level = 'Attention'
+        badge = 'danger'
+    return {'score': score, 'level': level, 'badge': badge, 'flags': flags or ['No notable client concerns from saved data'], 'open_port_count': len(open_ports), 'identity': device.get('hostname') or device.get('name') or ip or 'Unknown client'}
+
+
+def is_client_watched(identifier):
+    key = str(identifier or '').strip()
+    return key in watched_clients
+
+
+def create_client_watch_alert(identifier, title, message):
+    alert = {
+        'id': str(uuid.uuid4()),
+        'alert_type': 'watched-client',
+        'title': title,
+        'message': message,
+        'ip': identifier,
+        'device_url': f"/clients/{quote(str(identifier))}",
+        'read': False,
+        'timestamp': time.time(),
+        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+    }
+    with new_device_alerts_lock:
+        new_device_alerts.insert(0, alert)
+        del new_device_alerts[200:]
+    return alert
+
+
+def inspect_http_services(host, ports):
+    """Safely inspect likely HTTP services for titles and headers."""
+    results = []
+    for port in ports:
+        scheme = 'https' if int(port) in (443, 8443, 9443) else 'http'
+        url = f"{scheme}://{host}:{port}/"
+        result = {'port': int(port), 'url': url, 'status': None, 'title': None, 'server': None, 'error': None}
+        try:
+            req = Request(url, headers={'User-Agent': 'MobileRouterLab/1.0'})
+            with urlopen(req, timeout=3) as resp:
+                body = resp.read(65536).decode('utf-8', errors='ignore')
+                result['status'] = getattr(resp, 'status', None)
+                result['server'] = resp.headers.get('Server')
+                match = re.search(r'<title[^>]*>(.*?)</title>', body, re.I | re.S)
+                if match:
+                    result['title'] = re.sub(r'\s+', ' ', match.group(1)).strip()[:120]
+        except HTTPError as e:
+            result['status'] = e.code
+            result['server'] = e.headers.get('Server')
+            result['error'] = e.reason
+        except (URLError, TimeoutError, socket.timeout, ValueError) as e:
+            result['error'] = str(e)
+        results.append(result)
+    return results
 
 
 def inventory_records():
@@ -2457,6 +2599,9 @@ def client_detail(identifier):
     )
 
     last_port_scan = None if is_bluetooth else (inventory_device or {}).get('last_port_scan')
+    health_summary = None if is_bluetooth else client_health_summary(inventory_device or {}, ip)
+    timeline = [] if is_bluetooth else client_timeline(ip or mac or identifier, inventory_device)
+    watched = False if is_bluetooth else is_client_watched(ip or identifier)
 
     return render_template(
         'client_detail.html',
@@ -2473,6 +2618,9 @@ def client_detail(identifier):
             if last_port_scan
             else None
         ),
+        health_summary=health_summary,
+        client_timeline=timeline,
+        watched_client=watched,
         bluetooth_fields=bluetooth_detail_fields(inventory_device) if is_bluetooth else [],
         bluetooth_action_capability=bluetooth_action_capability() if is_bluetooth else None,
         bluetooth_actions=bluetooth_contextual_actions(inventory_device) if is_bluetooth else [],
@@ -2480,6 +2628,47 @@ def client_detail(identifier):
         bluetooth_action_history=bluetooth_action_history(mac) if is_bluetooth else [],
         **current_context(),
     )
+
+
+@app.route('/clients/<identifier>/watch', methods=['POST'])
+def watch_client(identifier):
+    """Toggle watch notifications for an IP client."""
+    watch = request.form.get('watch', 'on') == 'on'
+    target = str(identifier or '').strip()
+    if not target:
+        return json_error('Missing client identifier')
+    if watch:
+        watched_clients.add(target)
+        append_client_timeline_event(target, 'Watch enabled', 'This client will create alerts for notable profile changes.', 'client-watch')
+        return json_success(watched=True, message='Client watch enabled.')
+    watched_clients.discard(target)
+    append_client_timeline_event(target, 'Watch disabled', 'Client watch notifications were disabled.', 'client-watch')
+    return json_success(watched=False, message='Client watch disabled.')
+
+
+@app.route('/clients/<identifier>/http-inspect', methods=['POST'])
+def client_http_inspect(identifier):
+    """Inspect saved or supplied HTTP-like services for an IP client."""
+    inventory_device = find_inventory_device(identifier) or {}
+    host = inventory_device.get('ip') or identifier
+    raw_ports = request.form.get('ports')
+    try:
+        if raw_ports:
+            candidates = [parse_int(item.strip(), 'Ports must be integers') for item in raw_ports.split(',') if item.strip()]
+        else:
+            http_names = ('http', 'https', 'web', 'proxy')
+            candidates = [
+                item['port'] for item in inventory_device.get('open_port_details', [])
+                if any(name in str(item.get('service', '')).lower() for name in http_names) or item.get('port') in (80, 443, 8080, 8443, 8000, 9443)
+            ]
+    except ValueError as e:
+        return json_error(str(e))
+    candidates = sorted(set(port for port in candidates if 1 <= port <= 65535))[:8]
+    if not candidates:
+        return json_error('No HTTP-like saved ports are available for this client. Run a port scan first or supply ports.', 400)
+    results = inspect_http_services(host, candidates)
+    append_client_timeline_event(host, 'HTTP inspected', f"Inspected {len(results)} web service candidate(s).", 'http-inspector')
+    return json_success(results=results)
 
 
 @app.route('/active-scan', methods=['POST'])

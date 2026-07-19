@@ -956,6 +956,11 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'All ports', response.data)
         self.assertIn(b'/port-scan?host=192.168.20.10', response.data)
         self.assertIn(b'IP Client Actions', response.data)
+        self.assertIn(b'Client Health', response.data)
+        self.assertIn(b'Watch this device', response.data)
+        self.assertIn(b'Inspect web services', response.data)
+        self.assertIn(b'Client Timeline', response.data)
+        self.assertIn(b'Port scan', response.data)
         self.assertIn(b'data-ip-client-ping', response.data)
         self.assertIn(b'data-ip-client-route', response.data)
         self.assertIn(b'data-ip-client-traceroute', response.data)
@@ -971,6 +976,41 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn("url: '/traceroute'", js)
         self.assertIn("url: '/evidence'", js)
         self.assertIn('data-ip-client-evidence-form', js)
+        self.assertIn('data-ip-client-watch', js)
+        self.assertIn('http-inspect', js)
+
+    def test_client_watch_alerts_on_new_open_ports(self):
+        app_module.device_inventory.clear()
+        app_module.new_device_alerts.clear()
+        app_module.watched_clients.clear()
+
+        response = self.client.post('/clients/192.168.20.10/watch', data={'watch': 'on'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['watched'])
+
+        app_module.record_device_open_ports('192.168.20.10', [
+            {'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'},
+        ])
+
+        alerts = app_module.alert_records()
+        self.assertEqual(alerts[0]['alert_type'], 'watched-client')
+        self.assertIn('New open port', alerts[0]['title'])
+
+    @patch('app.inspect_http_services')
+    def test_client_http_inspector_uses_saved_web_ports(self, inspect_http):
+        app_module.device_inventory.clear()
+        inspect_http.return_value = [{'port': 80, 'url': 'http://192.168.20.10:80/', 'status': 200, 'title': 'Router', 'server': 'lab', 'error': None}]
+        app_module.record_device_open_ports('192.168.20.10', [
+            {'port': 22, 'service': 'SSH', 'description': 'Secure shell remote administration'},
+            {'port': 80, 'service': 'HTTP', 'description': 'Web service'},
+        ])
+
+        response = self.client.post('/clients/192.168.20.10/http-inspect')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['results'][0]['title'], 'Router')
+        inspect_http.assert_called_once_with('192.168.20.10', [80])
 
 
     def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
