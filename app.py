@@ -73,6 +73,7 @@ watched_clients = set()
 client_timelines = {}
 client_timelines_lock = threading.Lock()
 scheduled_client_checks = {}
+wireless_network_client_cache = {}
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -1628,6 +1629,57 @@ def inventory_records():
         item['first_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('first_seen', 0)))
         item['last_seen_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('last_seen', 0)))
     return sorted(records, key=lambda item: item.get('last_seen', 0), reverse=True)
+
+
+def wireless_network_cache_key(network):
+    """Build a stable cache key for SSID/interface/BSSID scoped client observations."""
+    return (
+        (network.get('interface') or '').strip(),
+        (network.get('ssid') or '<Hidden SSID>').strip(),
+        normalize_mac(network.get('bssid')) or 'any-bssid',
+    )
+
+
+def merge_wireless_network_clients(network):
+    """Persist and merge wireless clients plus inventory devices for a network detail view."""
+    key = wireless_network_cache_key(network)
+    cached = {client.get('mac') or client.get('ip'): dict(client) for client in wireless_network_client_cache.get(key, []) if client.get('mac') or client.get('ip')}
+    for client in network.get('clients') or []:
+        client = dict(client)
+        mac = normalize_mac(client.get('mac'))
+        if mac:
+            client['mac'] = mac
+        client['source'] = client.get('source') or 'wireless-client-observation'
+        identity = client.get('mac') or client.get('ip')
+        if identity:
+            cached[identity] = {**cached.get(identity, {}), **client}
+
+    interface_name = network.get('interface')
+    inventory_devices = []
+    for device in inventory_records():
+        if interface_name and interface_name not in set(device.get('interfaces') or []):
+            continue
+        if device.get('is_control_traffic') or not (device.get('ip') or device.get('mac')):
+            continue
+        inventory_devices.append(device)
+        identity = device.get('mac') or device.get('ip')
+        cached[identity] = {
+            **cached.get(identity, {}),
+            'mac': device.get('mac') or cached.get(identity, {}).get('mac'),
+            'ip': device.get('ip') or cached.get(identity, {}).get('ip'),
+            'display_name': device.get('display_name'),
+            'manufacturer': device.get('manufacturer'),
+            'sources': device.get('sources', []),
+            'source': 'inventory',
+        }
+
+    clients = sorted(cached.values(), key=lambda item: (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower())
+    wireless_network_client_cache[key] = clients
+    network['clients'] = clients
+    network['interface_devices'] = inventory_devices
+    network['client_count'] = len(clients)
+    network['inventory_device_count'] = len(inventory_devices)
+    return network
 
 
 def manufacturer_insights(records=None):
@@ -3279,6 +3331,7 @@ def wireless_network_detail():
 
     from scripts.wifi import utils as wifi_utils
     network = wifi_utils.get_network_detail(ssid=ssid, bssid=bssid, interface_name=selected_interface)
+    network = merge_wireless_network_clients(network)
     back_url = f"/wireless/{selected_interface}" if selected_interface else "/wireless"
     return render_template(
         'wireless_network_detail.html',

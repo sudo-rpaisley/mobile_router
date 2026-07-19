@@ -58,7 +58,15 @@
       </section>
     {% endif %}
 
-    <section class="interface-detail-grid network-detail-grid">
+    <ul class="nav nav-tabs mt-3 network-detail-tabs" role="tablist">
+      <li class="nav-item"><a class="nav-link active" id="network-overview-tab" data-toggle="tab" href="#network-overview-pane" role="tab" aria-controls="network-overview-pane" aria-selected="true">Overview</a></li>
+      <li class="nav-item"><a class="nav-link" id="network-devices-tab" data-toggle="tab" href="#network-devices-pane" role="tab" aria-controls="network-devices-pane" aria-selected="false">Devices <span class="badge badge-light border">{{ network.client_count }}</span></a></li>
+      <li class="nav-item"><a class="nav-link" id="network-ap-tab" data-toggle="tab" href="#network-ap-pane" role="tab" aria-controls="network-ap-pane" aria-selected="false">AP Details <span class="badge badge-light border">{{ network.access_points | length }}</span></a></li>
+    </ul>
+
+    <div class="tab-content network-detail-tab-content">
+      <section class="tab-pane fade show active" id="network-overview-pane" role="tabpanel" aria-labelledby="network-overview-tab">
+    <section class="interface-detail-grid network-detail-grid mt-3">
       <article class="card shadow-sm interface-summary-card">
         {% set gateway = network.gateway | default({}) %}
         <div class="card-body">
@@ -87,31 +95,39 @@
         </article>
       {% endif %}
 
-      <article class="card shadow-sm interface-address-card">
-        <div class="card-body">
-          <h2 class="interface-section-title">Discovered Devices</h2>
-          {% if network.clients %}
-            <div class="address-card-grid">
-              {% for client in network.clients %}
-                <section class="address-card">
-                  <div class="address-card-header"><span class="address-family">Client</span></div>
-                  <dl class="interface-definition-list compact">
-                    <div><dt>MAC</dt><dd>{{ client.mac }}</dd></div>
-                    <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
-                    <div><dt>Signal</dt><dd>{{ client.signal_label }}</dd></div>
-                    <div><dt>Seen On</dt><dd>{{ client.bssid or 'Unknown AP' }}</dd></div>
-                  </dl>
-                </section>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">No client devices have been discovered for this SSID yet. Packet/monitor scans can populate this section when client traffic is observed.</p>
-          {% endif %}
-        </div>
-      </article>
     </section>
 
 
+      </section>
+
+      <section class="tab-pane fade" id="network-devices-pane" role="tabpanel" aria-labelledby="network-devices-tab">
+        <article class="card shadow-sm interface-address-card mt-3">
+          <div class="card-body">
+            <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
+            <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
+            {% if network.clients %}
+              <div class="address-card-grid">
+                {% for client in network.clients %}
+                  <section class="address-card">
+                    <div class="address-card-header"><span class="address-family">{{ client.display_name or client.ip or client.mac or 'Client' }}</span></div>
+                    <dl class="interface-definition-list compact">
+                      {% if client.ip %}<div><dt>IP</dt><dd><a href="/clients/{{ client.ip|urlencode }}">{{ client.ip }}</a></dd></div>{% endif %}
+                      {% if client.mac %}<div><dt>MAC</dt><dd><a href="/clients/{{ client.mac|urlencode }}">{{ client.mac }}</a></dd></div>{% endif %}
+                      <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
+                      <div><dt>Signal</dt><dd>{{ client.signal_label or 'Unknown' }}</dd></div>
+                      <div><dt>Seen On</dt><dd>{{ client.bssid or client.source or 'Inventory' }}</dd></div>
+                    </dl>
+                  </section>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">No client devices have been discovered for this SSID/interface yet. Wireless packet observations or device scans can populate this section.</p>
+            {% endif %}
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-pane fade" id="network-ap-pane" role="tabpanel" aria-labelledby="network-ap-tab">
     <section class="card shadow-sm interface-extra-card mt-3">
       <div class="card-body">
         <h2 class="interface-section-title">AP Identity Hints</h2>
@@ -186,6 +202,8 @@
         {% endif %}
       </div>
     </section>
+      </section>
+    </div>
   </main>
 
   {% if network.interface %}

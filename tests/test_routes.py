@@ -1506,7 +1506,9 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'TrainingNet', response.data)
-        self.assertIn(b'Discovered Devices', response.data)
+        self.assertIn(b'id="network-devices-tab"', response.data)
+        self.assertIn(b'AP Details', response.data)
+        self.assertIn(b'Devices Found On This Network Interface', response.data)
         self.assertIn(b'192.168.1.1', response.data)
         self.assertIn(b'5 GHz', response.data)
         self.assertIn(b'AP Identity Hints', response.data)
@@ -1519,6 +1521,75 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="comprehensive-scan-btn"', response.data)
         self.assertIn(b'<option value="wlan0" selected>', response.data)
         self.assertIn(b'network_scan.js', response.data)
+
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_detail_persists_clients_between_reloads(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        first = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'channel': '6',
+            'signal': 82,
+            'signal_label': '82%',
+            'interface': 'wlan0',
+            'discovered': True,
+            'gateway': {},
+            'bands': ['5 GHz'],
+            'wps': False,
+            'wps_status': None,
+            'wps_note': None,
+            'wps_access_points': 0,
+            'ap_groups': [],
+            'access_points': [],
+            'clients': [{'mac': '11:22:33:44:55:66', 'signal_label': '-42 dBm', 'bssid': 'aa:bb:cc:dd:ee:ff', 'manufacturer': 'Client Vendor'}],
+        }
+        second = {**first, 'clients': [], 'discovered': False}
+        get_detail.side_effect = [first, second]
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        self.assertIn(b'11:22:33:44:55:66', response.data)
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'11:22:33:44:55:66', response.data)
+        self.assertIn(b'This list is persisted', response.data)
+
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_detail_lists_inventory_devices_for_interface(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        app_module.record_inventory_devices([
+            {'ip': '192.168.50.22', 'mac': '48:b0:2d:ef:ec:f2', 'hostname': 'laptop.local', 'manufacturer': 'LaptopCo'},
+        ], 'comprehensive-network-scan', 'wlan0')
+        get_detail.return_value = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'channel': '6',
+            'signal': 82,
+            'signal_label': '82%',
+            'interface': 'wlan0',
+            'discovered': True,
+            'gateway': {},
+            'bands': [],
+            'wps': False,
+            'wps_status': None,
+            'wps_note': None,
+            'wps_access_points': 0,
+            'ap_groups': [],
+            'access_points': [],
+            'clients': [],
+        }
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'laptop.local', response.data)
+        self.assertIn(b'192.168.50.22', response.data)
+        self.assertIn(b'/clients/192.168.50.22', response.data)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

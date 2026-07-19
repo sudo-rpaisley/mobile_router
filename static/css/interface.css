@@ -645,6 +645,14 @@ body.wireless-map-open {
   width: 0.65rem;
 }
 
+.network-detail-tabs {
+  gap: 0.25rem;
+}
+
+.network-detail-tab-content {
+  margin-top: 0.75rem;
+}
+
 @media (max-width: 768px) {
   .network-device-bottom {
     grid-template-columns: 1fr;
