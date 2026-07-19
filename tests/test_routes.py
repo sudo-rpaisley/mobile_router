@@ -23,6 +23,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
+        self.assertIn(b'Browser screenshot tooling', response.data)
+        self.assertIn(b'Install for me', response.data)
+        self.assertIn(b'install-host-dependency', response.data)
 
     def test_roadmap_page_renders_project_ideas(self):
         response = self.client.get('/roadmap')
@@ -445,6 +448,24 @@ class RouteSmokeTest(unittest.TestCase):
         registry = response.get_json()['registry']
         self.assertTrue(any(item['id'] == 'wifi-network-scan' for item in registry))
         self.assertTrue(any(item['id'] == 'reports' for item in registry))
+
+    @patch('routes.capabilities.install_host_dependency')
+    def test_capabilities_can_install_browser_screenshot_dependency(self, install_dependency):
+        install_dependency.return_value = {'dependency': 'browser-screenshot', 'installed': True, 'message': 'Browser screenshot tooling installed.'}
+
+        response = self.client.post('/capabilities/install-host-dependency', data={'dependency': 'browser-screenshot', 'confirm': 'install'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertTrue(payload['installed'])
+        install_dependency.assert_called_once_with('browser-screenshot')
+
+    def test_capabilities_host_dependency_install_requires_confirmation(self):
+        response = self.client.post('/capabilities/install-host-dependency', data={'dependency': 'browser-screenshot'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Confirm host package installation', response.get_json()['message'])
 
     def test_adapter_updates_returns_partial_fragments_when_changed(self):
         response = self.client.post('/adapters/updates', json={'snapshot': 'stale', 'title': 'Home'})

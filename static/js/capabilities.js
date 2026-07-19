@@ -34,4 +34,33 @@ $(document).ready(function () {
       }
     });
   });
+
+  $('.install-host-dependency-btn').on('click', function () {
+    const button = $(this);
+    const dependency = button.data('dependency');
+    const response = $('#package-install-response');
+    const confirmed = window.confirm('Install browser screenshot tooling on this host? This runs the local package manager and can take several minutes.');
+    if (!confirmed) return;
+
+    $.ajax({
+      url: '/capabilities/install-host-dependency',
+      type: 'POST',
+      data: { dependency: dependency, confirm: button.data('confirm') },
+      beforeSend: function () {
+        button.prop('disabled', true).text('Installing...');
+        response.html(`<div class="alert alert-info" role="alert">Installing ${escapeHtml(dependency)} host tooling. This can take several minutes.</div>`);
+      },
+      success: function (resp) {
+        response.html(`<div class="alert alert-success" role="alert">${escapeHtml(resp.message || 'Host dependency installed.')} Refreshing capabilities...</div>`);
+        window.setTimeout(function () { window.location.reload(); }, 1500);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || `Unable to install ${dependency}`;
+        response.html(`<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`);
+      },
+      complete: function () {
+        button.prop('disabled', false).text('Install for me');
+      }
+    });
+  });
 });
