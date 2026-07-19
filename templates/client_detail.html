@@ -201,7 +201,7 @@
       <section class="theme-card card">
         <div class="card-body">
           <h2 class="theme-section-title">Scheduled Client Checks</h2>
-          <p class="text-muted">Save a recurring check plan for this client. The plan is recorded now so a background scheduler can run it next.</p>
+          <p class="text-muted">Save a recurring check plan for this client. The plan is recorded, persisted, and can be run on demand; due-check APIs can also execute saved plans without rerunning massive scans.</p>
           {% if scheduled_check %}
             <div class="alert alert-info">Scheduled every {{ scheduled_check.interval_minutes }} minute(s): {{ scheduled_check.checks|join(', ') }}</div>
           {% endif %}
@@ -212,6 +212,7 @@
             <input id="client-checks" class="form-control" value="{{ scheduled_check.checks|join(', ') if scheduled_check else 'ping, common-ports, baseline-drift' }}" data-ip-client-checks placeholder="ping, common-ports, http-inspect, service-fingerprint, baseline-drift">
             <div class="theme-actions">
               <button type="submit" class="btn btn-primary">Save scheduled checks</button>
+              <button type="button" class="btn btn-outline-success" data-ip-client-run-scheduled>Run saved checks now</button>
             </div>
           </form>
         </div>

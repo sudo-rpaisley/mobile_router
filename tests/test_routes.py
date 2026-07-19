@@ -1222,6 +1222,37 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Watched', response.data)
         self.assertIn(b'router', response.data)
 
+    @patch('app.scan_common_client_ports')
+    @patch('app.run_ping_check')
+    def test_scheduled_check_can_run_saved_plan_on_demand_and_due(self, ping_check, common_ports):
+        app_module.device_inventory.clear()
+        app_module.scheduled_client_checks.clear()
+        app_module.client_timelines.clear()
+        ping_check.return_value = {'host': '192.168.20.10', 'reachable': True, 'packet_loss_percent': 0}
+        common_ports.return_value = [{'port': 80, 'service': 'HTTP', 'description': 'Web service'}]
+        app_module.record_inventory_devices([
+            {'ip': '192.168.20.10', 'mac': '48:b0:2d:ef:ec:f2', 'interfaces': ['eth0']}
+        ], 'active-scan', 'eth0')
+
+        response = self.client.post('/clients/192.168.20.10/scheduled-check', data={
+            'intervalMinutes': '30',
+            'checks': 'ping,common-ports,baseline-drift',
+        })
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post('/clients/192.168.20.10/scheduled-check/run')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('ping', payload['plan']['last_result'])
+        self.assertIn('common_ports', payload['plan']['last_result'])
+        self.assertIsNotNone(payload['plan']['last_run'])
+        self.assertIn('192.168.20.10', app_module.client_timelines)
+
+        app_module.scheduled_client_checks['192.168.20.10']['last_run'] = 0
+        response = self.client.post('/scheduled-checks/run-due')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['count'], 1)
+
     def test_client_watch_alerts_on_new_open_ports(self):
         app_module.device_inventory.clear()
         app_module.new_device_alerts.clear()

@@ -195,7 +195,7 @@ ROADMAP_SECTIONS = [
             {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
             {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles now show relationship nodes and links for interfaces, discovery sources, saved services, and related evidence records.', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
-            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles can save recurring check plans for ping, common ports, HTTP inspection, service fingerprinting, and baseline drift so a scheduler can run them.', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
+            {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles can save recurring check plans and run due/on-demand ping, bounded common-port refresh, HTTP inspection, service fingerprinting, and baseline drift checks.', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
             {'title': 'Client remediation checklist', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Turn baseline drift, sensitive services, and unknown identity hints into suggested remediation tasks with resolved/accepted-risk state.'},
             {'title': 'Client change approval log', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Let users approve expected port, owner, location, and tag changes with reviewer notes for audit-friendly inventory maintenance.'},
             {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
@@ -1667,6 +1667,81 @@ def save_scheduled_client_check(identifier, data):
     return dict(plan)
 
 
+
+def scan_common_client_ports(host, timeout=0.35):
+    """Run a bounded common-port refresh for scheduled checks."""
+    from scripts.portScanner import COMMON_SERVICE_HINTS, identify_port_service
+
+    target = str(host or '').strip()
+    if not target:
+        return []
+    open_details = []
+    for port in sorted(COMMON_SERVICE_HINTS):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                is_open = sock.connect_ex((target, int(port))) == 0
+        except OSError:
+            is_open = False
+        if is_open:
+            open_details.append(enrich_web_port_metadata(target, identify_port_service(int(port))))
+    if open_details:
+        record_device_open_ports(target, open_details, source='scheduled-common-ports')
+    return open_details
+
+
+def run_scheduled_client_check(identifier, now=None):
+    """Execute one saved scheduled-check plan and persist its summary."""
+    target = str(identifier or '').strip()
+    plan = scheduled_client_checks.get(target)
+    if not plan:
+        raise ValueError('No scheduled check plan found for this client')
+    now = now or time.time()
+    results = {}
+    checks = plan.get('checks') or []
+    if 'ping' in checks:
+        results['ping'] = run_ping_check(target, count=2, timeout=2)
+    if 'common-ports' in checks:
+        results['common_ports'] = scan_common_client_ports(target)
+    if 'http-inspect' in checks:
+        device = find_inventory_device(target) or {}
+        ports = [item.get('port') for item in device.get('open_port_details', []) if item.get('web_url') or str(item.get('service') or '').lower().startswith('http')]
+        results['http_inspect'] = inspect_http_services(target, sorted({int(port) for port in ports if port})[:8])
+    if 'service-fingerprint' in checks:
+        results['service_fingerprint'] = fingerprint_client_services(target)
+    if 'baseline-drift' in checks:
+        results['baseline_drift'] = client_baseline_diff(find_inventory_device(target) or {})
+    plan.update({
+        'last_run': now,
+        'next_run': now + (int(plan.get('interval_minutes') or 60) * 60),
+        'last_result': results,
+        'status': 'completed',
+    })
+    append_client_timeline_event(target, 'Scheduled check run', f"Completed scheduled checks: {', '.join(checks)}.", 'scheduled-checks')
+    drift = (results.get('baseline_drift') or {})
+    if is_client_watched(target) and drift.get('status') == 'Drift detected':
+        create_client_watch_alert(target, 'Scheduled check drift detected', f"Baseline drift detected for {target}.")
+    save_runtime_state('scheduled-check-run')
+    return dict(plan)
+
+
+def run_due_scheduled_client_checks(now=None):
+    """Run every scheduled client check whose interval has elapsed."""
+    now = now or time.time()
+    due = []
+    for target, plan in list(scheduled_client_checks.items()):
+        last_run = plan.get('last_run')
+        interval_seconds = int(plan.get('interval_minutes') or 60) * 60
+        if last_run is None or now - float(last_run or 0) >= interval_seconds:
+            due.append(target)
+    results = []
+    for target in due[:25]:
+        try:
+            results.append(run_scheduled_client_check(target, now=now))
+        except ValueError:
+            continue
+    return results
+
 def is_client_watched(identifier):
     key = str(identifier or '').strip()
     return key in watched_clients
@@ -3075,6 +3150,21 @@ def client_scheduled_check_route(identifier):
     except ValueError as e:
         return json_error(str(e))
     return json_success(plan=plan, message='Scheduled client check saved.')
+
+
+@app.route('/clients/<identifier>/scheduled-check/run', methods=['POST'])
+def client_scheduled_check_run_route(identifier):
+    try:
+        plan = run_scheduled_client_check(identifier)
+    except ValueError as e:
+        return json_error(str(e), 404)
+    return json_success(plan=plan, message='Scheduled client check ran.')
+
+
+@app.route('/scheduled-checks/run-due', methods=['POST'])
+def scheduled_checks_run_due_route():
+    results = run_due_scheduled_client_checks()
+    return json_success(results=results, count=len(results), message=f'Ran {len(results)} due scheduled check(s).')
 
 
 @app.route('/active-scan', methods=['POST'])

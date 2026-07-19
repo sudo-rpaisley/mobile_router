@@ -234,4 +234,19 @@ $(document).ready(function () {
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Scheduled check save failed')}</div>`); }
     });
   });
+
+  $('[data-ip-client-run-scheduled]').on('click', function () {
+    const host = clientHost();
+    output('<p class="text-muted">Running saved scheduled checks now...</p>');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/scheduled-check/run`,
+      method: 'POST',
+      success: function (resp) {
+        const resultKeys = Object.keys((resp.plan || {}).last_result || {}).join(', ') || 'no checks';
+        output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Scheduled checks ran.')} Results: ${escapeHtml(resultKeys)}.</div>`);
+      },
+      error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Scheduled check run failed')}</div>`); }
+    });
+  });
+
 });
