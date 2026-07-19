@@ -61,10 +61,12 @@
         <tbody>
           <tr><th>Status</th><td>{% if capabilities.oui_database.loaded %}<span class="badge badge-success">Loaded</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td></tr>
           <tr><th>Entries</th><td>{{ capabilities.oui_database.entries }}</td></tr>
+          <tr><th>Coverage</th><td>{% if capabilities.oui_database.coverage == 'full' %}<span class="badge badge-success">Full IEEE-sized database</span>{% else %}<span class="badge badge-warning">Compact fallback database</span>{% endif %}</td></tr>
           <tr><th>Fallback entries</th><td>{{ capabilities.oui_database.fallback_entries }}</td></tr>
           <tr><th>Database path</th><td><code>{{ capabilities.oui_database.path or 'Built-in fallback only' }}</code></td></tr>
         </tbody>
       </table>
+      {% if capabilities.oui_database.needs_refresh %}<div class="alert alert-warning py-2">The bundled OUI file is compact; unknown vendors may simply be missing from the local file. Refresh the full IEEE list with <code>python scripts/update_oui_db.py</code> on a network that can reach IEEE.</div>{% endif %}
       <p class="text-muted small mb-0">Refresh the local database with <code>python scripts/update_oui_db.py</code> when internet access is available.</p>
     </div>
   </article>

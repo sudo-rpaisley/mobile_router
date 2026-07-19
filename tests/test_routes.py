@@ -876,6 +876,8 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertTrue(status['loaded'])
         self.assertGreaterEqual(status['entries'], status['fallback_entries'])
+        self.assertIn(status['coverage'], {'compact', 'full'})
+        self.assertEqual(status['needs_refresh'], status['entries'] < status['full_entry_threshold'])
         self.assertEqual(lookup_manufacturer('b8:27:eb:11:22:33'), 'Raspberry Pi Foundation')
         self.assertEqual(lookup_manufacturer('B8-27-EB-11-22-33'), 'Raspberry Pi Foundation')
         self.assertEqual(lookup_manufacturer('b827eb112233'), 'Raspberry Pi Foundation')
@@ -884,6 +886,37 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(lookup_manufacturer('8C-49-62-BD-7D-37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('not-a-mac'), 'Unknown')
 
+    def test_oui_downloader_tries_fallback_urls(self):
+        from scripts import update_oui_db
+
+        calls = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b'Registry,Assignment,Organization Name\nMA-L,8C4962,"Roku, Inc."\n'
+
+        def fake_open(request, timeout=30):
+            calls.append(request.full_url)
+            if len(calls) == 1:
+                raise OSError('blocked')
+            return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path, count = update_oui_db.download_oui_database(
+                output_path=os.path.join(tmpdir, 'oui_db.csv'),
+                opener=fake_open,
+            )
+            self.assertEqual(count, 1)
+            self.assertGreaterEqual(len(calls), 2)
+            with open(path, encoding='utf-8') as handle:
+                self.assertIn('8c:49:62,Roku, Inc.', handle.read())
+
     def test_capabilities_page_shows_oui_database_health(self):
         response = self.client.get('/capabilities')
 
@@ -891,6 +924,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'OUI Vendor Lookup', response.data)
         self.assertIn(b'Fallback entries', response.data)
         self.assertIn(b'python scripts/update_oui_db.py', response.data)
+        self.assertIn(b'Coverage', response.data)
 
     def test_inventory_page_renders_manufacturer_insights(self):
         app_module.device_inventory.clear()

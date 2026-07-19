@@ -11,6 +11,7 @@ import json
 
 AF_PACKET_FAMILY = getattr(socket, "AF_PACKET", 17)
 _WINDOWS_INTERFACE_METADATA = {}
+FULL_OUI_ENTRY_THRESHOLD = 10000
 
 # Load a small local OUI database mapping prefixes to manufacturer names
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -102,6 +103,9 @@ def oui_database_status():
         'entries': len(OUI_DB),
         'fallback_entries': len(FALLBACK_OUI_DB),
         'loaded': bool(OUI_DB),
+        'coverage': 'full' if len(OUI_DB) >= FULL_OUI_ENTRY_THRESHOLD else 'compact',
+        'needs_refresh': len(OUI_DB) < FULL_OUI_ENTRY_THRESHOLD,
+        'full_entry_threshold': FULL_OUI_ENTRY_THRESHOLD,
     }
 
 
