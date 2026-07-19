@@ -35,6 +35,34 @@ $(document).ready(function () {
     });
   });
 
+  $('.update-oui-db-btn').on('click', function () {
+    const button = $(this);
+    const response = $('#package-install-response');
+    const confirmed = window.confirm('Download the full IEEE OUI vendor database now? This replaces the compact local OUI CSV.');
+    if (!confirmed) return;
+
+    $.ajax({
+      url: '/capabilities/update-oui-database',
+      type: 'POST',
+      data: { confirm: button.data('confirm') },
+      beforeSend: function () {
+        button.prop('disabled', true).text('Downloading full OUI DB...');
+        response.html('<div class="alert alert-info" role="alert">Downloading the full IEEE OUI database. This can take a minute.</div>');
+      },
+      success: function (resp) {
+        response.html(`<div class="alert alert-success" role="alert">${escapeHtml(resp.message || 'OUI database updated.')} Refreshing capabilities...</div>`);
+        window.setTimeout(function () { window.location.reload(); }, 1500);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Unable to update the OUI database';
+        response.html(`<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`);
+      },
+      complete: function () {
+        button.prop('disabled', false).text('Download full OUI database');
+      }
+    });
+  });
+
   $('.install-host-dependency-btn').on('click', function () {
     const button = $(this);
     const dependency = button.data('dependency');

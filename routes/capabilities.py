@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, render_template, request
 
 from scripts.capabilities import build_capabilities, install_host_dependency, install_optional_package
+from scripts.interfaceTools import refresh_oui_database
+from scripts.update_oui_db import download_oui_database
 
 
 def create_capabilities_blueprint(context_provider):
@@ -31,6 +33,26 @@ def create_capabilities_blueprint(context_provider):
             return jsonify({'status': 'success', **result})
         except ValueError as e:
             return jsonify({'status': 'error', 'message': str(e)}), 400
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+    @blueprint.route('/capabilities/update-oui-database', methods=['POST'])
+    def update_oui_database_route():
+        confirm = request.form.get('confirm') == 'download'
+        if not confirm:
+            return jsonify({'status': 'error', 'message': 'Confirm full IEEE OUI database download before continuing.'}), 400
+
+        try:
+            path, count = download_oui_database()
+            oui_status = refresh_oui_database()
+            return jsonify({
+                'status': 'success',
+                'message': f'Downloaded {count} OUI entries.',
+                'path': path,
+                'count': count,
+                'oui_database': oui_status,
+            })
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 

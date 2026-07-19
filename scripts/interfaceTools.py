@@ -95,6 +95,13 @@ def _load_oui_db():
 OUI_DB = _load_oui_db()
 
 
+def refresh_oui_database():
+    """Reload the local OUI database after an on-demand refresh."""
+    global OUI_DB
+    OUI_DB = _load_oui_db()
+    return oui_database_status()
+
+
 def oui_database_status():
     """Return metadata useful for validating local OUI lookup health."""
     return {

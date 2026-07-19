@@ -917,6 +917,25 @@ class RouteSmokeTest(unittest.TestCase):
             with open(path, encoding='utf-8') as handle:
                 self.assertIn('8c:49:62,Roku, Inc.', handle.read())
 
+    @patch('routes.capabilities.refresh_oui_database')
+    @patch('routes.capabilities.download_oui_database')
+    def test_capabilities_can_download_full_oui_database(self, download_oui, refresh_oui):
+        download_oui.return_value = ('/tmp/oui_db.csv', 35000)
+        refresh_oui.return_value = {'loaded': True, 'entries': 35000, 'coverage': 'full', 'needs_refresh': False}
+
+        response = self.client.post('/capabilities/update-oui-database', data={'confirm': 'download'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['count'], 35000)
+        self.assertEqual(payload['oui_database']['coverage'], 'full')
+
+    def test_capabilities_oui_download_requires_confirmation(self):
+        response = self.client.post('/capabilities/update-oui-database', data={})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Confirm full IEEE OUI database download', response.get_json()['message'])
+
     def test_capabilities_page_shows_oui_database_health(self):
         response = self.client.get('/capabilities')
 
@@ -925,6 +944,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Fallback entries', response.data)
         self.assertIn(b'python scripts/update_oui_db.py', response.data)
         self.assertIn(b'Coverage', response.data)
+        self.assertIn(b'Download full OUI database', response.data)
 
     def test_inventory_page_renders_manufacturer_insights(self):
         app_module.device_inventory.clear()
