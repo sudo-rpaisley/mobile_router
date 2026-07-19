@@ -1184,6 +1184,21 @@ def enrich_port_web_url(host, detail):
     return item
 
 
+def enrich_web_port_metadata(host, detail):
+    """Add lightweight HTTP status/title metadata for clickable web services."""
+    item = enrich_port_web_url(host, detail)
+    if not item.get('web_url'):
+        return item
+    try:
+        inspected = inspect_http_services(host, [item['port']])[0]
+    except (IndexError, OSError, ValueError):
+        return item
+    for key in ('status', 'title', 'server', 'error'):
+        if inspected.get(key) not in (None, ''):
+            item[f'http_{key}'] = inspected.get(key)
+    return item
+
+
 def _clean_detected_client_name(name, ip=None):
     """Normalize display names learned from local naming protocols."""
     value = str(name or '').strip().strip('.')
@@ -1655,7 +1670,10 @@ def wireless_network_cache_key(network):
 def merge_wireless_network_clients(network):
     """Persist and merge wireless clients plus inventory devices for a network detail view."""
     key = wireless_network_cache_key(network)
-    cached = {client.get('mac') or client.get('ip'): dict(client) for client in wireless_network_client_cache.get(key, []) if client.get('mac') or client.get('ip')}
+    now = time.time()
+    existing_cache = wireless_network_client_cache.get(key, [])
+    known_identities = {client.get('mac') or client.get('ip') for client in existing_cache if client.get('mac') or client.get('ip')}
+    cached = {client.get('mac') or client.get('ip'): dict(client) for client in existing_cache if client.get('mac') or client.get('ip')}
     for client in network.get('clients') or []:
         client = dict(client)
         mac = normalize_mac(client.get('mac'))
@@ -1664,7 +1682,10 @@ def merge_wireless_network_clients(network):
         client['source'] = client.get('source') or 'wireless-client-observation'
         identity = client.get('mac') or client.get('ip')
         if identity:
-            cached[identity] = {**cached.get(identity, {}), **client}
+            previous = cached.get(identity, {})
+            client['network_first_seen'] = previous.get('network_first_seen') or now
+            client['network_last_seen'] = now
+            cached[identity] = {**previous, **client}
 
     interface_name = network.get('interface')
     inventory_devices = []
@@ -1675,10 +1696,11 @@ def merge_wireless_network_clients(network):
             continue
         inventory_devices.append(device)
         identity = device.get('mac') or device.get('ip')
+        previous = cached.get(identity, {})
         cached[identity] = {
-            **cached.get(identity, {}),
-            'mac': device.get('mac') or cached.get(identity, {}).get('mac'),
-            'ip': device.get('ip') or cached.get(identity, {}).get('ip'),
+            **previous,
+            'mac': device.get('mac') or previous.get('mac'),
+            'ip': device.get('ip') or previous.get('ip'),
             'display_name': device.get('display_name'),
             'manufacturer': device.get('manufacturer'),
             'sources': device.get('sources', []),
@@ -1687,10 +1709,22 @@ def merge_wireless_network_clients(network):
             'network_scope': device.get('network_scope'),
             'scan_note': device.get('scan_note'),
             'open_port_details': device.get('open_port_details', []),
+            'client_tags': device.get('client_tags', []),
+            'client_notes': device.get('client_notes'),
+            'network_first_seen': previous.get('network_first_seen') or device.get('first_seen') or now,
+            'network_last_seen': max(previous.get('network_last_seen') or 0, device.get('last_seen') or now),
             'source': 'inventory',
         }
 
-    clients = sorted(cached.values(), key=lambda item: (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower())
+    for identity, client in list(cached.items()):
+        first_seen = client.get('network_first_seen') or now
+        client['network_first_seen'] = first_seen
+        client['network_last_seen'] = client.get('network_last_seen') or now
+        client['network_known_state'] = 'Known' if identity in known_identities or (now - first_seen) > 86400 else 'New'
+        client['has_open_ports'] = bool(client.get('open_port_details'))
+        client['sort_bucket'] = 0 if 'gateway' in str(client.get('network_role') or '').lower() else (1 if client.get('has_open_ports') else 2)
+
+    clients = sorted(cached.values(), key=lambda item: (item.get('sort_bucket', 9), 0 if item.get('network_known_state') == 'New' else 1, (item.get('display_name') or item.get('ip') or item.get('mac') or '').lower()))
     wireless_network_client_cache[key] = clients
     network['clients'] = clients
     network['interface_devices'] = inventory_devices
@@ -2434,7 +2468,7 @@ def run_port_scan_job(job_id):
     scanned = 0
 
     def on_open(port):
-        service_detail = enrich_port_web_url(host, identify_port_service(port))
+        service_detail = enrich_web_port_metadata(host, identify_port_service(port))
         with port_scan_jobs_lock:
             current = port_scan_jobs.get(job_id)
             if not current:
@@ -2469,7 +2503,7 @@ def run_port_scan_job(job_id):
         if should_cancel():
             update_port_scan_job(job_id, status='cancelled', completed_at=time.time(), message='Port scan cancelled.')
             return
-        final_details = [enrich_port_web_url(host, detail) for detail in describe_open_ports(ports)]
+        final_details = [enrich_web_port_metadata(host, detail) for detail in describe_open_ports(ports)]
         record_device_open_ports(host, final_details, source='port-scan')
         update_port_scan_job(
             job_id,
@@ -3064,6 +3098,26 @@ def client_http_inspect(identifier):
     return json_success(results=results)
 
 
+
+
+@app.route('/clients/<identifier>/summary')
+def client_summary_route(identifier):
+    """Return the latest saved profile fields needed by inline device cards."""
+    device = enrich_ip_client_display_name(identifier, find_inventory_device(identifier) or {})
+    host = device.get('ip') or identifier
+    return json_success(device={
+        'ip': host,
+        'mac': device.get('mac'),
+        'display_name': display_name_for_inventory_device(device, host),
+        'manufacturer': device.get('manufacturer') or 'Unknown',
+        'open_port_details': device.get('open_port_details', []),
+        'open_ports': device.get('open_ports', []),
+        'client_tags': device.get('client_tags', []),
+        'client_notes': device.get('client_notes'),
+        'last_port_scan': device.get('last_port_scan'),
+    })
+
+
 @app.route('/clients/<identifier>/metadata', methods=['POST'])
 def client_metadata_route(identifier):
     """Save user-maintained IP client profile metadata."""
@@ -3185,7 +3239,7 @@ def port_scan_route():
     except PortScanError as e:
         return json_error(str(e))
 
-    port_details = [enrich_port_web_url(data.get('host'), detail) for detail in describe_open_ports(ports)]
+    port_details = [enrich_web_port_metadata(data.get('host'), detail) for detail in describe_open_ports(ports)]
     record_device_open_ports(data.get('host'), port_details, source='port-scan')
     return jsonify({'ports': ports, 'port_details': port_details})
 

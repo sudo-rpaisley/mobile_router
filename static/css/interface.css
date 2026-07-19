@@ -309,6 +309,31 @@
   width: 100%;
 }
 
+.network-device-filterbar {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #e6edf7;
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.network-device-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.network-device-notes-form {
+  border: 1px solid #e6edf7;
+  border-radius: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem;
+}
+
 .wireless-connect-form {
   width: 100%;
 }

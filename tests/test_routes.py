@@ -1038,6 +1038,26 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('data-port-scan-quick', network_js)
         self.assertIn("url: '/port-scan-jobs'", network_js)
         self.assertIn('startQuickPortScan', network_js)
+        self.assertIn('pollQuickPortScan', network_js)
+        self.assertIn('/summary', network_js)
+        self.assertIn('data-network-device-notes-form', network_js)
+        self.assertIn('data-network-device-filter', network_js)
+
+    def test_client_summary_returns_latest_card_fields(self):
+        app_module.device_inventory.clear()
+        app_module.record_device_open_ports('192.168.20.70', [
+            {'port': 80, 'service': 'HTTP', 'description': 'Web server', 'http_title': 'Router Console'},
+        ])
+        app_module.update_client_metadata('192.168.20.70', {'tags': 'router,critical', 'notes': 'Core gateway'})
+
+        response = self.client.get('/clients/192.168.20.70/summary')
+
+        self.assertEqual(response.status_code, 200)
+        device = response.get_json()['device']
+        self.assertEqual(device['client_tags'], ['critical', 'router'])
+        self.assertEqual(device['client_notes'], 'Core gateway')
+        self.assertEqual(device['open_port_details'][0]['web_url'], 'http://192.168.20.70:80/')
+        self.assertEqual(device['open_port_details'][0]['http_title'], 'Router Console')
 
     def test_client_metadata_baseline_and_exports(self):
         app_module.device_inventory.clear()
@@ -1610,6 +1630,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'data-port-scan-quick', response.data)
         self.assertIn(b'data-label="common port scan"', response.data)
         self.assertIn(b'data-label="all-port scan"', response.data)
+        self.assertIn(b'data-network-device-filter="gateway"', response.data)
+        self.assertIn(b'data-network-device-notes-form', response.data)
+        self.assertIn(b'data-known-state="New"', response.data)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

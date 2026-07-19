@@ -31,9 +31,35 @@ $(document).ready(function () {
     const details = Array.isArray(item.open_port_details) ? item.open_port_details : [];
     if (!details.length) return '<p class="text-muted mb-0 small">No saved open ports yet.</p>';
     return `<div class="network-device-open-ports">${details.slice(0, 6).map((port) => {
-      const label = `${escapeHtml(port.port)} ${escapeHtml(port.service || 'Unknown')}`;
-      return port.web_url ? `<a class="badge badge-info" href="${escapeHtml(port.web_url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : `<span class="badge badge-info">${label}</span>`;
+      const title = port.http_title ? ` · ${escapeHtml(port.http_title)}` : '';
+      const label = `${escapeHtml(port.port)} ${escapeHtml(port.service || 'Unknown')}${title}`;
+      const tooltip = escapeHtml(port.http_title || port.http_status || port.description || '');
+      return port.web_url ? `<a class="badge badge-info" href="${escapeHtml(port.web_url)}" target="_blank" rel="noopener noreferrer" title="${tooltip}">${label}</a>` : `<span class="badge badge-info">${label}</span>`;
     }).join('')}</div>`;
+  }
+
+  function renderTagBadges(tags) {
+    if (!Array.isArray(tags) || !tags.length) return '';
+    return tags.map((tag) => `<span class="badge badge-light border">${escapeHtml(tag)}</span>`).join('');
+  }
+
+  function refreshDeviceCard(host, card) {
+    if (!host || !card.length) return;
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/summary`,
+      method: 'GET',
+      success: function (resp) {
+        const device = resp.device || {};
+        const ports = card.find('[data-network-device-ports]');
+        ports.html(renderPortBadges(device));
+        const tags = card.find('[data-network-device-tags]');
+        tags.html(renderTagBadges(device.client_tags || []));
+        const notes = card.find('[data-network-device-notes]');
+        if (device.client_notes) notes.removeClass('d-none').text(device.client_notes);
+        else notes.addClass('d-none').text('');
+        card.attr('data-has-open-ports', (device.open_port_details || []).length ? 'true' : 'false');
+      }
+    });
   }
 
   function renderScanAllToolbar(items) {
@@ -49,6 +75,10 @@ $(document).ready(function () {
         </div>
         <div class="network-scan-all-status small text-muted" data-port-scan-all-status></div>
       </div>`;
+  }
+
+  function detailsHasPorts(item) {
+    return Array.isArray(item.open_port_details) && item.open_port_details.length ? 'true' : 'false';
   }
 
   function renderDeviceCards(items, mode) {
@@ -72,10 +102,16 @@ $(document).ready(function () {
             <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
             <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="${escapeHtml(ip)}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
             <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+            <form class="network-device-notes-form" data-network-device-notes-form data-host="${escapeHtml(ip)}">
+              <input class="form-control form-control-sm" name="tags" placeholder="Tags, comma separated" value="${escapeHtml((item.client_tags || []).join(', '))}">
+              <textarea class="form-control form-control-sm" name="notes" rows="2" placeholder="Device notes">${escapeHtml(item.client_notes || '')}</textarea>
+              <button class="btn btn-outline-success btn-sm" type="submit">Save notes/tags</button>
+              <div class="network-device-notes-status small text-muted" data-network-device-notes-status></div>
+            </form>
           </div>`
         : '<span class="badge badge-secondary">No IP port scan</span>';
       html += `
-        <article class="wireless-network-card network-device-card ${item.is_control_traffic ? 'network-device-card-control' : ''}">
+        <article class="wireless-network-card network-device-card ${item.is_control_traffic ? 'network-device-card-control' : ''}" data-network-device-card data-host="${escapeHtml(ip)}" data-role="${escapeHtml(role)}" data-known-state="${escapeHtml(item.network_known_state || 'Known')}" data-has-open-ports="${detailsHasPorts(item)}" data-unknown="${!ip || manufacturer === 'Unknown manufacturer'}">
           <div class="wireless-network-main">
             <div class="wireless-network-identity">
               <h3 class="wireless-network-ssid mb-1">${detailUrl ? `<a href="${escapeHtml(detailUrl)}">${escapeHtml(display)}</a>` : escapeHtml(display)}</h3>
@@ -84,13 +120,14 @@ $(document).ready(function () {
               <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> ${escapeHtml(manufacturer)}</p>
             </div>
             <div class="wireless-network-badges">
+              <span class="badge ${item.network_known_state === 'New' ? 'badge-warning' : 'badge-success'}">${escapeHtml(item.network_known_state || 'Known')}</span>
               <span class="${badgeClass(item)}">${escapeHtml(role)}</span>
               <span class="badge badge-light border">${escapeHtml(scope)}</span>
               <span class="badge badge-info">${escapeHtml(methods)}</span>
             </div>
           </div>
           <div class="wireless-network-bottom network-device-bottom">
-            <div>${renderPortBadges(item)}${note ? `<p class="text-muted small mb-0 mt-2">${escapeHtml(note)}</p>` : ''}</div>
+            <div><div data-network-device-ports>${renderPortBadges(item)}</div><div class="network-device-tags mt-2" data-network-device-tags>${renderTagBadges(item.client_tags || [])}</div>${item.client_notes ? `<p class="text-muted small mb-0 mt-2" data-network-device-notes>${escapeHtml(item.client_notes)}</p>` : `<p class="text-muted small mb-0 mt-2 d-none" data-network-device-notes></p>`}${note ? `<p class="text-muted small mb-0 mt-2">${escapeHtml(note)}</p>` : ''}</div>
             ${deviceActions}
           </div>
         </article>`;
@@ -145,12 +182,51 @@ $(document).ready(function () {
       data: { host: host, start: start, end: end, label: label },
       complete: function (xhr) {
         if (xhr.status >= 200 && xhr.status < 300) {
-          status.text(`Started ${label}. Results save to this device profile as ports are found.`);
+          const job = xhr.responseJSON?.job || {};
+          status.text(`Started ${label}. Scanning...`);
+          pollQuickPortScan(job.id, actions.closest('[data-network-device-card]'), status);
         } else {
           status.text(xhr.responseJSON?.message || `${label} failed to start.`);
         }
         actions.find('[data-port-scan-quick]').prop('disabled', false);
       }
+    });
+  }
+
+  function pollQuickPortScan(jobId, card, status) {
+    if (!jobId) return;
+    $.ajax({
+      url: `/port-scan-jobs/${encodeURIComponent(jobId)}`,
+      method: 'GET',
+      success: function (resp) {
+        const job = resp.job || {};
+        const progress = job.progress == null ? 0 : job.progress;
+        status.text(`${job.label || 'Port scan'} ${job.status}: ${progress}% (${job.open_ports?.length || 0} open)`);
+        const host = card.attr('data-host') || job.host;
+        refreshDeviceCard(host, card);
+        if (['queued', 'running'].includes(job.status)) {
+          setTimeout(function () { pollQuickPortScan(jobId, card, status); }, 1500);
+        } else {
+          status.text(`${job.message || 'Port scan finished.'}`);
+          refreshDeviceCard(host, card);
+        }
+      },
+      error: function () {
+        status.text('Unable to refresh scan progress.');
+      }
+    });
+  }
+
+  function applyNetworkDeviceFilter(filter) {
+    $('[data-network-device-card]').each(function () {
+      const card = $(this);
+      const role = String(card.attr('data-role') || '').toLowerCase();
+      const show = filter === 'all'
+        || (filter === 'gateway' && role.includes('gateway'))
+        || (filter === 'open-ports' && card.attr('data-has-open-ports') === 'true')
+        || (filter === 'new' && card.attr('data-known-state') === 'New')
+        || (filter === 'unknown' && card.attr('data-unknown') === 'true');
+      card.toggle(show);
     });
   }
 
@@ -239,5 +315,32 @@ $(document).ready(function () {
   $(document).on('click', '[data-port-scan-quick]', function (e) {
     e.preventDefault();
     startQuickPortScan($(this));
+  });
+
+  $(document).on('click', '[data-network-device-filter]', function (e) {
+    e.preventDefault();
+    $('[data-network-device-filter]').removeClass('active');
+    $(this).addClass('active');
+    applyNetworkDeviceFilter($(this).attr('data-network-device-filter'));
+  });
+
+  $(document).on('submit', '[data-network-device-notes-form]', function (e) {
+    e.preventDefault();
+    const form = $(this);
+    const host = form.attr('data-host');
+    const status = form.find('[data-network-device-notes-status]');
+    status.text('Saving notes/tags...');
+    $.ajax({
+      url: `/clients/${encodeURIComponent(host)}/metadata`,
+      method: 'POST',
+      data: form.serialize(),
+      success: function () {
+        status.text('Saved notes/tags.');
+        refreshDeviceCard(host, form.closest('[data-network-device-card]'));
+      },
+      error: function (xhr) {
+        status.text(xhr.responseJSON?.message || 'Failed to save notes/tags.');
+      }
+    });
   });
 });

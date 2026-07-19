@@ -106,9 +106,22 @@
             <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
             <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
             {% if network.clients %}
+              <div class="network-device-filterbar mb-3" role="region" aria-label="Network device filters">
+                <div>
+                  <strong>Sort order:</strong>
+                  <span class="text-muted small">Gateways first, then devices with saved open ports, then unknown clients.</span>
+                </div>
+                <div class="theme-actions mb-0">
+                  <button class="btn btn-outline-secondary btn-sm active" data-network-device-filter="all">All</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="gateway">Gateways</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="open-ports">Open ports</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="new">New</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="unknown">Unknown</button>
+                </div>
+              </div>
               <div class="wireless-network-grid network-device-card-grid">
                 {% for client in network.clients %}
-                  <article class="wireless-network-card network-device-card">
+                  <article class="wireless-network-card network-device-card" data-network-device-card data-host="{{ client.ip or '' }}" data-role="{{ client.network_role or '' }}" data-known-state="{{ client.network_known_state or 'Known' }}" data-has-open-ports="{{ 'true' if client.open_port_details else 'false' }}" data-unknown="{{ 'true' if not client.ip or client.manufacturer == 'Unknown' else 'false' }}">
                     <div class="wireless-network-main">
                       <div class="wireless-network-identity">
                         <h3 class="wireless-network-ssid mb-1">
@@ -125,6 +138,7 @@
                         <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> {{ client.manufacturer or 'Unknown manufacturer' }}</p>
                       </div>
                       <div class="wireless-network-badges">
+                        <span class="badge {{ 'badge-success' if client.network_known_state == 'Known' else 'badge-warning' }}">{{ client.network_known_state or 'Known' }}</span>
                         <span class="badge badge-info">{{ client.network_role or 'Client' }}</span>
                         <span class="badge badge-light border">{{ client.network_scope or 'Wi-Fi interface' }}</span>
                         <span class="badge badge-primary">{{ (client.discovery_methods or client.sources or [client.source or 'wireless-observation'])|join(', ') }}</span>
@@ -132,21 +146,31 @@
                     </div>
                     <div class="wireless-network-bottom network-device-bottom">
                       <div>
-                        {% if client.open_port_details %}
-                          <div class="network-device-open-ports">
+                        <div data-network-device-ports>
+                          {% if client.open_port_details %}
+                            <div class="network-device-open-ports">
                             {% for port in client.open_port_details %}
                               {% if loop.index <= 6 %}
                                 {% if port.web_url %}
-                                  <a class="badge badge-info" href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }} {{ port.service }}</a>
+                                  <a class="badge badge-info" href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer" title="{{ port.http_title or port.http_status or port.description }}">{{ port.port }} {{ port.service }}{% if port.http_title %} · {{ port.http_title }}{% endif %}</a>
                                 {% else %}
                                   <span class="badge badge-info">{{ port.port }} {{ port.service }}</span>
                                 {% endif %}
                               {% endif %}
                             {% endfor %}
+                            </div>
+                          {% else %}
+                            <p class="text-muted mb-0 small">No saved open ports yet.</p>
+                          {% endif %}
+                        </div>
+                        {% if client.client_tags %}
+                          <div class="network-device-tags mt-2" data-network-device-tags>
+                            {% for tag in client.client_tags %}<span class="badge badge-light border">{{ tag }}</span>{% endfor %}
                           </div>
                         {% else %}
-                          <p class="text-muted mb-0 small">No saved open ports yet.</p>
+                          <div class="network-device-tags mt-2" data-network-device-tags></div>
                         {% endif %}
+                        {% if client.client_notes %}<p class="text-muted small mb-0 mt-2" data-network-device-notes>{{ client.client_notes }}</p>{% else %}<p class="text-muted small mb-0 mt-2 d-none" data-network-device-notes></p>{% endif %}
                         <p class="text-muted small mb-0 mt-2">{{ client.scan_note or client.signal_label or client.bssid or client.source or 'Persisted network client' }}</p>
                       </div>
                       {% if client.ip %}
@@ -156,6 +180,12 @@
                           <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
                           <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
                           <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+                          <form class="network-device-notes-form" data-network-device-notes-form data-host="{{ client.ip }}">
+                            <input class="form-control form-control-sm" name="tags" placeholder="Tags, comma separated" value="{{ (client.client_tags or [])|join(', ') }}">
+                            <textarea class="form-control form-control-sm" name="notes" rows="2" placeholder="Device notes">{{ client.client_notes or '' }}</textarea>
+                            <button class="btn btn-outline-success btn-sm" type="submit">Save notes/tags</button>
+                            <div class="network-device-notes-status small text-muted" data-network-device-notes-status></div>
+                          </form>
                         </div>
                       {% else %}
                         <span class="badge badge-secondary">No IP port scan</span>
