@@ -1873,7 +1873,7 @@ def sorted_network_clients(clients):
 def merge_wireless_network_clients(network):
     return wireless_client_service.merge_network_clients(
         network, wireless_network_client_cache, wireless_network_labels, normalize_mac,
-        inventory_records,
+        inventory_records, lookup_manufacturer,
     )
 
 

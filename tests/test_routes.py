@@ -2065,6 +2065,25 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'192.168.20.80:80', response.data)
         self.assertIn(b'Router Console', response.data)
 
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_device_cards_resolve_oui_manufacturer(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        get_detail.return_value = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'access_points': [],
+            'clients': [{'ip': '192.168.77.20', 'mac': '8c:49:62:bd:7d:37'}],
+            'interface': 'wlan0',
+        }
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Roku, Inc.', response.data)
+        self.assertNotIn(b'<i class="fa-solid fa-industry"></i> Unknown', response.data)
+
     def test_wireless_network_clients_json_returns_persisted_device_list(self):
         app_module.device_inventory.clear()
         app_module.record_inventory_devices([

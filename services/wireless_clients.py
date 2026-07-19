@@ -61,7 +61,14 @@ def sort_clients(clients):
     )
 
 
-def merge_network_clients(network, cache, labels, normalize_mac, inventory_records):
+def _known_manufacturer(*values):
+    for value in values:
+        if value and value != 'Unknown' and value != 'Unknown manufacturer':
+            return value
+    return None
+
+
+def merge_network_clients(network, cache, labels, normalize_mac, inventory_records, lookup_manufacturer=None):
     """Persist and merge wireless clients plus inventory devices for a network view."""
     key = cache_key(network, normalize_mac)
     now = time.time()
@@ -82,6 +89,8 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
         if mac:
             client['mac'] = mac
         client['source'] = client.get('source') or 'wireless-client-observation'
+        looked_up_manufacturer = lookup_manufacturer(mac) if lookup_manufacturer and mac else None
+        client['manufacturer'] = _known_manufacturer(client.get('manufacturer'), looked_up_manufacturer, 'Unknown')
         identity = client.get('mac') or client.get('ip')
         if not identity:
             continue
@@ -101,12 +110,18 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
         inventory_devices.append(device)
         identity = device.get('mac') or device.get('ip')
         previous = cached.get(identity, {})
+        resolved_manufacturer = _known_manufacturer(
+            device.get('manufacturer'),
+            previous.get('manufacturer'),
+            lookup_manufacturer(device.get('mac')) if lookup_manufacturer and device.get('mac') else None,
+            'Unknown',
+        )
         cached[identity] = {
             **previous,
             'mac': device.get('mac') or previous.get('mac'),
             'ip': device.get('ip') or previous.get('ip'),
             'display_name': device.get('display_name'),
-            'manufacturer': device.get('manufacturer'),
+            'manufacturer': resolved_manufacturer,
             'sources': device.get('sources', []),
             'discovery_methods': device.get('discovery_methods') or device.get('sources', []),
             'network_role': device.get('network_role'),
