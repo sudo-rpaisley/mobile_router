@@ -391,9 +391,13 @@ $(document).ready(function () {
         const status = resp.status || {};
         toggle.prop('checked', !!status.enabled);
         if (status.interval) $('[data-passive-monitor-interval]').val(status.interval);
+        $('[data-passive-monitor-mode]').prop('checked', status.mode === 'packet');
         if (status.enabled) {
           const count = status.last_count == null ? 'no' : status.last_count;
-          setPassiveMonitorStatus(`Passive capture running every ${status.interval || 10}s; last update saw ${count} device(s).`, status.error ? 'warning' : 'success');
+          const modeLabel = status.mode === 'packet'
+            ? `Live packet capture running in ${status.interval || 2}s windows; last window saw ${count} device(s).`
+            : `Passive cache capture running every ${status.interval || 10}s; last update saw ${count} device(s).`;
+          setPassiveMonitorStatus(modeLabel, status.error ? 'warning' : 'success');
           if (status.last_update && passiveMonitorLastUpdate && status.last_update !== passiveMonitorLastUpdate) {
             refreshNetworkDeviceList(`Passive capture added ${count} observed device(s).`);
             refreshPassiveAnalytics();
@@ -414,11 +418,12 @@ $(document).ready(function () {
     const enabled = toggle.is(':checked');
     const iface = toggle.attr('data-interface');
     const interval = $('[data-passive-monitor-interval]').val() || 10;
+    const mode = $('[data-passive-monitor-mode]').is(':checked') ? 'packet' : 'cache';
     setPassiveMonitorStatus(enabled ? 'Starting continuous passive capture...' : 'Stopping continuous passive capture...', 'muted');
     $.ajax({
       url: '/passive-monitor/toggle',
       method: 'POST',
-      data: { selectedInterface: iface, enabled: enabled ? 'on' : '', interval: interval },
+      data: { selectedInterface: iface, enabled: enabled ? 'on' : '', interval: interval, mode: mode },
       success: function (resp) {
         const status = resp.status || {};
         passiveMonitorLastUpdate = status.last_update || null;
@@ -440,6 +445,11 @@ $(document).ready(function () {
 
   $(document).on('change', '[data-passive-monitor-toggle]', function () {
     togglePassiveMonitor($(this));
+  });
+
+  $(document).on('change', '[data-passive-monitor-mode]', function () {
+    const toggle = passiveMonitorControls();
+    if (toggle.is(':checked')) togglePassiveMonitor(toggle);
   });
 
   $(document).on('click', 'a[href="#network-device-scan"]', function () {

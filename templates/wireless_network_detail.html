@@ -25,7 +25,10 @@
           <label class="btn btn-outline-success mb-0" title="Continuously poll passive ARP/neighbor observations without refreshing this page. The app does not send probe packets for this mode.">
             <input class="mr-1" type="checkbox" data-passive-monitor-toggle data-interface="{{ network.interface }}"> Continuous passive capture
           </label>
-          <label class="small mb-0 text-muted">Every <input class="form-control form-control-sm d-inline-block" style="width: 4.5rem;" data-passive-monitor-interval value="10" inputmode="numeric"> sec</label>
+          <label class="small mb-0 text-muted">Every/window <input class="form-control form-control-sm d-inline-block" style="width: 4.5rem;" data-passive-monitor-interval value="10" inputmode="numeric"> sec</label>
+          <label class="small mb-0 text-muted" title="Continuously sniff packet metadata with bounded windows. Requires packet-capture permissions and stores only MAC/IP/protocol metadata, not payloads.">
+            <input class="mr-1" type="checkbox" data-passive-monitor-mode value="packet"> Live packet capture
+          </label>
           <span class="small text-muted" data-passive-monitor-status>Passive monitor is off.</span>
         {% endif %}
         <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>

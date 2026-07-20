@@ -1792,6 +1792,8 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertNotIn(b'href="#network-device-scan"', response.data)
         self.assertIn(b'Continuous passive capture', response.data)
         self.assertIn(b'data-passive-monitor-toggle', response.data)
+        self.assertIn(b'data-passive-monitor-mode', response.data)
+        self.assertIn(b'Live packet capture', response.data)
         self.assertIn(b'Passive-only analytics', response.data)
         self.assertIn(b'data-passive-analytics-panel', response.data)
         self.assertIn(b'Network Device Scan', response.data)
@@ -1860,12 +1862,15 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'data-passive-monitor-toggle', response.data)
+        self.assertIn(b'data-passive-monitor-mode', response.data)
+        self.assertIn(b'Live packet capture', response.data)
         self.assertIn(b'Passive-only analytics', response.data)
         self.assertIn(b'data-passive-analytics-panel', response.data)
         with open('static/js/network_scan.js') as handle:
             js = handle.read()
         self.assertIn('/passive-monitor/status', js)
         self.assertIn('/passive-monitor/toggle', js)
+        self.assertIn("mode: mode", js)
         self.assertIn('/passive-analytics.json', js)
         self.assertIn(b'The app does not send probe packets for this mode', response.data)
 
@@ -1895,6 +1900,44 @@ class RouteSmokeTest(unittest.TestCase):
             'selectedInterface': 'wlan0',
             'enabled': '',
             'interval': '5',
+        })
+        self.assertFalse(response.get_json()['status']['enabled'])
+
+    @patch('app.packet_passive_scan')
+    def test_passive_monitor_packet_mode_records_packet_observations(self, packet_scan):
+        app_module.device_inventory.clear()
+        app_module.passive_monitor_jobs.clear()
+        app_module.passive_observation_analytics.clear()
+        packet_scan.return_value = [{'ip': '192.168.20.77', 'mac': 'AA:BB:CC:DD:EE:77'}]
+
+        response = self.client.post('/passive-monitor/toggle', data={
+            'selectedInterface': 'wlan0',
+            'enabled': 'on',
+            'interval': '1',
+            'mode': 'packet',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        status = response.get_json()['status']
+        self.assertTrue(status['enabled'])
+        self.assertEqual(status['mode'], 'packet')
+        self.assertEqual(status['interval'], 1)
+        for _ in range(20):
+            if app_module.find_inventory_device('192.168.20.77'):
+                break
+            time.sleep(0.05)
+        device = app_module.find_inventory_device('192.168.20.77')
+        self.assertIsNotNone(device)
+        self.assertIn('passive-packet-monitor', device['sources'])
+
+        response = self.client.get('/passive-monitor/status?selectedInterface=wlan0')
+        self.assertEqual(response.get_json()['status']['mode'], 'packet')
+
+        response = self.client.post('/passive-monitor/toggle', data={
+            'selectedInterface': 'wlan0',
+            'enabled': '',
+            'interval': '1',
+            'mode': 'packet',
         })
         self.assertFalse(response.get_json()['status']['enabled'])
 

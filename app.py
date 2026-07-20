@@ -2336,6 +2336,76 @@ def passive_observation_summary(interface=None, _locked=False):
             return build(interface, passive_observation_analytics.get(interface, {'interface': interface, 'devices': {}, 'history': []}))
         return {iface: build(iface, analytics) for iface, analytics in passive_observation_analytics.items()}
 
+
+def packet_passive_scan(interface, timeout=2, packet_limit=250):
+    """Capture passive packet metadata for devices visible on an interface.
+
+    This stores only endpoint metadata (MAC/IP/vendor/protocol), never packet
+    payloads. It is intentionally bounded by a short timeout and packet count so
+    live passive monitoring can run continuously without unbounded memory growth.
+    """
+    interface = (interface or '').strip()
+    if not interface:
+        raise ValueError('Missing interface')
+    timeout = max(1, min(parse_int(timeout, 'Capture window must be an integer'), 10))
+    packet_limit = max(25, min(parse_int(packet_limit, 'Packet limit must be an integer'), 1000))
+    try:
+        from scapy.all import ARP, Ether, IP, IPv6, sniff
+    except ImportError as exc:
+        raise RuntimeError('Live packet capture requires scapy to be installed') from exc
+
+    devices = {}
+
+    def remember(mac=None, ip=None, protocol=None):
+        mac = (mac or '').strip().lower()
+        ip = (ip or '').strip()
+        if not mac and not ip:
+            return
+        if mac in {'ff:ff:ff:ff:ff:ff', '00:00:00:00:00:00'}:
+            return
+        key = mac or ip
+        entry = devices.setdefault(key, {
+            'ip': ip or 'Unknown',
+            'mac': mac or 'Unknown',
+            'hostname': 'Unknown',
+            'manufacturer': lookup_manufacturer(mac) if mac else 'Unknown',
+            'source': 'packet-observation',
+            'protocols': [],
+        })
+        if ip and entry.get('ip') in {'Unknown', ''}:
+            entry['ip'] = ip
+        if mac and entry.get('mac') in {'Unknown', ''}:
+            entry['mac'] = mac
+            entry['manufacturer'] = lookup_manufacturer(mac)
+        if protocol and protocol not in entry['protocols']:
+            entry['protocols'].append(protocol)
+
+    def observe(packet):
+        try:
+            src_mac = packet[Ether].src if packet.haslayer(Ether) else None
+            if packet.haslayer(ARP):
+                arp = packet[ARP]
+                remember(arp.hwsrc, arp.psrc, 'arp')
+                remember(arp.hwdst, arp.pdst, 'arp')
+            elif packet.haslayer(IP):
+                remember(src_mac, packet[IP].src, 'ipv4')
+            elif packet.haslayer(IPv6):
+                remember(src_mac, packet[IPv6].src, 'ipv6')
+            elif src_mac:
+                remember(src_mac, None, 'ethernet')
+        except Exception:
+            return
+
+    capture_filter = 'arp or udp port 67 or udp port 68 or udp port 5353 or udp port 1900 or icmp6'
+    try:
+        sniff(iface=interface, store=False, prn=observe, timeout=timeout, count=packet_limit, filter=capture_filter)
+    except Exception as exc:
+        message = str(exc).lower()
+        if 'filter' not in message and 'libpcap' not in message and 'bpf' not in message:
+            raise
+        sniff(iface=interface, store=False, prn=observe, timeout=timeout, count=packet_limit)
+    return list(devices.values())
+
 def passive_monitor_snapshot(interface=None):
     """Return passive ARP-cache monitor state for one interface or all interfaces."""
     with passive_monitor_lock:
@@ -2346,17 +2416,25 @@ def passive_monitor_snapshot(interface=None):
 
 
 def _passive_monitor_worker(interface):
-    """Continuously refresh passive inventory from observed ARP-cache entries."""
+    """Continuously refresh passive inventory from cache or packet observations."""
     while True:
         with passive_monitor_lock:
             job = passive_monitor_jobs.get(interface)
             if not job or not job.get('enabled'):
                 return
             interval = job.get('interval', 10)
+            mode = job.get('mode', 'cache')
+        sleep_for = 0.1 if mode == 'packet' else interval
         try:
-            devices = classify_scan_results(passive_scan(interface), interface)
-            enriched = record_inventory_devices(devices, 'passive-monitor', interface)
-            analytics = record_passive_observation_analytics(interface, enriched, 'passive-monitor')
+            if mode == 'packet':
+                source = 'passive-packet-monitor'
+                raw_devices = packet_passive_scan(interface, timeout=interval, packet_limit=250)
+            else:
+                source = 'passive-monitor'
+                raw_devices = passive_scan(interface)
+            devices = classify_scan_results(raw_devices, interface)
+            enriched = record_inventory_devices(devices, source, interface)
+            analytics = record_passive_observation_analytics(interface, enriched, source)
             with passive_monitor_lock:
                 current = passive_monitor_jobs.get(interface)
                 if current:
@@ -2364,27 +2442,33 @@ def _passive_monitor_worker(interface):
                         'last_update': time.time(),
                         'last_count': len(enriched),
                         'analytics': analytics,
+                        'mode': mode,
                         'error': None,
                     })
         except Exception as exc:
             with passive_monitor_lock:
                 current = passive_monitor_jobs.get(interface)
                 if current:
-                    current.update({'last_update': time.time(), 'error': str(exc)})
-        time.sleep(interval)
+                    current.update({'last_update': time.time(), 'error': str(exc), 'mode': mode})
+        time.sleep(sleep_for)
 
 
-def set_passive_monitor(interface, enabled, interval=10):
+def set_passive_monitor(interface, enabled, interval=10, mode='cache'):
     """Start or stop a background passive monitor for an interface."""
     interface = (interface or '').strip()
     if not interface:
         raise ValueError('Missing interface')
-    interval = max(5, min(parse_int(interval, 'Interval must be an integer'), 300))
+    mode = 'packet' if str(mode or '').strip().lower() in {'packet', 'live', 'live-packet'} else 'cache'
+    if mode == 'packet':
+        interval = max(1, min(parse_int(interval, 'Capture window must be an integer'), 10))
+    else:
+        interval = max(5, min(parse_int(interval, 'Interval must be an integer'), 300))
     with passive_monitor_lock:
         job = passive_monitor_jobs.get(interface, {'interface': interface})
         job.update({
             'enabled': bool(enabled),
             'interval': interval,
+            'mode': mode,
             'updated_at': time.time(),
         })
         if enabled and not job.get('started_at'):
@@ -3350,7 +3434,7 @@ def passive_monitor_toggle_route():
     interface = data.get('selectedInterface') or data.get('interface')
     enabled = str(data.get('enabled') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     try:
-        status = set_passive_monitor(interface, enabled, data.get('interval') or 10)
+        status = set_passive_monitor(interface, enabled, data.get('interval') or 10, data.get('mode') or 'cache')
     except ValueError as exc:
         return json_error(str(exc))
     message = 'Continuous passive capture enabled.' if enabled else 'Continuous passive capture disabled.'
