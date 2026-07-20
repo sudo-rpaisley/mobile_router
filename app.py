@@ -326,17 +326,18 @@ PINEAP_MODULES = {'recon', 'evil-twin-lab', 'handshake-capture', 'portal-awarene
 HANDSHAKE_CAPTURE_TYPES = {'wpa-handshake', 'pmkid'}
 
 
-def normalize_mac(value):
-    """Return a lowercase colon-separated MAC address or raise ValueError."""
-    if not value or not MAC_RE.match(value):
+def require_normalized_mac(value):
+    """Return a normalized MAC address or raise ValueError for required lab inputs."""
+    mac = normalize_mac(value)
+    if not mac:
         raise ValueError('Enter a valid MAC address in the form aa:bb:cc:dd:ee:ff')
-    return value.lower().replace('-', ':')
+    return mac
 
 
 def validate_lab_deauth_request(data):
     """Validate bounded deauth lab inputs for an authorized classroom exercise."""
-    ap_mac = normalize_mac(data.get('ap'))
-    target_mac = normalize_mac(data.get('target') or BROADCAST_MAC)
+    ap_mac = require_normalized_mac(data.get('ap'))
+    target_mac = require_normalized_mac(data.get('target') or BROADCAST_MAC)
     if ap_mac == BROADCAST_MAC:
         raise ValueError('AP MAC must be a specific lab access point, not broadcast')
     if data.get('authorized') != 'on':
@@ -359,7 +360,7 @@ def validate_evil_twin_lab_request(data):
     if not ssid or len(ssid) > 32:
         raise ValueError('Enter the exact lab SSID, up to 32 characters')
 
-    bssid = normalize_mac(data.get('bssid'))
+    bssid = require_normalized_mac(data.get('bssid'))
     channel = parse_int(data.get('channel'), 'Channel must be an integer')
     if channel < 1 or channel > 196:
         raise ValueError('Channel must be between 1 and 196')
@@ -445,7 +446,7 @@ def validate_pineap_lab_request(data):
     ssid = (data.get('ssid') or '').strip()
     if ssid and len(ssid) > 32:
         raise ValueError('SSID must be 32 characters or fewer')
-    bssid = normalize_mac(data.get('bssid')) if data.get('bssid') else None
+    bssid = require_normalized_mac(data.get('bssid')) if data.get('bssid') else None
     channel = None
     if data.get('channel'):
         channel = parse_int(data.get('channel'), 'Channel must be an integer')
@@ -507,7 +508,7 @@ def validate_handshake_lab_request(data):
     ssid = (data.get('ssid') or '').strip()
     if not ssid or len(ssid) > 32:
         raise ValueError('Enter the exact lab SSID, up to 32 characters')
-    bssid = normalize_mac(data.get('bssid'))
+    bssid = require_normalized_mac(data.get('bssid'))
     channel = parse_int(data.get('channel'), 'Channel must be an integer')
     if channel < 1 or channel > 196:
         raise ValueError('Channel must be between 1 and 196')
