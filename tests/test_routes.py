@@ -2161,6 +2161,40 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertNotIn(b'192.168.77.20', response.data)
         self.assertNotIn(b'8c:49:62:bd:7d:37', response.data)
 
+    @patch('scripts.wifi.utils.get_network_detail')
+    @patch('app.passive_scan')
+    def test_passive_scan_scopes_found_devices_to_selected_network(self, passive_scan, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        passive_scan.return_value = [{'ip': '192.168.88.44', 'mac': '8c:49:62:bd:7d:37'}]
+        get_detail.return_value = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'access_points': [],
+            'clients': [],
+            'interface': 'wlan0',
+        }
+
+        response = self.client.post('/passive-scan', data={
+            'selectedInterface': 'wlan0',
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any(client.get('ip') == '192.168.88.44' for client in response.get_json()['network_clients']))
+
+        response = self.client.get('/wireless/network/clients.json?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any(client.get('ip') == '192.168.88.44' for client in response.get_json()['clients']))
+
+    def test_network_scan_buttons_show_busy_spinner_and_disable_reclicks(self):
+        js = open('static/js/network_scan.js').read()
+
+        self.assertIn('setScanControlsBusy(button, true', js)
+        self.assertIn('spinner-border spinner-border-sm', js)
+        self.assertIn('setScanControlsBusy(button, false)', js)
+
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()
 

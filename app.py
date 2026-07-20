@@ -1880,6 +1880,28 @@ def merge_wireless_network_clients(network):
     )
 
 
+def record_scan_devices_for_wireless_network(interface, ssid, bssid, devices):
+    """Scope scan-discovered devices to an explicit Wi-Fi network page."""
+    if not interface or not (ssid or bssid):
+        return []
+    scoped_clients = [
+        {**dict(device), 'network_scan_scoped': True}
+        for device in (devices or [])
+        if not device.get('is_control_traffic') and (device.get('ip') or device.get('mac'))
+    ]
+    if not scoped_clients:
+        return []
+    network = {
+        'interface': interface,
+        'ssid': ssid,
+        'bssid': bssid,
+        'clients': scoped_clients,
+    }
+    merged = merge_wireless_network_clients(network)
+    save_runtime_state('wireless-scan-clients')
+    return merged.get('clients', [])
+
+
 def inventory_export_payload(records=None):
     records = records if records is not None else inventory_records()
     return inventory_service.export_payload(records)
@@ -3289,7 +3311,10 @@ def active_scan_route():
         return json_error('Missing interface')
     hosts = classify_scan_results(active_scan(iface), iface)
     enriched_hosts = record_inventory_devices(hosts, 'active-scan', iface)
-    return jsonify({'hosts': enriched_hosts})
+    network_clients = record_scan_devices_for_wireless_network(
+        iface, request.form.get('ssid'), request.form.get('bssid'), enriched_hosts,
+    )
+    return jsonify({'hosts': enriched_hosts, 'network_clients': network_clients})
 
 
 @app.route('/passive-scan', methods=['POST'])
@@ -3300,7 +3325,10 @@ def passive_scan_route():
     devices = classify_scan_results(passive_scan(iface), iface)
     enriched_devices = record_inventory_devices(devices, 'passive-scan', iface)
     analytics = record_passive_observation_analytics(iface, enriched_devices, 'passive-scan')
-    return jsonify({'devices': enriched_devices, 'analytics': analytics})
+    network_clients = record_scan_devices_for_wireless_network(
+        iface, request.form.get('ssid'), request.form.get('bssid'), enriched_devices,
+    )
+    return jsonify({'devices': enriched_devices, 'analytics': analytics, 'network_clients': network_clients})
 
 
 @app.route('/passive-analytics.json')
@@ -3332,11 +3360,15 @@ def passive_monitor_toggle_route():
 @app.route('/comprehensive-scan', methods=['POST'])
 def comprehensive_scan_route():
     try:
+        selected_interface = request.form.get('selectedInterface')
         result = comprehensive_network_device_scan(
-            request.form.get('selectedInterface'),
+            selected_interface,
             include_passive=request.form.get('includePassive', 'on') == 'on',
             include_services=request.form.get('includeServices', 'on') == 'on',
             sweep_cidr=(request.form.get('sweepCidr') or '').strip() or None,
+        )
+        result['network_clients'] = record_scan_devices_for_wireless_network(
+            selected_interface, request.form.get('ssid'), request.form.get('bssid'), result.get('devices', []),
         )
     except ValueError as e:
         return json_error(str(e))

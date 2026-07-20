@@ -237,12 +237,38 @@ $(document).ready(function () {
     $('#scan-results').html(`<div class="alert alert-${klass}" role="status">${escapeHtml(message)}</div>`);
   }
 
+  function setScanButtonBusy(button, busy, label) {
+    const original = button.attr('data-original-text') || button.text();
+    if (!button.attr('data-original-text')) button.attr('data-original-text', original);
+    button.prop('disabled', busy);
+    button.toggleClass('scan-button-busy', busy);
+    if (busy) {
+      button.html(`<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span>${escapeHtml(label || original)}`);
+    } else {
+      button.text(original);
+    }
+  }
+
+  function setScanControlsBusy(activeButton, busy, label) {
+    $('#comprehensive-scan-btn, #active-scan-btn, #passive-scan-btn').prop('disabled', busy);
+    if (activeButton && activeButton.length) setScanButtonBusy(activeButton, busy, label);
+  }
+
   function networkDeviceListParams() {
     const form = $('[data-network-device-list-scan]');
     return {
       interface: form.attr('data-interface') || $('#interface-select-Scan').val() || $('[data-passive-monitor-toggle]').attr('data-interface') || '',
       ssid: form.attr('data-ssid') || '',
       bssid: form.attr('data-bssid') || ''
+    };
+  }
+
+  function networkDeviceScanPostData(extra) {
+    const params = networkDeviceListParams();
+    return {
+      ...(extra || {}),
+      ssid: params.ssid,
+      bssid: params.bssid
     };
   }
 
@@ -328,7 +354,7 @@ $(document).ready(function () {
     $.ajax({
       url: '/passive-analytics.json',
       method: 'GET',
-      data: { selectedInterface: iface },
+      data: networkDeviceScanPostData({ selectedInterface: iface }),
       success: function (resp) { renderPassiveAnalytics(resp.analytics || {}); }
     });
   }
@@ -354,7 +380,7 @@ $(document).ready(function () {
     $.ajax({
       url: '/passive-monitor/status',
       method: 'GET',
-      data: { selectedInterface: iface },
+      data: networkDeviceScanPostData({ selectedInterface: iface }),
       success: function (resp) {
         const status = resp.status || {};
         toggle.prop('checked', !!status.enabled);
@@ -418,22 +444,25 @@ $(document).ready(function () {
 
   $('#comprehensive-scan-btn').on('click', function (e) {
     e.preventDefault();
+    const button = $(this);
     const iface = $('#interface-select-Scan').val();
-    if (isNetworkDeviceListMode()) showNetworkDeviceListStatus('Comprehensive scan running. Devices will be saved into this tab...', 'info');
+    setScanControlsBusy(button, true, 'Scanning...');
+    if (isNetworkDeviceListMode()) showNetworkDeviceListStatus('Comprehensive scan running. Devices will appear here as soon as this scan reports them...', 'info');
     else $('#scan-results').html('<p>Comprehensive scan running...</p>');
     $.ajax({
       url: '/comprehensive-scan',
       method: 'POST',
-      data: {
+      data: networkDeviceScanPostData({
         selectedInterface: iface,
         includePassive: $('#include-passive').is(':checked') ? 'on' : '',
         includeServices: $('#include-services').is(':checked') ? 'on' : '',
         sweepCidr: $('#sweep-cidr').val()
-      },
+      }),
       success: function (resp) {
         const result = resp.result;
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Comprehensive scan saved ${result.summary.total_devices} device(s). Updating the device list...`);
+          renderNetworkDeviceListItems(result.network_clients || result.devices || []);
+          refreshNetworkDeviceList(`Comprehensive scan saved ${result.summary.total_devices} device(s). Device list updated.`);
           return;
         }
         let html = '<h3>Comprehensive Device Scan Results</h3>';
@@ -450,20 +479,24 @@ $(document).ready(function () {
       },
       error: function (xhr) {
         showNetworkDeviceListStatus(xhr.responseJSON?.message || 'Comprehensive scan failed', 'danger');
-      }
+      },
+      complete: function () { setScanControlsBusy(button, false); }
     });
   });
 
   $('#active-scan-btn').on('click', function (e) {
     e.preventDefault();
+    const button = $(this);
     const iface = $('#interface-select-Scan').val();
+    setScanControlsBusy(button, true, 'Scanning...');
     $.ajax({
       url: '/active-scan',
       method: 'POST',
-      data: { selectedInterface: iface },
+      data: networkDeviceScanPostData({ selectedInterface: iface }),
       success: function (resp) {
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Active scan saved ${resp.hosts.length} host(s). Updating the device list...`);
+          renderNetworkDeviceListItems(resp.network_clients || resp.hosts || []);
+          refreshNetworkDeviceList(`Active scan saved ${resp.hosts.length} host(s). Device list updated.`);
           return;
         }
         let html = '<h3>Active Scan Results</h3>';
@@ -476,20 +509,24 @@ $(document).ready(function () {
       },
       error: function () {
         showNetworkDeviceListStatus('Scan failed', 'danger');
-      }
+      },
+      complete: function () { setScanControlsBusy(button, false); }
     });
   });
 
   $('#passive-scan-btn').on('click', function (e) {
     e.preventDefault();
+    const button = $(this);
     const iface = $('#interface-select-Scan').val();
+    setScanControlsBusy(button, true, 'Listening...');
     $.ajax({
       url: '/passive-scan',
       method: 'POST',
-      data: { selectedInterface: iface },
+      data: networkDeviceScanPostData({ selectedInterface: iface }),
       success: function (resp) {
         if (isNetworkDeviceListMode()) {
-          refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Updating the device list...`);
+          renderNetworkDeviceListItems(resp.network_clients || resp.devices || []);
+          refreshNetworkDeviceList(`Passive scan saved ${resp.devices.length} device(s). Device list updated.`);
           renderPassiveAnalytics(resp.analytics || {});
           return;
         }
@@ -503,7 +540,8 @@ $(document).ready(function () {
       },
       error: function () {
         showNetworkDeviceListStatus('Scan failed', 'danger');
-      }
+      },
+      complete: function () { setScanControlsBusy(button, false); }
     });
   });
 

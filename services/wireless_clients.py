@@ -82,7 +82,10 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
         if client.get('mac') or client.get('ip')
     }
     cached = {
-        client.get('mac') or client.get('ip'): {**dict(client), 'currently_visible': False}
+        client.get('mac') or client.get('ip'): {
+            **dict(client),
+            'currently_visible': bool(client.get('network_scan_scoped')) if client.get('network_scan_scoped') else False,
+        }
         for client in existing_cache
         if client.get('mac') or client.get('ip')
     }
