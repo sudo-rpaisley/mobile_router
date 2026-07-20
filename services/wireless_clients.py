@@ -72,7 +72,10 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
     """Persist and merge wireless clients plus inventory devices for a network view."""
     key = cache_key(network, normalize_mac)
     now = time.time()
-    existing_cache = cache.get(key, [])
+    existing_cache = [
+        dict(client) for client in cache.get(key, [])
+        if client.get('source') != 'inventory'
+    ]
     known_identities = {
         client.get('mac') or client.get('ip')
         for client in existing_cache
@@ -107,16 +110,24 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
             continue
         if device.get('is_control_traffic') or not (device.get('ip') or device.get('mac')):
             continue
+
+        possible_identities = [value for value in (device.get('mac'), device.get('ip')) if value]
+        matched_identity = next((identity for identity in possible_identities if identity in cached), None)
+        if not matched_identity:
+            # Inventory is interface-scoped, not SSID/BSSID-scoped. Never inject a
+            # device into a Wi-Fi network page unless that exact identity was
+            # already observed or cached for this specific network key.
+            continue
+
         inventory_devices.append(device)
-        identity = device.get('mac') or device.get('ip')
-        previous = cached.get(identity, {})
+        previous = cached.get(matched_identity, {})
         resolved_manufacturer = _known_manufacturer(
             device.get('manufacturer'),
             previous.get('manufacturer'),
             lookup_manufacturer(device.get('mac')) if lookup_manufacturer and device.get('mac') else None,
             'Unknown',
         )
-        cached[identity] = {
+        cached[matched_identity] = {
             **previous,
             'mac': device.get('mac') or previous.get('mac'),
             'ip': device.get('ip') or previous.get('ip'),
@@ -138,7 +149,7 @@ def merge_network_clients(network, cache, labels, normalize_mac, inventory_recor
                 previous.get('network_last_seen') or 0,
                 device.get('last_seen') or now,
             ),
-            'source': 'inventory',
+            'source': previous.get('source') or 'wireless-client-observation',
         }
 
     for identity, client in list(cached.items()):

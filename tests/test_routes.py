@@ -1982,7 +1982,7 @@ class RouteSmokeTest(unittest.TestCase):
             'wps_access_points': 0,
             'ap_groups': [],
             'access_points': [],
-            'clients': [],
+            'clients': [{'ip': '192.168.50.22', 'mac': '48:b0:2d:ef:ec:f2'}],
         }
 
         response = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
@@ -2087,18 +2087,79 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Roku, Inc.', response.data)
         self.assertNotIn(b'<i class="fa-solid fa-industry"></i> Unknown', response.data)
 
-    def test_wireless_network_clients_json_returns_persisted_device_list(self):
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_clients_json_returns_network_scoped_cache_only(self, get_detail):
         app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
         app_module.record_inventory_devices([
             {'ip': '192.168.77.10', 'mac': '48:b0:2d:ef:77:10', 'manufacturer': 'ClientCo', 'interfaces': ['wlan0']},
         ], 'active-scan', 'wlan0')
+        get_detail.return_value = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'access_points': [],
+            'clients': [],
+            'interface': 'wlan0',
+        }
 
-        response = self.client.get('/wireless/network/clients.json?interface=wlan0&ssid=TrainingNet')
+        response = self.client.get('/wireless/network/clients.json?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertTrue(any(client.get('ip') == '192.168.77.10' for client in payload['clients']))
-        self.assertGreaterEqual(payload['client_count'], 1)
+        self.assertFalse(any(client.get('ip') == '192.168.77.10' for client in payload['clients']))
+        self.assertEqual(payload['client_count'], 0)
+
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_pages_do_not_leak_clients_between_ssids(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        network_a = {
+            'ssid': 'TrainingNet',
+            'bssid': 'aa:bb:cc:dd:ee:ff',
+            'security': 'WPA2-Personal',
+            'access_points': [],
+            'clients': [{'ip': '192.168.77.20', 'mac': '8c:49:62:bd:7d:37'}],
+            'interface': 'wlan0',
+        }
+        network_b = {**network_a, 'ssid': 'GuestNet', 'bssid': '11:22:33:44:55:66', 'clients': []}
+        get_detail.side_effect = [network_a, network_b]
+
+        first = self.client.get('/wireless/network?interface=wlan0&ssid=TrainingNet&bssid=aa:bb:cc:dd:ee:ff')
+        second = self.client.get('/wireless/network?interface=wlan0&ssid=GuestNet&bssid=11:22:33:44:55:66')
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn(b'192.168.77.20', first.data)
+        self.assertNotIn(b'192.168.77.20', second.data)
+        self.assertNotIn(b'8c:49:62:bd:7d:37', second.data)
+
+    @patch('scripts.wifi.utils.get_network_detail')
+    def test_wireless_network_prunes_legacy_inventory_only_cache_entries(self, get_detail):
+        app_module.device_inventory.clear()
+        app_module.wireless_network_client_cache.clear()
+        app_module.wireless_network_client_cache[(
+            'wlan0', 'GuestNet', '11:22:33:44:55:66'
+        )] = [{
+            'ip': '192.168.77.20',
+            'mac': '8c:49:62:bd:7d:37',
+            'source': 'inventory',
+            'currently_visible': False,
+        }]
+        get_detail.return_value = {
+            'ssid': 'GuestNet',
+            'bssid': '11:22:33:44:55:66',
+            'security': 'WPA2-Personal',
+            'access_points': [],
+            'clients': [],
+            'interface': 'wlan0',
+        }
+
+        response = self.client.get('/wireless/network?interface=wlan0&ssid=GuestNet&bssid=11:22:33:44:55:66')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'192.168.77.20', response.data)
+        self.assertNotIn(b'8c:49:62:bd:7d:37', response.data)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()
