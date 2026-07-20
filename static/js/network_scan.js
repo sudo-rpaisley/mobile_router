@@ -272,6 +272,11 @@ $(document).ready(function () {
     };
   }
 
+  function updateNetworkDeviceTabCount(items) {
+    const count = Array.isArray(items) ? items.length : 0;
+    $('[data-network-device-count]').text(count);
+  }
+
   function renderNetworkDeviceListItems(items) {
     const list = $('[data-network-device-list]');
     if (!list.length) return;
@@ -279,6 +284,7 @@ $(document).ready(function () {
     const inner = $(cards).filter('.network-device-card-grid').html() || '';
     list.html(inner);
     $('[data-network-device-empty]').toggleClass('d-none', !!(items || []).length);
+    updateNetworkDeviceTabCount(items || []);
     updateNetworkScanAllHosts(items || []);
   }
 

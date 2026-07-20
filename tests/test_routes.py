@@ -2000,6 +2000,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Export device list', response.data)
         self.assertIn(b'data-network-device-label-form', response.data)
         self.assertIn(b'data-port-scan-quick-progress', response.data)
+        self.assertIn(b'data-network-device-count', response.data)
         self.assertIn(b'Scan all common ports', response.data)
         self.assertIn(b'data-hosts="192.168.50.22"', response.data)
 
@@ -2194,6 +2195,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn('setScanControlsBusy(button, true', js)
         self.assertIn('spinner-border spinner-border-sm', js)
         self.assertIn('setScanControlsBusy(button, false)', js)
+        self.assertIn('updateNetworkDeviceTabCount(items || [])', js)
 
     def test_wireless_network_cards_link_to_device_scan_panel(self):
         js = open('static/js/wireless-adapters.js').read()

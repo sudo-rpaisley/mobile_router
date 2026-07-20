@@ -40,7 +40,7 @@
 
     <ul class="nav nav-tabs mt-3 network-detail-tabs" role="tablist">
       <li class="nav-item"><a class="nav-link active" id="network-overview-tab" data-toggle="tab" href="#network-overview-pane" role="tab" aria-controls="network-overview-pane" aria-selected="true">Overview</a></li>
-      <li class="nav-item"><a class="nav-link" id="network-devices-tab" data-toggle="tab" href="#network-devices-pane" role="tab" aria-controls="network-devices-pane" aria-selected="false">Devices <span class="badge badge-light border">{{ network.client_count }}</span></a></li>
+      <li class="nav-item"><a class="nav-link" id="network-devices-tab" data-toggle="tab" href="#network-devices-pane" role="tab" aria-controls="network-devices-pane" aria-selected="false">Devices <span class="badge badge-light border" data-network-device-count>{{ network.client_count }}</span></a></li>
       <li class="nav-item"><a class="nav-link" id="network-ap-tab" data-toggle="tab" href="#network-ap-pane" role="tab" aria-controls="network-ap-pane" aria-selected="false">AP Details <span class="badge badge-light border">{{ network.access_points | length }}</span></a></li>
     </ul>
 
