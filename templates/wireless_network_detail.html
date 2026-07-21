@@ -21,6 +21,16 @@
         </div>
       </div>
       <div class="interface-actions">
+        {% if network.interface %}
+          <label class="btn btn-outline-success mb-0" title="Continuously poll passive ARP/neighbor observations without refreshing this page. The app does not send probe packets for this mode.">
+            <input class="mr-1" type="checkbox" data-passive-monitor-toggle data-interface="{{ network.interface }}"> Continuous passive capture
+          </label>
+          <label class="small mb-0 text-muted">Every/window <input class="form-control form-control-sm d-inline-block" style="width: 4.5rem;" data-passive-monitor-interval value="10" inputmode="numeric"> sec</label>
+          <label class="small mb-0 text-muted" title="Continuously sniff packet metadata with bounded windows. Requires packet-capture permissions and stores only MAC/IP/protocol metadata, not payloads.">
+            <input class="mr-1" type="checkbox" data-passive-monitor-mode value="packet"> Live packet capture
+          </label>
+          <span class="small text-muted" data-passive-monitor-status>Passive monitor is off.</span>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="{{ back_url }}">Back to adapter</a>
       </div>
     </section>
@@ -31,7 +41,15 @@
       </div>
     {% endif %}
 
-    <section class="interface-detail-grid network-detail-grid">
+    <ul class="nav nav-tabs mt-3 network-detail-tabs" role="tablist">
+      <li class="nav-item"><a class="nav-link active" id="network-overview-tab" data-toggle="tab" href="#network-overview-pane" role="tab" aria-controls="network-overview-pane" aria-selected="true">Overview</a></li>
+      <li class="nav-item"><a class="nav-link" id="network-devices-tab" data-toggle="tab" href="#network-devices-pane" role="tab" aria-controls="network-devices-pane" aria-selected="false">Devices <span class="badge badge-light border" data-network-device-count>{{ network.client_count }}</span></a></li>
+      <li class="nav-item"><a class="nav-link" id="network-ap-tab" data-toggle="tab" href="#network-ap-pane" role="tab" aria-controls="network-ap-pane" aria-selected="false">AP Details <span class="badge badge-light border">{{ network.access_points | length }}</span></a></li>
+    </ul>
+
+    <div class="tab-content network-detail-tab-content">
+      <section class="tab-pane fade show active" id="network-overview-pane" role="tabpanel" aria-labelledby="network-overview-tab">
+    <section class="interface-detail-grid network-detail-grid mt-3">
       <article class="card shadow-sm interface-summary-card">
         {% set gateway = network.gateway | default({}) %}
         <div class="card-body">
@@ -60,31 +78,195 @@
         </article>
       {% endif %}
 
-      <article class="card shadow-sm interface-address-card">
-        <div class="card-body">
-          <h2 class="interface-section-title">Discovered Devices</h2>
-          {% if network.clients %}
-            <div class="address-card-grid">
-              {% for client in network.clients %}
-                <section class="address-card">
-                  <div class="address-card-header"><span class="address-family">Client</span></div>
-                  <dl class="interface-definition-list compact">
-                    <div><dt>MAC</dt><dd>{{ client.mac }}</dd></div>
-                    <div><dt>Manufacturer</dt><dd>{{ client.manufacturer or 'Unknown' }}</dd></div>
-                    <div><dt>Signal</dt><dd>{{ client.signal_label }}</dd></div>
-                    <div><dt>Seen On</dt><dd>{{ client.bssid or 'Unknown AP' }}</dd></div>
-                  </dl>
-                </section>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">No client devices have been discovered for this SSID yet. Packet/monitor scans can populate this section when client traffic is observed.</p>
-          {% endif %}
-        </div>
-      </article>
     </section>
 
 
+      </section>
+
+      <section class="tab-pane fade" id="network-devices-pane" role="tabpanel" aria-labelledby="network-devices-tab">
+        {% if network.interface %}
+          <section id="network-device-scan" class="card shadow-sm interface-network-scan-card mt-3">
+            <div class="card-body">
+              <h2 class="interface-section-title">Network Device Scan</h2>
+              <p class="text-muted">Run device scans from this tab. Results are saved into inventory and this device list refreshes instead of rendering a separate scan result list.</p>
+              <form id="scan-form" class="theme-form interface-scan-form" data-network-device-list-scan data-interface="{{ network.interface }}" data-ssid="{{ network.ssid }}" data-bssid="{{ network.bssid or '' }}">
+                <select id="interface-select-Scan" class="d-none" aria-hidden="true">
+                  <option value="{{ network.interface }}" selected>{{ network.interface }}</option>
+                </select>
+                <div class="theme-actions">
+                  <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
+                  <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
+                  <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
+                </div>
+                <div class="form-group mb-0">
+                  <label for="sweep-cidr">Optional ping sweep CIDR</label>
+                  <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
+                </div>
+                <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
+                <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
+              </form>
+              <div id="scan-results" class="theme-results" data-network-device-list-status></div>
+            </div>
+          </section>
+        {% endif %}
+        <article class="card shadow-sm interface-address-card mt-3">
+          <div class="card-body">
+            <h2 class="interface-section-title">Devices Found On This Network Interface</h2>
+            <p class="text-muted">This list is persisted from wireless client observations and inventory records tied to {{ network.interface or 'this interface' }}, so devices remain visible after page reloads.</p>
+            <div class="network-scan-all-toolbar alert alert-secondary" role="region" aria-label="Port scan all network devices">
+              <div><strong>Port scan all listed IP devices</strong><p class="mb-0 small">These buttons start background scans for every IP device currently listed in this tab.</p></div>
+              <div class="theme-actions mb-0">
+                <button class="btn btn-outline-primary btn-sm" data-port-scan-all data-hosts="{{ network.clients | selectattr('ip') | map(attribute='ip') | join(',') }}" data-start="1" data-end="1024" data-label="common port scan">Scan all common ports</button>
+                <button class="btn btn-outline-danger btn-sm" data-port-scan-all data-hosts="{{ network.clients | selectattr('ip') | map(attribute='ip') | join(',') }}" data-start="1" data-end="65535" data-label="all-port scan">Scan all ports</button>
+              </div>
+              <div class="network-scan-all-status small text-muted" data-port-scan-all-status></div>
+            </div>
+            <div class="passive-analytics-panel alert alert-dark" role="region" aria-label="Passive observation analytics" data-passive-analytics-panel data-interface="{{ network.interface }}">
+              <div class="d-flex justify-content-between align-items-start flex-wrap">
+                <div>
+                  <strong>Passive-only analytics</strong>
+                  <p class="mb-0 small">Tracks observed/quiet device churn from passive scans and continuous passive capture without sending probe packets.</p>
+                </div>
+                <button type="button" class="btn btn-outline-info btn-sm" data-passive-analytics-refresh>Refresh analytics</button>
+              </div>
+              <div class="small mt-2" data-passive-analytics-summary>Passive analytics will appear after a passive scan or continuous capture sample.</div>
+              <div class="theme-grid mt-2" data-passive-analytics-devices></div>
+            </div>
+            {% if network.clients %}
+              <div class="network-device-filterbar mb-3" role="region" aria-label="Network device filters">
+                <div>
+                  <strong>Sort order:</strong>
+                  <span class="text-muted small">Gateways first, then devices with saved open ports, then unknown clients.</span>
+                </div>
+                <div class="theme-actions mb-0">
+                  <button class="btn btn-outline-secondary btn-sm active" data-network-device-filter="all">All</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="gateway">Gateways</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="open-ports">Open ports</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="new">New</button>
+                  <button class="btn btn-outline-secondary btn-sm" data-network-device-filter="unknown">Unknown</button>
+                </div>
+                <a class="btn btn-outline-primary btn-sm" href="/wireless/network/clients.csv?interface={{ network.interface|urlencode }}&ssid={{ network.ssid|urlencode }}&bssid={{ (network.bssid or '')|urlencode }}">Export device list</a>
+              </div>
+              <div class="wireless-network-grid network-device-card-grid" data-network-device-list>
+                {% for client in network.clients %}
+                  <article class="wireless-network-card network-device-card" data-network-device-card data-host="{{ client.ip or '' }}" data-role="{{ client.network_role or '' }}" data-known-state="{{ client.network_known_state or 'Known' }}" data-has-open-ports="{{ 'true' if client.open_port_details else 'false' }}" data-unknown="{{ 'true' if not client.ip or client.manufacturer == 'Unknown' else 'false' }}">
+                    <div class="wireless-network-main">
+                      <div class="wireless-network-identity">
+                        <h3 class="wireless-network-ssid mb-1">
+                          {% if client.ip %}
+                            <a href="/clients/{{ client.ip|urlencode }}" data-network-device-title>{{ client.display_name or client.ip }}</a>
+                          {% elif client.mac %}
+                            <a href="/clients/{{ client.mac|urlencode }}" data-network-device-title>{{ client.display_name or client.mac }}</a>
+                          {% else %}
+                            <span data-network-device-title>{{ client.display_name or 'Client' }}</span>
+                          {% endif %}
+                        </h3>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-network-wired"></i> {{ client.ip or 'Unknown IP' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-fingerprint"></i> {{ client.mac or 'Unknown MAC' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-industry"></i> {{ client.manufacturer or 'Unknown manufacturer' }}</p>
+                      </div>
+                      <div class="wireless-network-badges">
+                        <span class="badge {{ 'badge-success' if client.network_known_state == 'Known' else 'badge-warning' }}">{{ client.network_known_state or 'Known' }}</span>
+                        <span class="badge badge-info">{{ (client.device_role_guess or {}).role or client.network_role or 'Client' }}</span>
+                        {% if client.likely_randomized_mac %}<span class="badge badge-warning">Randomized MAC likely</span>{% endif %}
+                        <span class="badge badge-light border">{{ client.network_scope or 'Wi-Fi interface' }}</span>
+                        <span class="badge badge-primary">{{ (client.discovery_methods or client.sources or [client.source or 'wireless-observation'])|join(', ') }}</span>
+                      </div>
+                    </div>
+                    <div class="wireless-network-bottom network-device-bottom">
+                      <div>
+                        <div data-network-device-ports>
+                          {% if client.open_port_details %}
+                            <div class="network-device-open-ports">
+                            {% for port in client.open_port_details %}
+                              {% if loop.index <= 6 %}
+                                {% if port.web_url %}
+                                  <a class="badge badge-info" href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer" title="{{ port.http_title or port.http_status or port.description }}">{{ port.port }} {{ port.service }}{% if port.http_title %} · {{ port.http_title }}{% endif %}</a>
+                                {% else %}
+                                  <span class="badge badge-info">{{ port.port }} {{ port.service }}</span>
+                                {% endif %}
+                              {% endif %}
+                            {% endfor %}
+                            </div>
+                          {% else %}
+                            <p class="text-muted mb-0 small">No saved open ports yet.</p>
+                          {% endif %}
+                        </div>
+                        {% if client.client_tags %}
+                          <div class="network-device-tags mt-2" data-network-device-tags>
+                            {% for tag in client.client_tags %}<span class="badge badge-light border">{{ tag }}</span>{% endfor %}
+                          </div>
+                        {% else %}
+                          <div class="network-device-tags mt-2" data-network-device-tags></div>
+                        {% endif %}
+                        {% if client.client_notes %}<p class="text-muted small mb-0 mt-2" data-network-device-notes>{{ client.client_notes }}</p>{% else %}<p class="text-muted small mb-0 mt-2 d-none" data-network-device-notes></p>{% endif %}
+                        {% if client.observed_names %}<p class="text-muted small mb-0 mt-2">Names: {{ client.observed_names[:3] | map(attribute='name') | join(', ') }}</p>{% endif %}
+                        <p class="text-muted small mb-0 mt-2">{{ client.scan_note or client.signal_label or client.bssid or client.source or 'Persisted network client' }}</p>
+                      </div>
+                      {% if client.ip %}
+                        <div class="network-device-actions">
+                          <a class="btn btn-outline-info btn-sm" href="/clients/{{ client.ip|urlencode }}">Device profile</a>
+                          <a class="btn btn-outline-primary btn-sm" href="/port-scan?host={{ client.ip|urlencode }}">Port scan</a>
+                          <button class="btn btn-outline-secondary btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="1024" data-label="common port scan">Common ports</button>
+                          <button class="btn btn-outline-danger btn-sm" data-port-scan-quick data-host="{{ client.ip }}" data-start="1" data-end="65535" data-label="all-port scan">All ports</button>
+                          <div class="network-device-scan-status small text-muted" data-port-scan-quick-status></div>
+                          <div class="progress network-device-progress" data-port-scan-quick-progress>
+                            <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</div>
+                          </div>
+                          <form class="network-device-label-form" data-network-device-label-form data-interface="{{ network.interface }}" data-ssid="{{ network.ssid }}" data-bssid="{{ network.bssid or '' }}" data-identity="{{ client.mac or client.ip }}">
+                            <input class="form-control form-control-sm" name="label" placeholder="SSID label, e.g. Living room TV" value="{{ client.custom_label or '' }}">
+                            <button class="btn btn-outline-info btn-sm" type="submit">Save SSID label</button>
+                            <div class="network-device-label-status small text-muted" data-network-device-label-status></div>
+                          </form>
+                          <form class="network-device-notes-form" data-network-device-notes-form data-host="{{ client.ip }}">
+                            <input class="form-control form-control-sm" name="tags" placeholder="Tags, comma separated" value="{{ (client.client_tags or [])|join(', ') }}">
+                            <textarea class="form-control form-control-sm" name="notes" rows="2" placeholder="Device notes">{{ client.client_notes or '' }}</textarea>
+                            <button class="btn btn-outline-success btn-sm" type="submit">Save notes/tags</button>
+                            <div class="network-device-notes-status small text-muted" data-network-device-notes-status></div>
+                          </form>
+                        </div>
+                      {% else %}
+                        <span class="badge badge-secondary">No IP port scan</span>
+                      {% endif %}
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="wireless-network-grid network-device-card-grid" data-network-device-list></div>
+              <p class="text-muted mb-0" data-network-device-empty>No client devices have been discovered for this SSID/interface yet. Wireless packet observations or device scans can populate this section.</p>
+            {% endif %}
+          </div>
+        </article>
+        {% if network.disappeared_clients %}
+          <article class="card shadow-sm interface-address-card mt-3">
+            <div class="card-body">
+              <h2 class="interface-section-title">Recently Disappeared Devices</h2>
+              <p class="text-muted">These clients were previously seen on this SSID/interface but were not visible in the latest network detail observation.</p>
+              <div class="wireless-network-grid network-device-card-grid">
+                {% for client in network.disappeared_clients %}
+                  <article class="wireless-network-card network-device-card network-device-card-disappeared">
+                    <div class="wireless-network-main">
+                      <div>
+                        <h3 class="wireless-network-ssid mb-1">{{ client.display_name or client.ip or client.mac }}</h3>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-network-wired"></i> {{ client.ip or 'Unknown IP' }}</p>
+                        <p class="wireless-network-meta mb-0"><i class="fa-solid fa-fingerprint"></i> {{ client.mac or 'Unknown MAC' }}</p>
+                      </div>
+                      <div class="wireless-network-badges">
+                        <span class="badge badge-secondary">Recently disappeared</span>
+                        <span class="badge badge-light border">{{ client.network_known_state or 'Known' }}</span>
+                      </div>
+                    </div>
+                    <p class="text-muted small mb-0">Last seen on this network: {{ client.network_last_seen or 'unknown' }}</p>
+                  </article>
+                {% endfor %}
+              </div>
+            </div>
+          </article>
+        {% endif %}
+      </section>
+
+      <section class="tab-pane fade" id="network-ap-pane" role="tabpanel" aria-labelledby="network-ap-tab">
     <section class="card shadow-sm interface-extra-card mt-3">
       <div class="card-body">
         <h2 class="interface-section-title">AP Identity Hints</h2>
@@ -159,7 +341,13 @@
         {% endif %}
       </div>
     </section>
+      </section>
+    </div>
   </main>
+
+  {% if network.interface %}
+    <script src="/static/js/network_scan.js"></script>
+  {% endif %}
 
   {% include '_footer.html' %}
 </body>
