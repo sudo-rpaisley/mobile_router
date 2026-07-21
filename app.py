@@ -27,6 +27,8 @@ from services import persistence as persistence_service
 from services import oui as oui_service
 from services import labs as labs_service
 from services import reports as reports_service
+from services import alerts as alerts_service
+from services import evidence as evidence_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
     get_network_interfaces,
@@ -482,157 +484,30 @@ def inventory_key(device):
 
 
 def create_new_device_alert(device, source, interface=None):
-    """Record an unread alert for a newly observed inventory device."""
-    display_name = device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device'
-    device_identifier = device.get('mac') or device.get('bssid') or device.get('ip')
-    device_url = f"/clients/{quote(str(device_identifier))}" if device_identifier else None
-    alert = {
-        'id': uuid.uuid4().hex,
-        'device_id': device.get('id'),
-        'display_name': display_name,
-        'ip': device.get('ip'),
-        'mac': device.get('mac') or device.get('bssid'),
-        'manufacturer': device.get('manufacturer') or 'Unknown',
-        'device_url': device_url,
-        'source': source,
-        'interface': interface,
-        'created_at': time.time(),
-        'read': False,
-    }
-    with new_device_alerts_lock:
-        new_device_alerts.insert(0, alert)
-        del new_device_alerts[200:]
-    return alert
+    return alerts_service.create_new_device_alert(device, source, interface, new_device_alerts, new_device_alerts_lock)
 
 
 def create_grouped_device_alert(devices, source, interface=None):
-    """Record one unread alert for a batch of newly observed devices."""
-    devices = [dict(device) for device in devices or []]
-    alert = {
-        'id': uuid.uuid4().hex,
-        'alert_type': 'grouped-discovery',
-        'display_name': f"{len(devices)} new devices discovered",
-        'ip': None,
-        'mac': None,
-        'manufacturer': 'Multiple',
-        'device_url': '/inventory',
-        'source': source,
-        'interface': interface,
-        'created_at': time.time(),
-        'read': False,
-        'device_count': len(devices),
-        'devices': [
-            {
-                'id': device.get('id'),
-                'display_name': device.get('name') or device.get('hostname') or device.get('ssid') or device.get('ip') or device.get('mac') or 'Unknown device',
-                'ip': device.get('ip'),
-                'mac': device.get('mac') or device.get('bssid'),
-                'manufacturer': device.get('manufacturer') or 'Unknown',
-            }
-            for device in devices[:10]
-        ],
-    }
-    with new_device_alerts_lock:
-        new_device_alerts.insert(0, alert)
-        del new_device_alerts[200:]
-    return alert
-
+    return alerts_service.create_grouped_device_alert(devices, source, interface, new_device_alerts, new_device_alerts_lock)
 
 
 def evidence_records():
-    """Return evidence vault records with display labels."""
-    with evidence_vault_lock:
-        records = [dict(item) for item in evidence_vault]
-    for item in records:
-        item['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item.get('created_at', 0)))
-    return records
+    return evidence_service.evidence_records(evidence_vault, evidence_vault_lock)
 
 
 def create_evidence_record(title, category='note', source=None, device=None, notes=None, content=None, uploaded_file=None):
-    """Store a timestamped evidence record and optional uploaded file metadata."""
-    title = (title or '').strip()
-    if not title:
-        raise ValueError('Evidence title is required')
-    category = (category or 'note').strip().lower()
-    if category not in {'note', 'scan-output', 'capture', 'screenshot', 'artifact'}:
-        raise ValueError('Unsupported evidence category')
-
-    now = time.time()
-    record = {
-        'id': uuid.uuid4().hex,
-        'title': title,
-        'category': category,
-        'source': (source or '').strip(),
-        'device': (device or '').strip(),
-        'notes': (notes or '').strip(),
-        'content': (content or '').strip(),
-        'created_at': now,
-        'file_name': None,
-        'file_size': None,
-        'download_url': None,
-    }
-
-    if uploaded_file and uploaded_file.filename:
-        os.makedirs(EVIDENCE_DIR, exist_ok=True)
-        safe_name = secure_filename(uploaded_file.filename)
-        if not safe_name:
-            raise ValueError('Uploaded file name is not valid')
-        stored_name = f"{record['id']}-{safe_name}"
-        path = os.path.join(EVIDENCE_DIR, stored_name)
-        uploaded_file.save(path)
-        record.update({
-            'file_name': safe_name,
-            'stored_name': stored_name,
-            'file_size': os.path.getsize(path),
-            'download_url': f"/evidence/{record['id']}/download",
-        })
-
-    with evidence_vault_lock:
-        evidence_vault.insert(0, record)
-        del evidence_vault[500:]
-    save_runtime_state('evidence')
-    return dict(record)
+    return evidence_service.create_evidence_record(
+        title, category, source, device, notes, content, uploaded_file,
+        EVIDENCE_DIR, evidence_vault, evidence_vault_lock, save_runtime_state, secure_filename,
+    )
 
 
 def evidence_as_csv(records):
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Title', 'Category', 'Source', 'Device', 'File', 'Created', 'Notes', 'Content'])
-    for item in records:
-        writer.writerow([
-            item.get('title'),
-            item.get('category'),
-            item.get('source'),
-            item.get('device'),
-            item.get('file_name'),
-            item.get('created_at_label'),
-            item.get('notes'),
-            item.get('content'),
-        ])
-    return output.getvalue()
+    return evidence_service.evidence_as_csv(records)
 
 
 def evidence_as_markdown(records):
-    lines = ['# Evidence Vault', '']
-    if not records:
-        lines.append('_No evidence records captured yet._')
-    for item in records:
-        lines.extend([
-            f"## {item.get('title', 'Untitled')}",
-            f"- Category: {item.get('category') or 'note'}",
-            f"- Source: {item.get('source') or '—'}",
-            f"- Device: {item.get('device') or '—'}",
-            f"- Created: {item.get('created_at_label')}",
-        ])
-        if item.get('file_name'):
-            lines.append(f"- File: {item.get('file_name')} ({item.get('file_size') or 0} bytes)")
-        if item.get('notes'):
-            lines.extend(['', item.get('notes')])
-        if item.get('content'):
-            lines.extend(['', '```', item.get('content'), '```'])
-        lines.append('')
-    return '\n'.join(lines)
-
+    return evidence_service.evidence_as_markdown(records)
 
 
 def set_interface_power_state(interface_name, desired_state, interface_type=None):
@@ -865,17 +740,12 @@ def bluetooth_detail_fields(device):
     return fields
 
 def alert_records():
-    """Return alert records with display labels."""
-    with new_device_alerts_lock:
-        records = [dict(alert) for alert in new_device_alerts]
-    for alert in records:
-        alert['created_at_label'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(alert.get('created_at', 0)))
-    return records
+    return alerts_service.alert_records(new_device_alerts, new_device_alerts_lock)
 
 
 def unread_alert_count():
-    with new_device_alerts_lock:
-        return len([alert for alert in new_device_alerts if not alert.get('read')])
+    return alerts_service.unread_alert_count(new_device_alerts, new_device_alerts_lock)
+
 
 def record_inventory_devices(devices, source, interface=None):
     merged = inventory_service.merge_devices(
@@ -2671,21 +2541,15 @@ def alerts_status():
 
 @app.route('/alerts/<alert_id>/read', methods=['POST'])
 def mark_alert_read(alert_id):
-    with new_device_alerts_lock:
-        for alert in new_device_alerts:
-            if alert['id'] == alert_id:
-                alert['read'] = True
-                unread_count = len([item for item in new_device_alerts if not item.get('read')])
-                return json_success(alert=dict(alert), unread_count=unread_count)
+    alert, unread_count = alerts_service.mark_alert_read(alert_id, new_device_alerts, new_device_alerts_lock)
+    if alert:
+        return json_success(alert=alert, unread_count=unread_count)
     return json_error('Alert not found', 404)
 
 
 @app.route('/alerts/read-all', methods=['POST'])
 def mark_all_alerts_read():
-    with new_device_alerts_lock:
-        for alert in new_device_alerts:
-            alert['read'] = True
-    return json_success(unread_count=0)
+    return json_success(unread_count=alerts_service.mark_all_alerts_read(new_device_alerts, new_device_alerts_lock))
 
 
 @app.route('/port-scan')
