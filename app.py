@@ -44,6 +44,7 @@ from scripts.logging_config import configure_logging
 from scripts.networkScan import (
     active_scan,
     passive_scan,
+    packet_passive_scan,
     classify_scan_results,
     get_mac_by_ip,
     get_ip_by_mac,
@@ -1943,13 +1944,6 @@ def parse_int(value, error_message):
         raise ValueError(error_message) from exc
 
 
-def _ping_command(host, count=4, timeout=2):
-    return diagnostics_service.ping_command(host, count=count, timeout=timeout, os_name=os.name)
-
-
-def _parse_ping_output(output):
-    return diagnostics_service.parse_ping_output(output)
-
 
 def run_ping_check(host, count=4, timeout=2):
     return diagnostics_service.run_ping_check(host, count, timeout, parse_int, subprocess, ping_history)
@@ -1966,9 +1960,6 @@ def _run_text_command(command, timeout=5):
         return {'command': command, 'returncode': 1, 'output': str(exc)}
     return {'command': command, 'returncode': result.returncode, 'output': (result.stdout or result.stderr or '').strip()}
 
-
-def _parse_route_lines(output):
-    return diagnostics_service.parse_route_lines(output)
 
 
 def build_route_diagnostics(target=None):
@@ -2337,75 +2328,6 @@ def passive_observation_summary(interface=None, _locked=False):
         return {iface: build(iface, analytics) for iface, analytics in passive_observation_analytics.items()}
 
 
-def packet_passive_scan(interface, timeout=2, packet_limit=250):
-    """Capture passive packet metadata for devices visible on an interface.
-
-    This stores only endpoint metadata (MAC/IP/vendor/protocol), never packet
-    payloads. It is intentionally bounded by a short timeout and packet count so
-    live passive monitoring can run continuously without unbounded memory growth.
-    """
-    interface = (interface or '').strip()
-    if not interface:
-        raise ValueError('Missing interface')
-    timeout = max(1, min(parse_int(timeout, 'Capture window must be an integer'), 10))
-    packet_limit = max(25, min(parse_int(packet_limit, 'Packet limit must be an integer'), 1000))
-    try:
-        from scapy.all import ARP, Ether, IP, IPv6, sniff
-    except ImportError as exc:
-        raise RuntimeError('Live packet capture requires scapy to be installed') from exc
-
-    devices = {}
-
-    def remember(mac=None, ip=None, protocol=None):
-        mac = (mac or '').strip().lower()
-        ip = (ip or '').strip()
-        if not mac and not ip:
-            return
-        if mac in {'ff:ff:ff:ff:ff:ff', '00:00:00:00:00:00'}:
-            return
-        key = mac or ip
-        entry = devices.setdefault(key, {
-            'ip': ip or 'Unknown',
-            'mac': mac or 'Unknown',
-            'hostname': 'Unknown',
-            'manufacturer': lookup_manufacturer(mac) if mac else 'Unknown',
-            'source': 'packet-observation',
-            'protocols': [],
-        })
-        if ip and entry.get('ip') in {'Unknown', ''}:
-            entry['ip'] = ip
-        if mac and entry.get('mac') in {'Unknown', ''}:
-            entry['mac'] = mac
-            entry['manufacturer'] = lookup_manufacturer(mac)
-        if protocol and protocol not in entry['protocols']:
-            entry['protocols'].append(protocol)
-
-    def observe(packet):
-        try:
-            src_mac = packet[Ether].src if packet.haslayer(Ether) else None
-            if packet.haslayer(ARP):
-                arp = packet[ARP]
-                remember(arp.hwsrc, arp.psrc, 'arp')
-                remember(arp.hwdst, arp.pdst, 'arp')
-            elif packet.haslayer(IP):
-                remember(src_mac, packet[IP].src, 'ipv4')
-            elif packet.haslayer(IPv6):
-                remember(src_mac, packet[IPv6].src, 'ipv6')
-            elif src_mac:
-                remember(src_mac, None, 'ethernet')
-        except Exception:
-            return
-
-    capture_filter = 'arp or udp port 67 or udp port 68 or udp port 5353 or udp port 1900 or icmp6'
-    try:
-        sniff(iface=interface, store=False, prn=observe, timeout=timeout, count=packet_limit, filter=capture_filter)
-    except Exception as exc:
-        message = str(exc).lower()
-        if 'filter' not in message and 'libpcap' not in message and 'bpf' not in message:
-            raise
-        sniff(iface=interface, store=False, prn=observe, timeout=timeout, count=packet_limit)
-    return list(devices.values())
-
 def passive_monitor_snapshot(interface=None):
     """Return passive ARP-cache monitor state for one interface or all interfaces."""
     with passive_monitor_lock:
@@ -2428,7 +2350,7 @@ def _passive_monitor_worker(interface):
         try:
             if mode == 'packet':
                 source = 'passive-packet-monitor'
-                raw_devices = packet_passive_scan(interface, timeout=interval, packet_limit=250)
+                raw_devices = packet_passive_scan(interface, timeout=interval, packet_limit=250, manufacturer_lookup=lookup_manufacturer)
             else:
                 source = 'passive-monitor'
                 raw_devices = passive_scan(interface)

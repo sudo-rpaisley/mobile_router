@@ -1902,6 +1902,10 @@ class RouteSmokeTest(unittest.TestCase):
             'interval': '5',
         })
         self.assertFalse(response.get_json()['status']['enabled'])
+        for _ in range(20):
+            if not app_module.passive_monitor_jobs.get('wlan0', {}).get('thread_alive'):
+                break
+            time.sleep(0.05)
 
     @patch('app.packet_passive_scan')
     def test_passive_monitor_packet_mode_records_packet_observations(self, packet_scan):
@@ -1940,6 +1944,10 @@ class RouteSmokeTest(unittest.TestCase):
             'mode': 'packet',
         })
         self.assertFalse(response.get_json()['status']['enabled'])
+        for _ in range(20):
+            if not app_module.passive_monitor_jobs.get('wlan0', {}).get('thread_alive'):
+                break
+            time.sleep(0.05)
 
     @patch('app.passive_scan')
     def test_passive_scan_records_passive_only_analytics_and_quiet_devices(self, passive):
