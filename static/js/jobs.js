@@ -36,7 +36,11 @@ $(document).ready(function () {
       const openPorts = job.open_ports && job.open_ports.length
         ? `<div class="port-service-grid mt-2">${job.open_ports.map((port) => {
             const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
-            return `<div class="port-service-card"><div class="port-service-number">${escapeHtml(port)}</div><div><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p></div></div>`;
+            const portLabel = `${escapeHtml(port)}/tcp`;
+            const portHtml = info.web_url ? `<a href="${escapeHtml(info.web_url)}" target="_blank" rel="noopener noreferrer">${portLabel}</a>` : portLabel;
+            const serviceUrl = `/clients/${encodeURIComponent(job.host)}/services/${encodeURIComponent(port)}`;
+            const preview = info.web_url ? `<div class="web-service-hover-preview">${info.http_thumbnail_url ? `<img src="${escapeHtml(info.http_thumbnail_url)}" alt="Preview of ${escapeHtml(info.web_url)}">` : ''}<strong>${escapeHtml(info.http_title || info.web_url)}</strong><span>Status: ${escapeHtml(info.http_status || 'not captured')}${info.http_server ? ` · ${escapeHtml(info.http_server)}` : ''}</span><small>Click the port circle to open the page; click the card body for service details.</small></div>` : '';
+            return `<div class="port-service-card" data-web-service-preview><div class="port-service-number">${portHtml}</div><a class="port-service-card-link" href="${serviceUrl}"><strong>${escapeHtml(info.service)}</strong><p>${escapeHtml(info.description)}</p>${info.http_title ? `<small>HTTP title: ${escapeHtml(info.http_title)}</small>` : ''}</a>${preview}</div>`;
           }).join('')}</div>`
         : '';
       const cancel = job.cancelable

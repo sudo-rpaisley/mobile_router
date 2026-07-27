@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Advanced Diagnostics{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Advanced network tools</p>
+    <h1 class="page-title">Advanced Diagnostics</h1>
+    <p class="page-subtitle">Track VLAN segmentation, egress behavior, iperf3 baselines, SNMP inventory, and IPv6 assessment context.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <form id="advanced-diagnostics-form" class="theme-form">
+      <div>
+        <label class="theme-label" for="interface-select-AdvancedDiagnostics">Interface</label>
+        {% set selectId = 'AdvancedDiagnostics' %}
+        {% include '_adapters-list.html' %}
+      </div>
+      <input class="form-control" id="vlan-ssid" placeholder="SSID for VLAN note">
+      <input class="form-control" id="vlan-id" placeholder="VLAN ID">
+      <textarea class="form-control" id="vlan-notes" placeholder="Segmentation validation notes"></textarea>
+      <div class="theme-actions">
+        <button id="vlan-discovery-btn" class="btn btn-primary">VLAN Context</button>
+        <button id="egress-diagnostics-btn" class="btn btn-secondary">Egress Diagnostics</button>
+      </div>
+    </form>
+    <hr>
+    <form id="performance-form" class="theme-form">
+      <input class="form-control" id="iperf-host" placeholder="iperf3 server host">
+      <input class="form-control" id="iperf-port" placeholder="5201">
+      <input class="form-control" id="iperf-seconds" placeholder="5">
+      <button id="iperf-client-btn" class="btn btn-outline-primary">Run iperf3 Client</button>
+    </form>
+    <hr>
+    <form id="snmp-form" class="theme-form">
+      <input class="form-control" id="snmp-host" placeholder="SNMP host">
+      <input class="form-control" id="snmp-community" placeholder="Community / credential">
+      <label class="form-check deauth-lab-confirm"><input type="checkbox" id="snmp-authorized" class="form-check-input"> <span>Authorized SNMP inventory check</span></label>
+      <button id="snmp-discovery-btn" class="btn btn-outline-primary">Collect SNMP Metadata</button>
+    </form>
+    <hr>
+    <form id="ipv6-form" class="theme-form">
+      <input class="form-control" id="ipv6-host" placeholder="IPv6 host or hostname">
+      <input class="form-control" id="ipv6-ports" placeholder="Optional ports, e.g. 22,443">
+      <button id="ipv6-assessment-btn" class="btn btn-outline-primary">Run IPv6 Assessment</button>
+    </form>
+    <div id="advanced-diagnostics-results" class="theme-results"></div>
+  </div>
+</section>
+<script src="/static/js/advanced-diagnostics.js"></script>
+{% endblock %}

@@ -53,6 +53,26 @@
       </table>
     </div>
   </article>
+
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">OUI Vendor Lookup</h2>
+      <table class="table table-sm theme-table">
+        <tbody>
+          <tr><th>Status</th><td>{% if capabilities.oui_database.loaded %}<span class="badge badge-success">Loaded</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td></tr>
+          <tr><th>Entries</th><td>{{ capabilities.oui_database.entries }}</td></tr>
+          <tr><th>Coverage</th><td>{% if capabilities.oui_database.coverage == 'full' %}<span class="badge badge-success">Full IEEE-sized database</span>{% else %}<span class="badge badge-warning">Compact fallback database</span>{% endif %}</td></tr>
+          <tr><th>Fallback entries</th><td>{{ capabilities.oui_database.fallback_entries }}</td></tr>
+          <tr><th>Database path</th><td><code>{{ capabilities.oui_database.path or 'Built-in fallback only' }}</code></td></tr>
+        </tbody>
+      </table>
+      {% if capabilities.oui_database.needs_refresh %}<div class="alert alert-warning py-2">The bundled OUI file is compact; unknown vendors may simply be missing from the local file. Refresh the full IEEE list with <code>python scripts/update_oui_db.py</code> on a network that can reach IEEE.</div>{% endif %}
+      <div class="theme-actions">
+        <button class="btn btn-outline-primary update-oui-db-btn" data-confirm="download">Download full OUI database</button>
+      </div>
+      <p class="text-muted small mb-0">Refresh the local database with <code>python scripts/update_oui_db.py</code> or the button above when internet access is available.</p>
+    </div>
+  </article>
 </section>
 
 
@@ -171,7 +191,20 @@
               <div class="text-muted small">{{ dependency.details }}</div>
             </td>
             <td>{% if dependency.available %}<span class="badge badge-success">Available</span>{% else %}<span class="badge badge-warning">Unavailable</span>{% endif %}</td>
-            <td><code>{{ dependency.install_hint }}</code></td>
+            <td>
+              <code>{{ dependency.install_hint }}</code>
+              {% if dependency.install_action %}
+                <div class="mt-2">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary install-host-dependency-btn"
+                    data-dependency="{{ dependency.id }}"
+                    data-confirm="install">
+                    Install for me
+                  </button>
+                </div>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

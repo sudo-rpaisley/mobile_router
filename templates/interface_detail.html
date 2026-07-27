@@ -71,7 +71,7 @@
               <li><span class="badge badge-success">Phone pairing</span> Pair phones and request authorised contacts, call history, messages, controls, media, or tethering from this page</li>
               <li><span class="badge badge-info">Host tools</span> Actions require BlueZ bluetoothctl or busctl support</li>
             {% else %}
-              <li><span class="badge badge-primary">Available</span> Active/passive network scans from the Scan page</li>
+              <li><span class="badge badge-primary">Available</span> Active, passive, and comprehensive network scans from this interface page</li>
               <li><span class="badge badge-info">Available</span> Port scan and traceroute workflows</li>
             {% endif %}
             {% if not interface.addresses %}
@@ -207,6 +207,32 @@
           </div>
         </article>
       {% endif %}
+
+      {% if interface.interface_type != 'Bluetooth' and interface.interface_type != 'Loopback' %}
+        <article class="card shadow-sm interface-network-scan-card">
+          <div class="card-body">
+            <h2 class="interface-section-title">Network Device Scan</h2>
+            <p class="text-muted">Scan this interface for local devices using active ARP, passive observations, ARP/neighbor cache data, optional ping sweeps, and service discovery metadata.</p>
+            <form id="scan-form" class="theme-form interface-scan-form">
+              <select id="interface-select-Scan" class="d-none" aria-hidden="true">
+                <option value="{{ interface.name }}" selected>{{ interface.name }}</option>
+              </select>
+              <div class="theme-actions">
+                <button id="comprehensive-scan-btn" class="btn btn-success">Comprehensive Device Scan</button>
+                <button id="active-scan-btn" class="btn btn-primary">Active Scan</button>
+                <button id="passive-scan-btn" class="btn btn-secondary">Passive Scan</button>
+              </div>
+              <div class="form-group mb-0">
+                <label for="sweep-cidr">Optional ping sweep CIDR</label>
+                <input id="sweep-cidr" class="form-control" placeholder="192.168.1.0/28 (optional, max 64 hosts)">
+              </div>
+              <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-passive" class="form-check-input" checked> <span>Include passive observations</span></label>
+              <label class="form-check deauth-lab-confirm"><input type="checkbox" id="include-services" class="form-check-input" checked> <span>Include mDNS, UPnP/SSDP, and LLDP/CDP service discovery</span></label>
+            </form>
+            <div id="scan-results" class="theme-results"></div>
+          </div>
+        </article>
+      {% endif %}
     </section>
 
     <div id="wlans-{{ interface.name }}" class="wlans" data-interface="{{ interface.name }}"></div>
@@ -219,6 +245,9 @@
     <script src="/static/js/wireless-adapters.js"></script>
   {% elif interface.interface_type == 'Bluetooth' %}
     <script src="/static/js/bluetooth-scan.js"></script>
+  {% endif %}
+  {% if interface.interface_type != 'Bluetooth' and interface.interface_type != 'Loopback' %}
+    <script src="/static/js/network_scan.js"></script>
   {% endif %}
 
   {% include '_footer.html' %}

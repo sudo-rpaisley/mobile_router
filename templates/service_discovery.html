@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block title %}Service Discovery{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Local discovery</p>
+    <h1 class="page-title">Service Discovery</h1>
+    <p class="page-subtitle">Discover mDNS/Bonjour services, UPnP/SSDP devices, and LLDP/CDP neighbors visible on authorized local networks.</p>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <form id="service-discovery-form" class="theme-form">
+      <div>
+        <label class="theme-label" for="interface-select-ServiceDiscovery">Interface</label>
+        {% set selectId = 'ServiceDiscovery' %}
+        {% include '_adapters-list.html' %}
+      </div>
+      <div class="theme-actions">
+        <button id="mdns-discovery-btn" class="btn btn-primary">Discover mDNS/Bonjour</button>
+        <button id="upnp-discovery-btn" class="btn btn-secondary">Discover UPnP/SSDP</button>
+        <button id="neighbor-discovery-btn" class="btn btn-outline-primary">Discover LLDP/CDP</button>
+      </div>
+    </form>
+    <div class="alert alert-secondary mt-3" role="note">
+      Service metadata discovered here is merged into the device inventory when an address is available.
+    </div>
+    <div id="service-discovery-results" class="theme-results"></div>
+  </div>
+</section>
+<script src="/static/js/service-discovery.js"></script>
+{% endblock %}
