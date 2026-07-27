@@ -1,0 +1,25 @@
+<div class="card m-3 pineap-lab-card" style="width: 18rem;">
+  <h5 class="card-title">PineAP-Style Lab Console</h5>
+  <p class="card-text">Run authorized recon, campaign, handshake, and module workflows with scoped logging and no credential collection.</p>
+  <form class="form-inline" method="post" action="/pineap-lab">
+      <select class="form-control mb-2" id="Pineap-Action" name="action" aria-label="PineAP-style action">
+        <option value="recon">Recon scan</option>
+        <option value="campaign">Campaign plan</option>
+        <option value="handshake">Handshake workflow</option>
+        <option value="module">Module queue</option>
+      </select>
+      <input type="text" class="form-control mb-2" id="Pineap-SSID" placeholder="Lab SSID for campaign/module" maxlength="32" name="ssid">
+      <input type="text" class="form-control mb-2" id="Pineap-BSSID" placeholder="Optional lab BSSID" name="bssid">
+      <input type="number" class="form-control mb-2" id="Pineap-Channel" placeholder="Optional channel" min="1" max="196" name="channel">
+      <input type="text" class="form-control mb-2" id="Pineap-Modules" name="modules" value="recon,detection-report" aria-label="Modules">
+      <textarea class="form-control mb-2" id="Pineap-Notes" name="notes" rows="3" placeholder="Campaign objective and scope notes"></textarea>
+      <label class="form-check deauth-lab-confirm">
+        <input class="form-check-input" type="checkbox" id="Pineap-Authorized" name="authorized">
+        <span class="form-check-label">I confirm this campaign is limited to an authorized isolated lab.</span>
+      </label>
+      {% set selectId = 'Pineap' %}
+      {% include '_adapters-list.html' %}
+      <button id="Pineap-Submit" class="btn btn-primary mb-2">Run Lab Workflow</button>
+      <div id="Pineap-Status" class="evil-twin-status small" aria-live="polite"></div>
+  </form>
+</div>
