@@ -2652,6 +2652,7 @@ def roadmap_page():
     )
 
 
+app.config['TRAIN_CONTROLLER_EVIDENCE_RECORDER'] = create_evidence_record
 register_blueprints(app, current_context)
 
 

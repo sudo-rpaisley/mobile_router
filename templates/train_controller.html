@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="page-hero train-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">DCC-EX workspace</p>
+    <h1 class="page-title">Train Controller</h1>
+    <p class="page-subtitle">Manage command stations and send bounded DCC commands over TCP. Hardware actions always require authorization.</p>
+  </div>
+  <div class="train-mode" aria-label="Operating mode">
+    <button class="btn btn-sm mode-button {% if train_state.mode == 'full' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-mode="full">Full</button>
+    <button class="btn btn-sm mode-button {% if train_state.mode == 'training' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-mode="training">Training</button>
+  </div>
+</section>
+
+{% if not train_capability.available %}
+<div class="alert alert-warning" role="status"><strong>Hardware unavailable.</strong> {{ train_capability.reason }}</div>
+{% endif %}
+<div id="train-status" class="alert d-none" role="status" aria-live="polite"></div>
+
+<nav class="train-tabs nav nav-tabs" role="tablist" aria-label="Train Controller sections">
+  {% for id, label in [('overview','Overview'),('controllers','Controllers'),('controls','Controls'),('automation','Discovery'),('diagnostics','Diagnostics'),('history','History'),('guide','Training Guide')] %}
+  <a class="nav-item nav-link {% if loop.first %}active{% endif %}" data-toggle="tab" href="#train-{{ id }}" role="tab">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+<div class="tab-content train-workspace" data-mode="{{ train_state.mode }}">
+  <section id="train-overview" class="tab-pane fade show active" role="tabpanel">
+    <div class="train-grid">
+      <article class="theme-card card"><div class="card-body"><h2>Layout status</h2><p class="display-4 mb-0">{{ train_state.controllers|length }}</p><p>configured controller{{ '' if train_state.controllers|length == 1 else 's' }}</p></div></article>
+      <article class="theme-card card"><div class="card-body"><h2>Capability</h2><span class="badge badge-{{ 'success' if train_capability.available else 'secondary' }}">{{ 'Ready' if train_capability.available else 'Unavailable' }}</span><p class="mt-2 mb-0">{{ train_capability.protocol }} on port {{ train_capability.port }}</p></div></article>
+      <article class="theme-card card"><div class="card-body"><h2>Safety boundary</h2><p>Only setup, discovery, emergency stop, locomotive functions, stop, and bounded throttle commands are generated server-side. Raw commands are not accepted.</p></div></article>
+    </div>
+    <article class="theme-card card mt-3"><div class="card-body"><h2>Layout identity</h2><form id="layout-name-form" class="form-inline"><label class="sr-only" for="layout-name">Layout name</label><input id="layout-name" name="name" maxlength="80" class="form-control mr-2" value="{{ train_state.layout_name }}" placeholder="Layout name"><button class="btn btn-primary" type="submit">Save layout name</button></form></div></article>
+  </section>
+
+  <section id="train-controllers" class="tab-pane fade" role="tabpanel">
+    <article class="theme-card card training-target" data-training-step="add_controller"><div class="card-body">
+      <h2>Add controller</h2>
+      <form id="add-controller-form" class="form-row align-items-end">
+        <div class="col-md-4 form-group"><label for="controller-name">Name</label><input id="controller-name" name="name" maxlength="80" class="form-control" placeholder="Main command station"></div>
+        <div class="col-md-4 form-group"><label for="controller-ip">IP address</label><input id="controller-ip" name="ip" class="form-control" required placeholder="192.0.2.10"></div>
+        <div class="col-md-4 form-group"><button class="btn btn-primary" type="submit">Add controller</button></div>
+      </form>
+    </div></article>
+    {% if not train_state.controllers %}<div class="train-empty">No controllers configured. Add an authorized command station above.</div>{% endif %}
+    {% for controller in train_state.controllers %}
+    <article class="theme-card card"><div class="card-body"><div class="train-card-heading"><div><h2>{{ controller.name or 'Controller' }}</h2><code>{{ controller.ip }}</code></div><button class="btn btn-outline-danger btn-sm delete-controller" data-controller="{{ controller.id }}">Delete</button></div>
+      <form class="edit-controller-form form-row mt-3" data-controller="{{ controller.id }}"><div class="col-md-4"><label>Name<input name="name" maxlength="80" class="form-control" value="{{ controller.name }}"></label></div><div class="col-md-4"><label>IP address<input name="ip" class="form-control" value="{{ controller.ip }}" required></label></div><div class="col-md-4 align-self-end"><button class="btn btn-outline-primary" type="submit">Save controller</button></div></form>
+      <form class="add-engine-form form-row mt-3 training-target" data-controller="{{ controller.id }}" data-training-step="add_engine">
+        <div class="col-md-3"><input name="address" type="number" min="1" max="10239" class="form-control" required placeholder="DCC address"></div>
+        <div class="col-md-5"><input name="name" maxlength="80" class="form-control" placeholder="Engine name"></div>
+        <div class="col-md-4"><button class="btn btn-secondary" type="submit">Add engine</button></div>
+      </form>
+    </div></article>
+    {% endfor %}
+  </section>
+
+  <section id="train-controls" class="tab-pane fade" role="tabpanel">
+    {% if not train_state.controllers %}<div class="train-empty">Controls appear after a controller and engine have been configured.</div>{% endif %}
+    {% for controller in train_state.controllers %}
+    <details class="theme-card card train-controller-panel" data-controller="{{ controller.id }}" open><summary class="card-header train-controller-summary">{{ controller.name or controller.ip }} <span>Show or hide controls</span></summary><div class="card-body"><div class="train-card-heading"><h2 class="sr-only">{{ controller.name or controller.ip }}</h2><div>
+      <button class="btn btn-secondary train-action training-target" data-training-step="setup" data-controller="{{ controller.id }}" data-action="setup" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Setup track</button>
+      <button class="btn btn-danger train-action" data-controller="{{ controller.id }}" data-action="emergency_stop" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Emergency stop</button>
+    </div></div>
+    <div class="train-grid mt-3">
+    {% for engine in controller.engines %}<div class="train-engine card"><div class="card-body"><div class="train-card-heading"><div><h3>{{ engine.name or 'Engine' }}</h3><small>Address {{ engine.address }}</small></div><button class="btn btn-link text-danger delete-engine" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}">Remove</button></div><form class="edit-engine-form form-row mb-3" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}"><div class="col-5"><input name="name" maxlength="80" class="form-control form-control-sm" value="{{ engine.name }}" aria-label="Engine name"></div><div class="col-3"><input name="address" type="number" min="1" max="10239" class="form-control form-control-sm" value="{{ engine.address }}" required aria-label="DCC address"></div><div class="col-4"><button class="btn btn-sm btn-outline-primary" type="submit">Save engine</button></div></form>
+      <label for="speed-{{ engine.id }}">Speed <output id="speed-output-{{ engine.id }}">0</output></label>
+      <input id="speed-{{ engine.id }}" class="custom-range train-speed training-target" data-training-step="throttle" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}" type="range" min="-127" max="127" value="0" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>
+      <div class="theme-actions"><button class="btn btn-primary train-action training-target" data-training-step="lights" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}" data-action="lights" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Lights</button><button class="btn btn-secondary train-action" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}" data-action="horn" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Horn</button><button class="btn btn-danger train-action" data-controller="{{ controller.id }}" data-engine="{{ engine.id }}" data-action="stop" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Stop</button></div>
+    </div></div>{% else %}<div class="train-empty">No engines assigned to this controller.</div>{% endfor %}
+    </div></div></details>{% endfor %}
+  </section>
+
+  <section id="train-automation" class="tab-pane fade" role="tabpanel"><article class="theme-card card"><div class="card-body"><h2>Engine discovery</h2><p>Run a cancellable background scan across a bounded DCC cab range, then choose which discovered engines to import.</p>{% for controller in train_state.controllers %}<div class="train-scan-row"><label for="scan-max-{{ controller.id }}">{{ controller.name or controller.ip }} maximum address</label><input id="scan-max-{{ controller.id }}" class="form-control train-scan-maximum" type="number" min="1" max="127" value="127"><button class="btn btn-primary train-scan" data-controller="{{ controller.id }}" {% if not train_capability.available %}disabled title="{{ train_capability.reason }}"{% endif %}>Start scan</button></div>{% else %}<div class="train-empty">Add a controller before scanning.</div>{% endfor %}<div id="train-scan-job" class="mt-3" aria-live="polite"></div></div></article></section>
+  <section id="train-diagnostics" class="tab-pane fade" role="tabpanel"><article class="theme-card card"><div class="card-body"><h2>Integration diagnostics</h2><dl><dt>Hardware actions</dt><dd>{{ 'Enabled' if train_capability.available else 'Disabled' }}</dd><dt>Protocol</dt><dd>{{ train_capability.protocol }}</dd><dt>TCP port</dt><dd>{{ train_capability.port }}</dd><dt>Unavailable reason</dt><dd>{{ train_capability.reason or 'None' }}</dd></dl><p>Connectivity errors are reported without pretending that a command succeeded.</p></div></article></section>
+  <section id="train-history" class="tab-pane fade" role="tabpanel"><article class="theme-card card"><div class="card-body"><div class="train-card-heading"><h2>Action history</h2><button id="save-train-evidence" class="btn btn-outline-primary" {% if not train_state.history %}disabled{% endif %}>Save to Evidence Vault</button></div>{% if train_state.history %}<div class="table-responsive"><table class="table"><thead><tr><th>Time</th><th>Action</th><th>Status</th></tr></thead><tbody>{% for item in train_state.history %}<tr><td>{{ item.at }}</td><td>{{ item.action }}</td><td>{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="train-empty">No hardware actions have been recorded.</div>{% endif %}</div></article></section>
+  <section id="train-guide" class="tab-pane fade" role="tabpanel"><article class="theme-card card"><div class="card-body"><h2>Training Guide</h2><p>Training mode unlocks one safe task at a time. Progress is stored on the server and survives refreshes.</p><ol class="training-list">{% for id, title, description in training_steps %}<li class="{% if id in train_state.training.completed %}complete{% endif %}"><strong>{{ title }}</strong><span>{{ description }}</span></li>{% endfor %}</ol><h3>Trophies</h3>{% if train_state.training.trophies %}{% for trophy in train_state.training.trophies %}<span class="badge badge-warning mr-1">🏆 {{ trophy }}</span>{% endfor %}{% else %}<p>No trophies earned yet.</p>{% endif %}</div></article></section>
+</div>
+<script>window.trainControllerState = {{ train_state|tojson }}; window.trainControllerCapability = {{ train_capability|tojson }};</script>
+<script src="/static/js/train-controller.js"></script>
+{% endblock %}
