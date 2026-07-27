@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Social Engineering{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Authorized research records</p>
+    <h1 class="page-title">Social Engineering Profiles</h1>
+    <p class="page-subtitle">Keep contact and public-profile references together for consent-based awareness exercises.</p>
+  </div>
+</section>
+
+<div class="alert alert-warning" role="alert">
+  Store only information you are authorized to retain. Profiles remain local to this Mobile Router instance; this page does not contact, scrape, or message anyone.
+</div>
+
+<section class="theme-grid social-profile-layout">
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Add an individual</h2>
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <form class="theme-form" method="post" action="/social-engineering/profiles">
+        <div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" value="{{ (form_values or {}).get('full_name', '') }}" required></div>
+        <div class="form-group"><label for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ (form_values or {}).get('email', '') }}"></div>
+        <div class="form-group"><label for="facebook_url">Facebook link</label><input class="form-control" type="url" id="facebook_url" name="facebook_url" placeholder="https://facebook.com/..." value="{{ (form_values or {}).get('facebook_url', '') }}"></div>
+        <div class="form-group"><label for="linkedin_url">LinkedIn link</label><input class="form-control" type="url" id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/..." value="{{ (form_values or {}).get('linkedin_url', '') }}"></div>
+        <div class="form-group"><label for="notes">Notes</label><textarea class="form-control" id="notes" name="notes" rows="5" maxlength="10000">{{ (form_values or {}).get('notes', '') }}</textarea></div>
+        <button class="btn btn-primary" type="submit">Save profile</button>
+      </form>
+    </div>
+  </article>
+
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Saved profiles</h2>
+      {% if profiles %}
+        <div class="social-profile-list">
+          {% for profile in profiles %}
+            <a class="social-profile-row" href="/social-engineering/profiles/{{ profile.id }}">
+              <span><strong>{{ profile.full_name }}</strong>{% if profile.email %}<small>{{ profile.email }}</small>{% endif %}</span>
+              <i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted">No individual profiles have been saved yet.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endblock %}

@@ -14,6 +14,59 @@ from services.oui import lookup_manufacturer, oui_database_status
 class RouteSmokeTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+        app_module.social_profiles.clear()
+
+    def test_social_engineering_profile_crud(self):
+        response = self.client.get('/social-engineering')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Social Engineering Profiles', response.data)
+        self.assertIn(b'Store only information you are authorized to retain', response.data)
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post('/social-engineering/profiles', data={
+                'full_name': 'Alex Example',
+                'email': 'alex@example.com',
+                'facebook_url': 'facebook.com/alex.example',
+                'linkedin_url': 'https://linkedin.com/in/alex-example',
+                'notes': 'Authorized awareness exercise participant.',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-create')
+        profile_id = next(iter(app_module.social_profiles))
+        profile = app_module.social_profiles[profile_id]
+        self.assertEqual(profile['facebook_url'], 'https://facebook.com/alex.example')
+
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Alex Example', response.data)
+        self.assertIn(b'alex@example.com', response.data)
+        self.assertIn(b'Open LinkedIn profile', response.data)
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
+                **profile, 'full_name': 'Alex Updated',
+            })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['full_name'], 'Alex Updated')
+        save_state.assert_called_once_with('social-profile-update')
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/delete')
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn(profile_id, app_module.social_profiles)
+        save_state.assert_called_once_with('social-profile-delete')
+
+    def test_social_profile_rejects_invalid_contact_fields(self):
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Unsafe Link',
+            'email': 'safe@example.com',
+            'facebook_url': 'javascript:alert(1)',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Facebook link must be a valid HTTP or HTTPS URL', response.data)
+        self.assertFalse(app_module.social_profiles)
 
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')

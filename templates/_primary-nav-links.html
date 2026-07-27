@@ -29,12 +29,13 @@
 </div>
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Device Inventory', 'Alerts', 'Reports', 'Evidence Vault'] %}active{% endif %}" data-toggle="dropdown">Records</a>
+  <a href="#" class="nav-link {% if title in ['Device Inventory', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] %}active{% endif %}" data-toggle="dropdown">Records</a>
   <div class="dropdown-menu">
     <a href="/inventory" class="dropdown-item {% if title == 'Device Inventory' %}active{% endif %}">Inventory</a>
     <a href="/alerts" class="dropdown-item {% if title == 'Alerts' %}active{% endif %}">Alerts</a>
     <a href="/reports" class="dropdown-item {% if title == 'Reports' %}active{% endif %}">Reports</a>
     <a href="/evidence" class="dropdown-item {% if title == 'Evidence Vault' %}active{% endif %}">Evidence Vault</a>
+    <a href="/social-engineering" class="dropdown-item {% if title == 'Social Engineering' %}active{% endif %}">Social Engineering</a>
   </div>
 </div>
 

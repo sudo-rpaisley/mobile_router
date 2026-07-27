@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file
+from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for
 from flask_socketio import SocketIO
 import os
 import json
@@ -29,6 +29,7 @@ from services import labs as labs_service
 from services import reports as reports_service
 from services import alerts as alerts_service
 from services import evidence as evidence_service
+from services import social_profiles as social_profile_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
     get_network_interfaces,
@@ -79,6 +80,8 @@ pineap_lab_runs = []
 pineap_lab_lock = threading.Lock()
 handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
+social_profiles = {}
+social_profiles_lock = threading.Lock()
 ping_history = []
 vlan_segmentation_notes = []
 watched_clients = set()
@@ -109,6 +112,8 @@ def runtime_state_snapshot():
         evidence = [dict(item) for item in evidence_vault]
     with client_timelines_lock:
         timelines = {key: [dict(item) for item in value] for key, value in client_timelines.items()}
+    with social_profiles_lock:
+        profiles = {key: dict(value) for key, value in social_profiles.items()}
     return {
         'device_inventory': inventory,
         'new_device_alerts': alerts,
@@ -123,6 +128,7 @@ def runtime_state_snapshot():
         'evil_twin_lab_runs': evil_twin_lab_runs,
         'pineap_lab_runs': pineap_lab_runs,
         'handshake_lab_records': handshake_lab_records,
+        'social_profiles': profiles,
     }
 
 
@@ -159,6 +165,8 @@ def load_runtime_state():
     evil_twin_lab_runs.extend(state.get('evil_twin_lab_runs') or [])
     pineap_lab_runs.extend(state.get('pineap_lab_runs') or [])
     handshake_lab_records.extend(state.get('handshake_lab_records') or [])
+    with social_profiles_lock:
+        social_profiles.update(state.get('social_profiles') or {})
     return state
 
 
@@ -2613,6 +2621,64 @@ def about():
 @app.route('/contact')
 def contact_page():
     return render_template('contact.html', title='Contact', **current_context())
+
+
+@app.route('/social-engineering')
+def social_engineering_page():
+    return render_template(
+        'social_engineering.html',
+        title='Social Engineering',
+        profiles=social_profile_service.list_profiles(social_profiles, social_profiles_lock),
+        **current_context(),
+    )
+
+
+@app.route('/social-engineering/profiles', methods=['POST'])
+def create_social_profile():
+    try:
+        profile = social_profile_service.create_profile(request.form, social_profiles, social_profiles_lock)
+    except ValueError as exc:
+        return render_template(
+            'social_engineering.html', title='Social Engineering',
+            profiles=social_profile_service.list_profiles(social_profiles, social_profiles_lock),
+            form_values=request.form, error=str(exc), **current_context(),
+        ), 400
+    save_runtime_state('social-profile-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile['id']))
+
+
+@app.route('/social-engineering/profiles/<profile_id>')
+def social_profile_detail(profile_id):
+    profile = social_profile_service.get_profile(profile_id, social_profiles, social_profiles_lock)
+    if not profile:
+        return render_template('social_profile_detail.html', title='Profile not found', profile=None, **current_context()), 404
+    return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, **current_context())
+
+
+@app.route('/social-engineering/profiles/<profile_id>/update', methods=['POST'])
+def update_social_profile(profile_id):
+    try:
+        profile = social_profile_service.update_profile(
+            profile_id, request.form, social_profiles, social_profiles_lock,
+        )
+    except KeyError:
+        return json_error('Profile not found', 404)
+    except ValueError as exc:
+        current = social_profile_service.get_profile(profile_id, social_profiles, social_profiles_lock)
+        return render_template(
+            'social_profile_detail.html', title=(current or {}).get('full_name', 'Profile'),
+            profile={**(current or {}), **request.form}, error=str(exc), **current_context(),
+        ), 400
+    save_runtime_state('social-profile-update')
+    return redirect(url_for('social_profile_detail', profile_id=profile['id']))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/delete', methods=['POST'])
+def delete_social_profile(profile_id):
+    if not social_profile_service.delete_profile(profile_id, social_profiles, social_profiles_lock):
+        return json_error('Profile not found', 404)
+    save_runtime_state('social-profile-delete')
+    return redirect(url_for('social_engineering_page'))
 
 
 @app.route('/submit-contact', methods=['POST'])

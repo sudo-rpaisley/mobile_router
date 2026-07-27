@@ -562,3 +562,38 @@ html[data-theme="dark"] .roadmap-completed-note {
 html[data-theme="dark"] .evidence-output {
   background: rgba(255, 255, 255, 0.08);
 }
+
+.social-profile-layout {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  align-items: start;
+}
+
+.social-profile-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.social-profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--theme-border, #dee2e6);
+  border-radius: 0.65rem;
+}
+
+.social-profile-row span,
+.social-profile-row small {
+  display: block;
+}
+
+.social-profile-details {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr;
+  gap: 0.65rem 1rem;
+}
+
+.social-profile-notes {
+  white-space: pre-wrap;
+}

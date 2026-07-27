@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% if not profile %}
+  <section class="page-hero"><div class="page-hero-copy"><h1 class="page-title">Profile not found</h1><p class="page-subtitle">This profile may have been removed.</p></div></section>
+  <a class="btn btn-primary" href="/social-engineering">Back to profiles</a>
+{% else %}
+  <section class="page-hero">
+    <div class="page-hero-copy"><p class="page-kicker">Individual profile</p><h1 class="page-title">{{ profile.full_name }}</h1><p class="page-subtitle">Review and update authorized contact references.</p></div>
+    <div class="theme-actions"><a class="btn btn-outline-primary" href="/social-engineering">All profiles</a></div>
+  </section>
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  <section class="theme-grid social-profile-layout">
+    <article class="theme-card card"><div class="card-body">
+      <h2 class="theme-section-title">Contact references</h2>
+      <dl class="social-profile-details">
+        <dt>Email</dt><dd>{% if profile.email %}<a href="mailto:{{ profile.email }}">{{ profile.email }}</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
+        <dt>Facebook</dt><dd>{% if profile.facebook_url %}<a href="{{ profile.facebook_url }}" target="_blank" rel="noopener noreferrer">Open Facebook profile</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
+        <dt>LinkedIn</dt><dd>{% if profile.linkedin_url %}<a href="{{ profile.linkedin_url }}" target="_blank" rel="noopener noreferrer">Open LinkedIn profile</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
+      </dl>
+      {% if profile.notes %}<h3 class="theme-subsection-title">Notes</h3><p class="social-profile-notes">{{ profile.notes }}</p>{% endif %}
+    </div></article>
+    <article class="theme-card card"><div class="card-body">
+      <h2 class="theme-section-title">Edit profile</h2>
+      <form class="theme-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/update">
+        <div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" value="{{ profile.full_name }}" required></div>
+        <div class="form-group"><label for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ profile.email }}"></div>
+        <div class="form-group"><label for="facebook_url">Facebook link</label><input class="form-control" type="url" id="facebook_url" name="facebook_url" value="{{ profile.facebook_url }}"></div>
+        <div class="form-group"><label for="linkedin_url">LinkedIn link</label><input class="form-control" type="url" id="linkedin_url" name="linkedin_url" value="{{ profile.linkedin_url }}"></div>
+        <div class="form-group"><label for="notes">Notes</label><textarea class="form-control" id="notes" name="notes" rows="5" maxlength="10000">{{ profile.notes }}</textarea></div>
+        <button class="btn btn-primary" type="submit">Update profile</button>
+      </form>
+      <hr>
+      <form method="post" action="/social-engineering/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this profile?');">
+        <button class="btn btn-outline-danger" type="submit">Delete profile</button>
+      </form>
+    </div></article>
+  </section>
+{% endif %}
+{% endblock %}
