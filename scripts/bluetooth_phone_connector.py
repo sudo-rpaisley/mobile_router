@@ -118,6 +118,9 @@ class BluetoothPhoneHelperClient:
         response = self._request("set_advertising", **payload)
         return {
             "enabled": response.get("enabled") is True,
+            "display_name": response.get("display_name"),
+            "service_uuid": response.get("service_uuid"),
+            "app_scoped_pairing": response.get("app_scoped_pairing") is True,
             "message": str(response.get("message") or "Bluetooth advertising updated."),
         }
 

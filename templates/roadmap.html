@@ -23,6 +23,12 @@
     <article class="theme-card card roadmap-card">
       <div class="card-body">
         <h2 class="theme-section-title">{{ section.title }}</h2>
+        {% if section.source_url %}
+          <p class="roadmap-source mb-3">
+            <i class="fa-brands fa-github" aria-hidden="true"></i>
+            <a href="{{ section.source_url }}" target="_blank" rel="noopener noreferrer">View source repository</a>
+          </p>
+        {% endif %}
         <ul class="theme-list roadmap-list">
           {% for item in section['items'] %}
             <li>
