@@ -1,5 +1,48 @@
 # Mobile Router Web Interface
 
+## Train Controller integration
+
+Mobile Router includes a native, tabbed DCC-EX workspace at `/train-controller`.
+It supports editable layout, controller, and engine rosters; setup and emergency
+commands; bounded throttles; lights and horn functions; cancellable background
+engine discovery with selective roster import; collapsible controller cards;
+action history and Evidence Vault capture; and a persistent guided Training mode
+with trophies. This is a clean-room Python implementation; it does not embed or
+run the source Node app.
+
+Hardware commands are disabled by default. After connecting Mobile Router to an
+authorized model-railway network, enable them with:
+
+```bash
+export TRAIN_CONTROLLER_ENABLED=1
+export TRAIN_CONTROLLER_PORT=2560       # optional
+export TRAIN_CONTROLLER_TIMEOUT=2       # optional, seconds
+```
+
+State is stored in `instance/train_controller.json`. Raw DCC commands are never
+accepted from the browser: supported commands are validated and generated in the
+service module, and every hardware request requires authorization confirmation.
+
+### Source compatibility inventory
+
+The inspected source is an Express/EJS app that stores layouts, TCP controller
+addresses, names, and engine rosters in `config.json`. It provides setup,
+emergency stop, cab scanning (1–127), speed/direction, lights, horn, stop, inline
+roster management, themes, status toasts, and controller-card collapse state. Its
+runtime dependencies are Express and EJS; TCP uses Node's standard library. Its
+two Mocha/Supertest tests cover layout naming and basic roster CRUD. The attached
+checkout contains no license file or package license field, so no source code or
+assets were copied.
+
+The protocol behavior and roster model were suitable to reimplement. Express
+routes, EJS templates, CSS/theme code, browser persistence, and unimplemented
+“Red Team” buttons required replacement with Mobile Router's Flask, Jinja,
+Bootstrap, capability, safety, history, and server-persistence patterns. The
+DCC-EX TCP endpoint is LAN/hardware-specific, unauthenticated, unencrypted, and
+can move physical trains; deploy only on an authorized trusted network. Node
+dependencies are not added. Hardware behavior is mock-tested and never simulated
+in the UI.
+
 This project exposes a Flask based web UI for interacting with network interfaces and
 running basic red team tools. It is intended for local use while experimenting with
 wireless and wired adapters.
