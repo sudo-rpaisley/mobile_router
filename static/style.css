@@ -568,12 +568,17 @@ html[data-theme="dark"] .evidence-output {
   align-items: start;
 }
 
-.social-profile-list {
+.social-profile-card-grid,
+.social-device-grid,
+.social-credential-grid {
   display: grid;
   gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 }
 
-.social-profile-row {
+.social-profile-card,
+.social-device-card,
+.social-credential-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -581,12 +586,21 @@ html[data-theme="dark"] .evidence-output {
   padding: 0.85rem 1rem;
   border: 1px solid var(--theme-border, #dee2e6);
   border-radius: 0.65rem;
+  background: var(--theme-card-bg, #fff);
 }
 
-.social-profile-row span,
-.social-profile-row small {
+.social-profile-card span,
+.social-profile-card small {
   display: block;
 }
+
+.social-profile-card { flex-direction: column; align-items: flex-start; }
+.social-profile-avatar { font-size: 2.5rem; }
+.social-device-card, .social-credential-card { align-items: flex-start; }
+.social-device-card h3, .social-credential-card h3 { font-size: 1rem; margin: 0 0 0.35rem; }
+.social-device-icon { font-size: 2rem; color: var(--theme-link, #2f80ed); }
+.social-inline-form { margin-bottom: 1.25rem; }
+.credential-secret { font-family: "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 
 .social-profile-details {
   display: grid;

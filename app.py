@@ -2652,6 +2652,8 @@ def social_profile_detail(profile_id):
     profile = social_profile_service.get_profile(profile_id, social_profiles, social_profiles_lock)
     if not profile:
         return render_template('social_profile_detail.html', title='Profile not found', profile=None, **current_context()), 404
+    for device in profile.get('devices', []):
+        device['inventory_match'] = find_inventory_device(device.get('mac')) if device.get('mac') else None
     return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, **current_context())
 
 
@@ -2679,6 +2681,56 @@ def delete_social_profile(profile_id):
         return json_error('Profile not found', 404)
     save_runtime_state('social-profile-delete')
     return redirect(url_for('social_engineering_page'))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/credentials', methods=['POST'])
+def add_social_profile_credential(profile_id):
+    try:
+        social_profile_service.add_credential(profile_id, request.form, social_profiles, social_profiles_lock)
+    except KeyError:
+        return json_error('Profile not found', 404)
+    except ValueError as exc:
+        return json_error(str(exc))
+    save_runtime_state('social-profile-credential-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/credentials/<credential_id>/delete', methods=['POST'])
+def delete_social_profile_credential(profile_id, credential_id):
+    try:
+        removed = social_profile_service.delete_credential(profile_id, credential_id, social_profiles, social_profiles_lock)
+    except KeyError:
+        return json_error('Profile not found', 404)
+    if not removed:
+        return json_error('Credential not found', 404)
+    save_runtime_state('social-profile-credential-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/devices', methods=['POST'])
+def add_social_profile_device(profile_id):
+    try:
+        social_profile_service.add_device(
+            profile_id, request.form, social_profiles, social_profiles_lock, normalize_mac,
+        )
+    except KeyError:
+        return json_error('Profile not found', 404)
+    except ValueError as exc:
+        return json_error(str(exc))
+    save_runtime_state('social-profile-device-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/devices/<device_id>/delete', methods=['POST'])
+def delete_social_profile_device(profile_id, device_id):
+    try:
+        removed = social_profile_service.delete_device(profile_id, device_id, social_profiles, social_profiles_lock)
+    except KeyError:
+        return json_error('Profile not found', 404)
+    if not removed:
+        return json_error('Device not found', 404)
+    save_runtime_state('social-profile-device-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
 @app.route('/submit-contact', methods=['POST'])

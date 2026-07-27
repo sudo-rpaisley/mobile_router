@@ -43,6 +43,39 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'alex@example.com', response.data)
         self.assertIn(b'Open LinkedIn profile', response.data)
 
+        app_module.device_inventory['mac:ac:16:2d:a2:71:9e'] = {
+            'id': 'mac:ac:16:2d:a2:71:9e', 'mac': 'ac:16:2d:a2:71:9e',
+            'display_name': 'Discovered iPhone',
+        }
+        self.addCleanup(app_module.device_inventory.pop, 'mac:ac:16:2d:a2:71:9e', None)
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/devices', data={
+                'name': 'iPhone 13', 'device_type': 'iphone',
+                'mac': 'AC-16-2D-A2-71-9E', 'notes': 'Personal phone',
+            })
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-device-create')
+        device = app_module.social_profiles[profile_id]['devices'][0]
+        self.assertEqual(device['mac'], 'ac:16:2d:a2:71:9e')
+        self.assertEqual(device['icon'], 'fa-mobile-alt')
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
+                'label': 'Apple ID', 'website_url': 'appleid.apple.com',
+                'device_id': device['id'], 'username': 'alex@example.com',
+                'secret': 'Swordfish!',
+            })
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-credential-create')
+
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertIn(b'iPhone 13', response.data)
+        self.assertIn(b'Discovered iPhone', response.data)
+        self.assertIn(b'Apple ID', response.data)
+        self.assertIn(b'credential-reveal', response.data)
+        self.assertIn(b'\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2', response.data)
+        self.assertIn(b'social-profiles.js', response.data)
+
         with patch('app.save_runtime_state') as save_state:
             response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
                 **profile, 'full_name': 'Alex Updated',

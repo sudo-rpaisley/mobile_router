@@ -35,11 +35,11 @@
     <div class="card-body">
       <h2 class="theme-section-title">Saved profiles</h2>
       {% if profiles %}
-        <div class="social-profile-list">
+        <div class="social-profile-card-grid">
           {% for profile in profiles %}
-            <a class="social-profile-row" href="/social-engineering/profiles/{{ profile.id }}">
-              <span><strong>{{ profile.full_name }}</strong>{% if profile.email %}<small>{{ profile.email }}</small>{% endif %}</span>
-              <i class="fas fa-chevron-right" aria-hidden="true"></i>
+            <a class="social-profile-card" href="/social-engineering/profiles/{{ profile.id }}">
+              <i class="fas fa-user-circle social-profile-avatar" aria-hidden="true"></i>
+              <span><strong>{{ profile.full_name }}</strong>{% if profile.email %}<small>{{ profile.email }}</small>{% endif %}<small>{{ profile.devices|length }} device(s) · {{ profile.credentials|length }} credential(s)</small></span>
             </a>
           {% endfor %}
         </div>

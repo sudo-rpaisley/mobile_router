@@ -38,5 +38,49 @@
       </form>
     </div></article>
   </section>
+
+  <section class="theme-card card"><div class="card-body">
+    <h2 class="theme-section-title">Devices</h2>
+    <p class="text-muted">Add personally associated devices and optionally match them to a MAC address discovered in Device Inventory.</p>
+    <form class="theme-form social-inline-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/devices">
+      <div class="form-group"><label for="device_name">Device name</label><input class="form-control" id="device_name" name="name" placeholder="iPhone 13" required></div>
+      <div class="form-group"><label for="device_type">Icon/type</label><select class="form-control" id="device_type" name="device_type"><option value="iphone">iPhone</option><option value="android">Android phone</option><option value="laptop">Laptop</option><option value="desktop">Desktop</option><option value="tablet">Tablet</option><option value="router">Router</option><option value="iot">IoT device</option><option value="other">Other</option></select></div>
+      <div class="form-group"><label for="device_mac">MAC address (optional)</label><input class="form-control" id="device_mac" name="mac" placeholder="ac:16:2d:a2:71:9e"></div>
+      <div class="form-group"><label for="device_notes">Notes</label><input class="form-control" id="device_notes" name="notes"></div>
+      <button class="btn btn-primary" type="submit">Add device</button>
+    </form>
+    {% if profile.devices %}<div class="social-device-grid">
+      {% for device in profile.devices %}<article class="social-device-card">
+        <i class="fas {{ device.icon }} social-device-icon" aria-hidden="true"></i>
+        <div><h3>{{ device.name }}</h3><p>{{ device.device_type|title }}{% if device.mac %} · <code>{{ device.mac }}</code>{% endif %}</p>
+          {% if device.inventory_match %}<a class="badge badge-success" href="/clients/{{ device.mac }}">Matched: {{ device.inventory_match.display_name or device.inventory_match.name or device.inventory_match.ip or device.mac }}</a>{% elif device.mac %}<span class="badge badge-secondary">Not currently discovered</span>{% endif %}
+          {% if device.notes %}<p class="text-muted mb-0">{{ device.notes }}</p>{% endif %}
+        </div>
+        <form method="post" action="/social-engineering/profiles/{{ profile.id }}/devices/{{ device.id }}/delete"><button class="btn btn-sm btn-outline-danger" aria-label="Delete {{ device.name }}" type="submit"><i class="fas fa-trash"></i></button></form>
+      </article>{% endfor %}
+    </div>{% endif %}
+  </div></section>
+
+  <section class="theme-card card"><div class="card-body">
+    <h2 class="theme-section-title">Website and device credentials</h2>
+    <div class="alert alert-warning">Secrets are saved in the local ignored runtime-state file. Limit access to the machine and repository working directory.</div>
+    <form class="theme-form social-inline-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/credentials">
+      <div class="form-group"><label for="credential_label">Label</label><input class="form-control" id="credential_label" name="label" placeholder="Apple ID or router login" required></div>
+      <div class="form-group"><label for="credential_url">Website</label><input class="form-control" type="url" id="credential_url" name="website_url" placeholder="https://example.com"></div>
+      <div class="form-group"><label for="credential_device">Device</label><select class="form-control" id="credential_device" name="device_id"><option value="">No linked device</option>{% for device in profile.devices %}<option value="{{ device.id }}">{{ device.name }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label for="credential_username">Username/email</label><input class="form-control" id="credential_username" name="username" autocomplete="off"></div>
+      <div class="form-group"><label for="credential_secret">Password/secret</label><input class="form-control" type="password" id="credential_secret" name="secret" autocomplete="new-password"></div>
+      <button class="btn btn-primary" type="submit">Save credential</button>
+    </form>
+    {% if profile.credentials %}<div class="social-credential-grid">
+      {% for credential in profile.credentials %}<article class="social-credential-card">
+        <div><h3>{{ credential.label }}</h3>{% if credential.website_url %}<a href="{{ credential.website_url }}" target="_blank" rel="noopener noreferrer">{{ credential.website_url }}</a>{% endif %}<p class="mb-1"><strong>Username:</strong> {{ credential.username or 'Not provided' }}</p>
+          <p class="mb-0"><strong>Secret:</strong> <span class="credential-secret" data-secret="{{ credential.secret }}">••••••••</span> <button class="btn btn-sm btn-outline-secondary credential-reveal" type="button" aria-label="Reveal secret" aria-pressed="false"><i class="fas fa-eye"></i></button></p>
+        </div>
+        <form method="post" action="/social-engineering/profiles/{{ profile.id }}/credentials/{{ credential.id }}/delete"><button class="btn btn-sm btn-outline-danger" aria-label="Delete {{ credential.label }}" type="submit"><i class="fas fa-trash"></i></button></form>
+      </article>{% endfor %}
+    </div>{% endif %}
+  </div></section>
+  <script src="/static/js/social-profiles.js"></script>
 {% endif %}
 {% endblock %}
