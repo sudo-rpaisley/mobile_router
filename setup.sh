@@ -5,10 +5,10 @@ set -e
 PYTHON_BIN="python3"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYLIB_DIR="$PROJECT_DIR/pylibs"
-# Allow keeping the OUI database outside the repository
-OUI_DIR="$(dirname "$(dirname "$PROJECT_DIR")")/oui"
+# Keep setup aligned with the app and Capabilities UI by using the
+# canonical downloader target consumed by services.oui/interfaceTools.
+OUI_DIR="$PROJECT_DIR/oui"
 OUI_DB="$OUI_DIR/oui_db.csv"
-OUI_URL="https://standards-oui.ieee.org/oui/oui.csv"
 
 echo "==> Checking for $PYTHON_BIN..."
 
@@ -38,13 +38,8 @@ echo "==> Ensuring OUI database is available..."
 mkdir -p "$OUI_DIR"
 if [ ! -f "$OUI_DB" ] || find "$OUI_DB" -mtime +30 >/dev/null 2>&1; then
     echo "Downloading latest OUI database..."
-    if command -v wget >/dev/null 2>&1; then
-        wget -q -O "$OUI_DB" "$OUI_URL"
-    elif command -v curl >/dev/null 2>&1; then
-        curl -L -o "$OUI_DB" "$OUI_URL"
-    else
-        echo "Neither wget nor curl is installed. Cannot download OUI database." >&2
-        exit 1
+    if ! "$PYTHON_BIN" "$PROJECT_DIR/scripts/update_oui_db.py"; then
+        echo "Unable to refresh OUI database; continuing with bundled/fallback entries." >&2
     fi
 fi
 
