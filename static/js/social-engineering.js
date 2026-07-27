@@ -1,0 +1,20 @@
+(function () {
+  'use strict';
+  function addRow(type) {
+    var list = document.querySelector('[data-repeat-list="' + type + '"]');
+    var row = list.querySelector('.social-repeat-row').cloneNode(true);
+    row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+    list.appendChild(row);
+  }
+  document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-add-email]')) addRow('emails');
+    if (event.target.closest('[data-add-social]')) addRow('social');
+    var remove = event.target.closest('[data-remove-row]');
+    if (remove) {
+      var row = remove.closest('.social-repeat-row');
+      var list = row.parentElement;
+      if (list.querySelectorAll('.social-repeat-row').length > 1) row.remove();
+      else row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+    }
+  });
+}());

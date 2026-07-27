@@ -612,3 +612,16 @@ html[data-theme="dark"] .evidence-output {
 .social-profile-notes {
   white-space: pre-wrap;
 }
+
+.social-contact-card { min-height: 12rem; }
+.social-profile-photo { width: 4rem; height: 4rem; border-radius: 50%; object-fit: cover; }
+.social-profile-photo-large { width: 6rem; height: 6rem; }
+.social-profile-avatar-large { font-size: 6rem; }
+.social-profile-heading { display: flex; align-items: center; gap: 1.25rem; }
+.social-profile-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 1rem; }
+.social-repeat-row { display: grid; grid-template-columns: minmax(7rem, .5fr) minmax(12rem, 1.5fr) auto; gap: .5rem; margin-bottom: .5rem; }
+.social-link-list { display: grid; gap: .5rem; }
+.social-link-list a { display: flex; align-items: center; gap: .75rem; padding: .75rem; border: 1px solid var(--theme-border, #dee2e6); border-radius: .65rem; }
+.social-link-list span, .social-link-list small { display: block; overflow-wrap: anywhere; }
+.social-profile-delete { margin-top: 1rem; text-align: right; }
+@media (max-width: 576px) { .social-repeat-row { grid-template-columns: 1fr auto; } .social-repeat-row select, .social-repeat-row input:first-child { grid-column: 1 / -1; } }

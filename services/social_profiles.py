@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 
 EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-PROFILE_FIELDS = ('full_name', 'email', 'facebook_url', 'linkedin_url', 'notes')
+PROFILE_FIELDS = ('full_name', 'organization', 'job_title', 'phone', 'notes')
 DEVICE_ICONS = {
     'iphone': 'fa-mobile-alt',
     'android': 'fa-mobile-alt',
@@ -41,10 +41,39 @@ def validate_profile(values):
         raise ValueError('Full name is required.')
     if len(profile['full_name']) > 160:
         raise ValueError('Full name must be 160 characters or fewer.')
-    if profile['email'] and not EMAIL_RE.fullmatch(profile['email']):
-        raise ValueError('Email must be a valid address.')
-    profile['facebook_url'] = _clean_url(profile['facebook_url'], 'Facebook link')
-    profile['linkedin_url'] = _clean_url(profile['linkedin_url'], 'LinkedIn link')
+    getlist = values.getlist if hasattr(values, 'getlist') else lambda key: values.get(key, []) if isinstance(values.get(key, []), list) else [values.get(key, '')]
+    email_labels = getlist('email_label')
+    email_values = getlist('email_value')
+    emails = []
+    for index, raw_email in enumerate(email_values):
+        email = str(raw_email or '').strip()
+        if not email:
+            continue
+        if not EMAIL_RE.fullmatch(email):
+            raise ValueError(f'Email #{index + 1} must be a valid address.')
+        emails.append({'label': str(email_labels[index] if index < len(email_labels) else 'Email').strip()[:40] or 'Email', 'value': email})
+    legacy_email = str(values.get('email') or '').strip()
+    if legacy_email and not emails:
+        if not EMAIL_RE.fullmatch(legacy_email):
+            raise ValueError('Email must be a valid address.')
+        emails.append({'label': 'Email', 'value': legacy_email})
+    social_platforms = getlist('social_platform')
+    social_urls = getlist('social_url')
+    social_links = []
+    for index, raw_url in enumerate(social_urls):
+        if not str(raw_url or '').strip():
+            continue
+        platform = str(social_platforms[index] if index < len(social_platforms) else 'Website').strip()[:40] or 'Website'
+        social_links.append({'platform': platform, 'url': _clean_url(raw_url, f'{platform} link')})
+    for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')):
+        legacy_url = str(values.get(key) or '').strip()
+        if legacy_url and not any(link['platform'] == platform for link in social_links):
+            social_links.append({'platform': platform, 'url': _clean_url(legacy_url, f'{platform} link')})
+    profile['emails'] = emails
+    profile['email'] = emails[0]['value'] if emails else ''
+    profile['social_links'] = social_links
+    profile['facebook_url'] = next((link['url'] for link in social_links if link['platform'] == 'Facebook'), '')
+    profile['linkedin_url'] = next((link['url'] for link in social_links if link['platform'] == 'LinkedIn'), '')
     if len(profile['notes']) > 10000:
         raise ValueError('Notes must be 10,000 characters or fewer.')
     return profile
@@ -56,6 +85,11 @@ def list_profiles(store, lock):
     for profile in profiles:
         profile.setdefault('credentials', [])
         profile.setdefault('devices', [])
+        profile.setdefault('emails', [{'label': 'Email', 'value': profile['email']}] if profile.get('email') else [])
+        profile.setdefault('social_links', [
+            {'platform': platform, 'url': profile.get(key)}
+            for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
+        ])
     return sorted(profiles, key=lambda profile: profile.get('updated_at', 0), reverse=True)
 
 
@@ -67,6 +101,11 @@ def get_profile(profile_id, store, lock):
         result = dict(profile)
         result.setdefault('credentials', [])
         result.setdefault('devices', [])
+        result.setdefault('emails', [{'label': 'Email', 'value': result['email']}] if result.get('email') else [])
+        result.setdefault('social_links', [
+            {'platform': platform, 'url': result.get(key)}
+            for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if result.get(key)
+        ])
         return result
 
 

@@ -1,60 +1,33 @@
 {% extends 'base.html' %}
-
 {% block title %}Social Engineering{% endblock %}
-
 {% block content %}
 <section class="page-hero">
-  <div class="page-hero-copy">
-    <p class="page-kicker">Authorized research records</p>
-    <h1 class="page-title">Social Engineering Profiles</h1>
-    <p class="page-subtitle">Keep contact and public-profile references together for consent-based awareness exercises.</p>
-  </div>
+  <div class="page-hero-copy"><p class="page-kicker">Authorized contact records</p><h1 class="page-title">People</h1><p class="page-subtitle">A private contact book for people, accounts, devices, and authorized research notes.</p></div>
+  <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#new-profile-modal"><i class="fas fa-user-plus"></i> New individual</button>
 </section>
+<div class="alert alert-warning" role="alert">Store only information you are authorized to retain. Profiles remain private to your account.</div>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 
-<div class="alert alert-warning" role="alert">
-  Store only information you are authorized to retain. Profiles remain local to this Mobile Router instance; this page does not contact, scrape, or message anyone.
-</div>
-
-<section class="theme-grid social-profile-layout">
-  <article class="theme-card card">
-    <div class="card-body">
-      <h2 class="theme-section-title">Add an individual</h2>
-      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
-      <form class="theme-form" method="post" action="/social-engineering/profiles">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" value="{{ (form_values or {}).get('full_name', '') }}" required></div>
-        <div class="form-group"><label for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ (form_values or {}).get('email', '') }}"></div>
-        <div class="form-group"><label for="facebook_url">Facebook link</label><input class="form-control" type="url" id="facebook_url" name="facebook_url" placeholder="https://facebook.com/..." value="{{ (form_values or {}).get('facebook_url', '') }}"></div>
-        <div class="form-group"><label for="linkedin_url">LinkedIn link</label><input class="form-control" type="url" id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/..." value="{{ (form_values or {}).get('linkedin_url', '') }}"></div>
-        <div class="form-group"><label for="notes">Notes</label><textarea class="form-control" id="notes" name="notes" rows="5" maxlength="10000">{{ (form_values or {}).get('notes', '') }}</textarea></div>
-        <button class="btn btn-primary" type="submit">Save profile</button>
-      </form>
-    </div>
-  </article>
-
-  <article class="theme-card card">
-    <div class="card-body">
-      <h2 class="theme-section-title">Saved profiles</h2>
-      {% if profiles %}
-        <div class="social-profile-card-grid">
-          {% for profile in profiles %}
-            <a class="social-profile-card" href="/social-engineering/profiles/{{ profile.id }}">
-              <i class="fas fa-user-circle social-profile-avatar" aria-hidden="true"></i>
-              <span><strong>{{ profile.full_name }}</strong>{% if profile.email %}<small>{{ profile.email }}</small>{% endif %}<small>{{ profile.devices|length }} device(s) · {{ profile.credentials|length }} credential(s)</small></span>
-            </a>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="text-muted">No individual profiles have been saved yet.</p>
-      {% endif %}
-    </div>
-  </article>
-</section>
-
-{% if social_user.role == 'admin' and social_audit %}
 <section class="theme-card card"><div class="card-body">
-  <h2 class="theme-section-title">Recent security activity</h2>
-  <div class="table-responsive"><table class="table theme-table"><thead><tr><th>Action</th><th>User</th><th>Profile</th></tr></thead><tbody>{% for item in social_audit %}<tr><td>{{ item.action }}</td><td>{{ item.username }}</td><td>{{ item.profile_id or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="inventory-table-header"><h2 class="theme-section-title">My contacts</h2><span class="badge badge-primary">{{ profiles|length }}</span></div>
+  {% if profiles %}<div class="social-profile-card-grid">
+    {% for profile in profiles %}<a class="social-profile-card social-contact-card" href="/social-engineering/profiles/{{ profile.id }}">
+      {% if profile.photo_filename %}<img class="social-profile-photo" src="/social-engineering/profiles/{{ profile.id }}/photo" alt="">{% else %}<i class="fas fa-user-circle social-profile-avatar" aria-hidden="true"></i>{% endif %}
+      <span><strong>{{ profile.full_name }}</strong>{% if profile.organization or profile.job_title %}<small>{{ profile.job_title }}{% if profile.organization and profile.job_title %} at {% endif %}{{ profile.organization }}</small>{% endif %}{% if profile.emails %}<small>{{ profile.emails[0].value }}</small>{% endif %}<small>{{ profile.devices|length }} device(s) · {{ profile.credentials|length }} credential(s)</small></span>
+    </a>{% endfor %}
+  </div>{% else %}<div class="theme-empty-state"><i class="fas fa-address-book"></i><p>No contacts yet.</p><button class="btn btn-primary" type="button" data-toggle="modal" data-target="#new-profile-modal">Add your first individual</button></div>{% endif %}
 </div></section>
-{% endif %}
+
+{% if social_user.role == 'admin' and social_audit %}<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Recent security activity</h2><div class="table-responsive"><table class="table theme-table"><thead><tr><th>Action</th><th>User</th><th>Profile</th></tr></thead><tbody>{% for item in social_audit %}<tr><td>{{ item.action }}</td><td>{{ item.username }}</td><td>{{ item.profile_id or '—' }}</td></tr>{% endfor %}</tbody></table></div></div></section>{% endif %}
+
+<div class="modal fade" id="new-profile-modal" tabindex="-1" role="dialog" aria-labelledby="new-profile-title" aria-hidden="true"><div class="modal-dialog modal-lg" role="document"><div class="modal-content theme-card"><form method="post" action="/social-engineering/profiles" enctype="multipart/form-data">
+  <div class="modal-header"><h2 class="modal-title" id="new-profile-title">New individual</h2><button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>
+  <div class="modal-body theme-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="social-profile-editor-grid"><div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" required></div><div class="form-group"><label for="profile_photo">Profile picture</label><input class="form-control-file" id="profile_photo" name="profile_photo" type="file" accept="image/jpeg,image/png,image/gif,image/webp"></div><div class="form-group"><label for="organization">Organization</label><input class="form-control" id="organization" name="organization"></div><div class="form-group"><label for="job_title">Job title</label><input class="form-control" id="job_title" name="job_title"></div><div class="form-group"><label for="phone">Phone</label><input class="form-control" id="phone" name="phone" type="tel"></div></div>
+    <h3 class="theme-subsection-title">Email addresses</h3><div data-repeat-list="emails"><div class="social-repeat-row"><select class="form-control" name="email_label"><option>Personal</option><option>Work</option><option>School</option><option>Other</option></select><input class="form-control" type="email" name="email_value" placeholder="name@example.com"><button class="btn btn-outline-danger" type="button" data-remove-row aria-label="Remove email"><i class="fas fa-times"></i></button></div></div><button class="btn btn-sm btn-outline-primary" type="button" data-add-email><i class="fas fa-plus"></i> Add email</button>
+    <h3 class="theme-subsection-title mt-3">Sites and social profiles</h3><div data-repeat-list="social"><div class="social-repeat-row"><select class="form-control" name="social_platform"><option>Facebook</option><option>LinkedIn</option><option>Instagram</option><option>GitHub</option><option>X / Twitter</option><option>Reddit</option><option>TikTok</option><option>YouTube</option><option>Discord</option><option>Telegram</option><option>Website</option><option>Other</option></select><input class="form-control" type="url" name="social_url" placeholder="https://..."><button class="btn btn-outline-danger" type="button" data-remove-row aria-label="Remove site"><i class="fas fa-times"></i></button></div></div><button class="btn btn-sm btn-outline-primary" type="button" data-add-social><i class="fas fa-plus"></i> Add site</button>
+    <div class="form-group mt-3"><label for="notes">Notes</label><textarea class="form-control" id="notes" name="notes" rows="4" maxlength="10000"></textarea></div>
+  </div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Save individual</button></div>
+</form></div></div></div>
+<script src="/static/js/social-engineering.js"></script>
 {% endblock %}

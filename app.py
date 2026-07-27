@@ -105,6 +105,7 @@ passive_observation_analytics = {}
 passive_analytics_lock = threading.Lock()
 HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
+SOCIAL_PROFILE_PHOTO_DIR = os.path.join(app.instance_path, 'social_profile_photos')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -2708,6 +2709,27 @@ def owned_social_profile(profile_id):
     return profile
 
 
+def save_social_profile_photo(profile_id, upload):
+    if not upload or not upload.filename:
+        return None
+    extension = os.path.splitext(secure_filename(upload.filename))[1].casefold()
+    if extension not in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
+        raise ValueError('Profile picture must be a JPG, PNG, GIF, or WebP image.')
+    content = upload.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise ValueError('Profile picture must be 5 MB or smaller.')
+    os.makedirs(SOCIAL_PROFILE_PHOTO_DIR, exist_ok=True)
+    filename = f'{profile_id}{extension}'
+    for candidate in os.listdir(SOCIAL_PROFILE_PHOTO_DIR):
+        if candidate.startswith(f'{profile_id}.'):
+            os.unlink(os.path.join(SOCIAL_PROFILE_PHOTO_DIR, candidate))
+    with open(os.path.join(SOCIAL_PROFILE_PHOTO_DIR, filename), 'wb') as handle:
+        handle.write(content)
+    with social_profiles_lock:
+        social_profiles[profile_id]['photo_filename'] = filename
+    return filename
+
+
 @app.before_request
 def require_application_login():
     """Require a local account for every application page and API except auth/static assets."""
@@ -2851,6 +2873,15 @@ def create_social_profile():
     with social_profiles_lock:
         social_profiles[profile['id']]['owner'] = current_app_user()['username']
         profile['owner'] = current_app_user()['username']
+    try:
+        save_social_profile_photo(profile['id'], request.files.get('profile_photo'))
+    except ValueError as exc:
+        social_profile_service.delete_profile(profile['id'], social_profiles, social_profiles_lock)
+        return render_template(
+            'social_engineering.html', title='Social Engineering', profiles=owned_social_profiles(),
+            form_values=request.form, error=str(exc), social_user=session.get('social_user'),
+            csrf_token=social_csrf_token(), **current_context(),
+        ), 400
     record_social_audit('profile.create', profile['id'])
     save_runtime_state('social-profile-create')
     return redirect(url_for('social_profile_detail', profile_id=profile['id']))
@@ -2865,6 +2896,15 @@ def social_profile_detail(profile_id):
     for device in profile.get('devices', []):
         device['inventory_match'] = find_inventory_device(device.get('mac')) if device.get('mac') else None
     return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context())
+
+
+@app.route('/social-engineering/profiles/<profile_id>/photo')
+@social_login_required()
+def social_profile_photo(profile_id):
+    profile = owned_social_profile(profile_id)
+    if not profile or not profile.get('photo_filename'):
+        return '', 404
+    return send_from_directory(SOCIAL_PROFILE_PHOTO_DIR, profile['photo_filename'])
 
 
 @app.route('/social-engineering/profiles/<profile_id>/update', methods=['POST'])
@@ -2885,6 +2925,10 @@ def update_social_profile(profile_id):
             profile={**(current or {}), **request.form}, error=str(exc), social_user=session.get('social_user'),
             csrf_token=social_csrf_token(), **current_context(),
         ), 400
+    try:
+        save_social_profile_photo(profile_id, request.files.get('profile_photo'))
+    except ValueError as exc:
+        return json_error(str(exc))
     record_social_audit('profile.update', profile_id)
     save_runtime_state('social-profile-update')
     return redirect(url_for('social_profile_detail', profile_id=profile['id']))
@@ -2893,10 +2937,15 @@ def update_social_profile(profile_id):
 @app.route('/social-engineering/profiles/<profile_id>/delete', methods=['POST'])
 @social_login_required({'admin'})
 def delete_social_profile(profile_id):
-    if not owned_social_profile(profile_id):
+    profile = owned_social_profile(profile_id)
+    if not profile:
         return json_error('Profile not found', 404)
     if not social_profile_service.delete_profile(profile_id, social_profiles, social_profiles_lock):
         return json_error('Profile not found', 404)
+    if profile.get('photo_filename'):
+        photo_path = os.path.join(SOCIAL_PROFILE_PHOTO_DIR, profile['photo_filename'])
+        if os.path.exists(photo_path):
+            os.unlink(photo_path)
     record_social_audit('profile.delete', profile_id)
     save_runtime_state('social-profile-delete')
     return redirect(url_for('social_engineering_page'))

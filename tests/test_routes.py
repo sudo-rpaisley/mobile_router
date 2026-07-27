@@ -1,5 +1,7 @@
 import json
+import io
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -35,30 +37,39 @@ class RouteSmokeTest(unittest.TestCase):
         self.login_social_admin()
         response = self.client.get('/social-engineering')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Social Engineering Profiles', response.data)
-        self.assertIn(b'Store only information you are authorized to retain', response.data)
+        self.assertIn(b'<h1 class="page-title">People</h1>', response.data)
+        self.assertIn(b'New individual', response.data)
 
         with patch('app.save_runtime_state') as save_state:
             response = self.client.post('/social-engineering/profiles', data={
                 'full_name': 'Alex Example',
-                'email': 'alex@example.com',
-                'facebook_url': 'facebook.com/alex.example',
-                'linkedin_url': 'https://linkedin.com/in/alex-example',
+                'email_label': ['Personal', 'Work'],
+                'email_value': ['alex@example.com', 'alex@work.example'],
+                'social_platform': ['Facebook', 'GitHub', 'Instagram'],
+                'social_url': ['facebook.com/alex.example', 'https://github.com/alex', 'https://instagram.com/alex'],
+                'organization': 'Example Company', 'job_title': 'Analyst',
                 'notes': 'Authorized awareness exercise participant.',
                 'csrf_token': self.csrf_token,
-            })
+                'profile_photo': (io.BytesIO(b'GIF89a-test-image'), 'alex.gif'),
+            }, content_type='multipart/form-data')
 
         self.assertEqual(response.status_code, 302)
         save_state.assert_called_once_with('social-profile-create')
         profile_id = next(iter(app_module.social_profiles))
         profile = app_module.social_profiles[profile_id]
         self.assertEqual(profile['facebook_url'], 'https://facebook.com/alex.example')
+        self.assertEqual(len(profile['emails']), 2)
+        self.assertEqual(len(profile['social_links']), 3)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_PHOTO_DIR, True)
 
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Alex Example', response.data)
         self.assertIn(b'alex@example.com', response.data)
-        self.assertIn(b'Open LinkedIn profile', response.data)
+        self.assertIn(b'GitHub', response.data)
+        self.assertIn(b'Instagram', response.data)
+        self.assertIn(b'alex@work.example', response.data)
+        self.assertIn(b'Profile picture for Alex Example', response.data)
 
         app_module.device_inventory['mac:ac:16:2d:a2:71:9e'] = {
             'id': 'mac:ac:16:2d:a2:71:9e', 'mac': 'ac:16:2d:a2:71:9e',

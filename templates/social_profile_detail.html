@@ -8,38 +8,14 @@
   <a class="btn btn-primary" href="/social-engineering">Back to profiles</a>
 {% else %}
   <section class="page-hero">
-    <div class="page-hero-copy"><p class="page-kicker">Individual profile</p><h1 class="page-title">{{ profile.full_name }}</h1><p class="page-subtitle">Review and update authorized contact references.</p></div>
-    <div class="theme-actions"><a class="btn btn-outline-primary" href="/social-engineering">All profiles</a></div>
+    <div class="social-profile-heading">{% if profile.photo_filename %}<img class="social-profile-photo social-profile-photo-large" src="/social-engineering/profiles/{{ profile.id }}/photo" alt="Profile picture for {{ profile.full_name }}">{% else %}<i class="fas fa-user-circle social-profile-avatar social-profile-avatar-large" aria-hidden="true"></i>{% endif %}<div><p class="page-kicker">Contact</p><h1 class="page-title">{{ profile.full_name }}</h1><p class="page-subtitle">{{ profile.job_title }}{% if profile.job_title and profile.organization %} at {% endif %}{{ profile.organization }}</p></div></div>
+    <div class="theme-actions"><a class="btn btn-outline-primary" href="/social-engineering"><i class="fas fa-arrow-left"></i> Contacts</a><button class="btn btn-primary" type="button" data-toggle="modal" data-target="#edit-profile-modal"><i class="fas fa-pen"></i> Edit</button></div>
   </section>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
-  <section class="theme-grid social-profile-layout">
-    <article class="theme-card card"><div class="card-body">
-      <h2 class="theme-section-title">Contact references</h2>
-      <dl class="social-profile-details">
-        <dt>Email</dt><dd>{% if profile.email %}<a href="mailto:{{ profile.email }}">{{ profile.email }}</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
-        <dt>Facebook</dt><dd>{% if profile.facebook_url %}<a href="{{ profile.facebook_url }}" target="_blank" rel="noopener noreferrer">Open Facebook profile</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
-        <dt>LinkedIn</dt><dd>{% if profile.linkedin_url %}<a href="{{ profile.linkedin_url }}" target="_blank" rel="noopener noreferrer">Open LinkedIn profile</a>{% else %}<span class="text-muted">Not provided</span>{% endif %}</dd>
-      </dl>
-      {% if profile.notes %}<h3 class="theme-subsection-title">Notes</h3><p class="social-profile-notes">{{ profile.notes }}</p>{% endif %}
-    </div></article>
-    <article class="theme-card card"><div class="card-body">
-      <h2 class="theme-section-title">Edit profile</h2>
-      <form class="theme-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/update">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" value="{{ profile.full_name }}" required></div>
-        <div class="form-group"><label for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ profile.email }}"></div>
-        <div class="form-group"><label for="facebook_url">Facebook link</label><input class="form-control" type="url" id="facebook_url" name="facebook_url" value="{{ profile.facebook_url }}"></div>
-        <div class="form-group"><label for="linkedin_url">LinkedIn link</label><input class="form-control" type="url" id="linkedin_url" name="linkedin_url" value="{{ profile.linkedin_url }}"></div>
-        <div class="form-group"><label for="notes">Notes</label><textarea class="form-control" id="notes" name="notes" rows="5" maxlength="10000">{{ profile.notes }}</textarea></div>
-        <button class="btn btn-primary" type="submit">Update profile</button>
-      </form>
-      <hr>
-      <form method="post" action="/social-engineering/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this profile?');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="btn btn-outline-danger" type="submit">Delete profile</button>
-      </form>
-    </div></article>
-  </section>
+  <section class="theme-grid social-profile-layout"><article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Contact details</h2><dl class="social-profile-details">{% if profile.phone %}<dt>Phone</dt><dd><a href="tel:{{ profile.phone }}">{{ profile.phone }}</a></dd>{% endif %}{% for email in profile.emails %}<dt>{{ email.label }}</dt><dd><a href="mailto:{{ email.value }}">{{ email.value }}</a></dd>{% endfor %}{% if not profile.phone and not profile.emails %}<dd class="text-muted">No contact details saved.</dd>{% endif %}</dl></div></article><article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Sites and social profiles</h2>{% if profile.social_links %}<div class="social-link-list">{% for link in profile.social_links %}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt"></i><span><strong>{{ link.platform }}</strong><small>{{ link.url }}</small></span></a>{% endfor %}</div>{% else %}<p class="text-muted">No sites saved.</p>{% endif %}</div></article></section>
+  {% if profile.notes %}<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Notes</h2><p class="social-profile-notes">{{ profile.notes }}</p></div></section>{% endif %}
+
+  <div class="modal fade" id="edit-profile-modal" tabindex="-1" role="dialog" aria-labelledby="edit-profile-title" aria-hidden="true"><div class="modal-dialog modal-lg" role="document"><div class="modal-content theme-card"><form method="post" action="/social-engineering/profiles/{{ profile.id }}/update" enctype="multipart/form-data"><div class="modal-header"><h2 id="edit-profile-title" class="modal-title">Edit {{ profile.full_name }}</h2><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body theme-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="social-profile-editor-grid"><div class="form-group"><label for="edit_full_name">Full name</label><input class="form-control" id="edit_full_name" name="full_name" value="{{ profile.full_name }}" required></div><div class="form-group"><label for="edit_photo">Replace picture</label><input class="form-control-file" id="edit_photo" name="profile_photo" type="file" accept="image/jpeg,image/png,image/gif,image/webp"></div><div class="form-group"><label for="edit_organization">Organization</label><input class="form-control" id="edit_organization" name="organization" value="{{ profile.organization }}"></div><div class="form-group"><label for="edit_job_title">Job title</label><input class="form-control" id="edit_job_title" name="job_title" value="{{ profile.job_title }}"></div><div class="form-group"><label for="edit_phone">Phone</label><input class="form-control" id="edit_phone" name="phone" value="{{ profile.phone }}"></div></div><h3 class="theme-subsection-title">Email addresses</h3><div data-repeat-list="emails">{% for email in profile.emails or [{'label':'Personal','value':''}] %}<div class="social-repeat-row"><input class="form-control" name="email_label" value="{{ email.label }}"><input class="form-control" type="email" name="email_value" value="{{ email.value }}"><button class="btn btn-outline-danger" type="button" data-remove-row><i class="fas fa-times"></i></button></div>{% endfor %}</div><button class="btn btn-sm btn-outline-primary" type="button" data-add-email>Add email</button><h3 class="theme-subsection-title mt-3">Sites</h3><div data-repeat-list="social">{% for link in profile.social_links or [{'platform':'Website','url':''}] %}<div class="social-repeat-row"><input class="form-control" name="social_platform" value="{{ link.platform }}"><input class="form-control" type="url" name="social_url" value="{{ link.url }}"><button class="btn btn-outline-danger" type="button" data-remove-row><i class="fas fa-times"></i></button></div>{% endfor %}</div><button class="btn btn-sm btn-outline-primary" type="button" data-add-social>Add site</button><div class="form-group mt-3"><label for="edit_notes">Notes</label><textarea class="form-control" id="edit_notes" name="notes" rows="4">{{ profile.notes }}</textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Save changes</button></div></form></div></div></div>
 
   <section class="theme-card card"><div class="card-body">
     <h2 class="theme-section-title">Devices</h2>
@@ -87,6 +63,8 @@
     </div>{% endif %}
   </div></section>
   <script>window.socialProfileSecurity = {{ {'profileId': profile.id, 'csrfToken': csrf_token}|tojson }};</script>
+  <script src="/static/js/social-engineering.js"></script>
   <script src="/static/js/social-profiles.js"></script>
+  <form class="social-profile-delete" method="post" action="/social-engineering/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this contact and all associated records?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete contact</button></form>
 {% endif %}
 {% endblock %}
