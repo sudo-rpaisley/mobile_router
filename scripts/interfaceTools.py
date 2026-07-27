@@ -30,17 +30,41 @@ for candidate in [
         OUI_DB_PATH = candidate
         break
 
+def _normalize_oui_prefix(prefix):
+    cleaned = re.sub(r'[^0-9A-Fa-f]', '', str(prefix or ''))
+    if len(cleaned) < 6:
+        return None
+    cleaned = cleaned[:6].lower()
+    return ':'.join(cleaned[index:index + 2] for index in range(0, 6, 2))
+
+
 def _load_oui_db():
-    """Load the OUI database from the detected path if available."""
+    """Load the local OUI database if available.
+
+    Supports the compact project format (prefix,vendor) and the IEEE CSV
+    format downloaded by scripts/update_oui_db.py.
+    """
     db = {}
     if OUI_DB_PATH and os.path.exists(OUI_DB_PATH):
-        with open(OUI_DB_PATH) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                prefix, name = line.split(',', 1)
-                db[prefix.lower()] = name.strip()
+        with open(OUI_DB_PATH, encoding='utf-8') as f:
+            header = f.readline().strip().split(',')
+            f.seek(0)
+            if {'Assignment', 'Organization Name'}.issubset(set(header)):
+                import csv as _csv
+                for row in _csv.DictReader(f):
+                    prefix = _normalize_oui_prefix(row.get('Assignment'))
+                    name = (row.get('Organization Name') or '').strip()
+                    if prefix and name:
+                        db[prefix] = name
+            else:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    prefix, name = line.split(',', 1)
+                    normalized = _normalize_oui_prefix(prefix)
+                    if normalized:
+                        db[normalized] = name.strip()
     return db
 
 OUI_DB = _load_oui_db()
@@ -51,11 +75,11 @@ def _normalize_interface_state(status, interface_type=None):
     normalized = str(status or '').strip().casefold()
     normalized_type = str(interface_type or '').strip().casefold()
 
-    if normalized in {'up', 'connected', 'running'}:
+    if normalized in {'up', 'connected', 'running', 'ok'}:
         return 'UP'
     if normalized_type == 'bluetooth' and normalized == 'disconnected':
         return 'UP'
-    if normalized in {'down', 'disconnected', 'disabled', 'not present', 'notpresent'}:
+    if normalized in {'down', 'disconnected', 'disabled', 'error', 'degraded', 'not present', 'notpresent', 'unknown'}:
         return 'DOWN'
     return 'UNKNOWN'
 
@@ -64,9 +88,9 @@ def lookup_manufacturer(mac):
     if not mac:
         return 'Unknown'
 
-    normalized = ':'.join(mac.lower().split(':')[:3])
+    normalized = _normalize_oui_prefix(mac)
 
-    return OUI_DB.get(normalized, 'Unknown')
+    return OUI_DB.get(normalized, 'Unknown') if normalized else 'Unknown'
 
 class NetworkInterface:
     def __init__(self, name, interface_type):
@@ -174,61 +198,90 @@ class NetworkInterface:
 
 
 class BluetoothDevice:
-    def __init__(self, address, name):
+    def __init__(self, address, name, **metadata):
         self.address = address
         self.name = name
+        self.metadata = {key: value for key, value in metadata.items() if value not in (None, '')}
+
+    def to_dict(self):
+        return {
+            'address': self.address,
+            'name': self.name,
+            **self.metadata,
+        }
 
     def __str__(self):
+        metadata = "\n".join(f"  {key}: {value}" for key, value in self.metadata.items())
         return (f"Bluetooth Device: {self.name}\n"
-                f"  Address: {self.address}\n")
+                f"  Address: {self.address}\n"
+                f"{metadata}\n")
+
+def _powershell_json(command):
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        return []
+    try:
+        output = subprocess.check_output(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+            encoding="utf-8",
+            errors="ignore",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if not output.strip():
+        return []
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(payload, dict):
+        return [payload]
+    return payload if isinstance(payload, list) else []
+
+
+def _get_windows_bluetooth_pnp_metadata():
+    devices = _powershell_json(
+        "Get-PnpDevice -Class Bluetooth -PresentOnly:$false | "
+        "Select-Object FriendlyName,Name,Status,Class,InstanceId | "
+        "ConvertTo-Json -Compress"
+    )
+    metadata = {}
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        name = device.get("FriendlyName") or device.get("Name")
+        if not name:
+            continue
+        metadata[name] = {
+            "Name": name,
+            "InterfaceDescription": name,
+            "Status": device.get("Status") or "DOWN",
+            "MediaType": "Bluetooth",
+            "PhysicalMediaType": "Bluetooth",
+            "PnpInstanceId": device.get("InstanceId"),
+        }
+    return metadata
+
 
 def _get_windows_adapter_metadata():
     """Return Windows adapter information indexed by friendly name."""
 
-    powershell = shutil.which("powershell") or shutil.which("pwsh")
-    if not powershell:
-        return {}
+    adapters = _powershell_json(
+        "Get-NetAdapter -IncludeHidden | "
+        "Select-Object Name,InterfaceDescription,Status,"
+        "MediaType,PhysicalMediaType | "
+        "ConvertTo-Json -Compress"
+    )
+    metadata = {
+        adapter["Name"]: adapter
+        for adapter in adapters
+        if isinstance(adapter, dict) and adapter.get("Name")
+    }
 
-    try:
-        output = subprocess.check_output(
-            [
-                powershell,
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                (
-                    "Get-NetAdapter | "
-                    "Select-Object Name,InterfaceDescription,Status,"
-                    "MediaType,PhysicalMediaType | "
-                    "ConvertTo-Json -Compress"
-                ),
-            ],
-            encoding="utf-8",
-            errors="ignore",
-        )
+    for name, bluetooth_metadata in _get_windows_bluetooth_pnp_metadata().items():
+        metadata.setdefault(name, bluetooth_metadata)
 
-        if not output.strip():
-            return {}
-
-        adapters = json.loads(output)
-
-        # ConvertTo-Json returns an object rather than a list when there
-        # is only one adapter.
-        if isinstance(adapters, dict):
-            adapters = [adapters]
-
-        return {
-            adapter["Name"]: adapter
-            for adapter in adapters
-            if isinstance(adapter, dict) and adapter.get("Name")
-        }
-
-    except (
-        OSError,
-        subprocess.SubprocessError,
-        json.JSONDecodeError,
-    ):
-        return {}
+    return metadata
 
 def get_interface_type(name):
     normalized_name = name.casefold()
@@ -616,7 +669,15 @@ def _parse_windows_bluetooth_devices(output):
             raw = address_match.group(1).lower()
             address = ':'.join(raw[index:index + 2] for index in range(0, 12, 2))
         if name or address:
-            devices.append(BluetoothDevice(address or instance_id, name or 'Unknown'))
+            devices.append(BluetoothDevice(
+                address or instance_id,
+                name or 'Unknown',
+                status=item.get('Status'),
+                instance_id=instance_id,
+                device_class=item.get('Class'),
+                pnp_manufacturer=item.get('Manufacturer'),
+                service=item.get('Service'),
+            ))
     return devices
 
 
@@ -635,7 +696,7 @@ def _get_windows_bluetooth_devices():
                 (
                     "Get-PnpDevice -Class Bluetooth | "
                     "Where-Object { $_.FriendlyName -or $_.Name } | "
-                    "Select-Object FriendlyName,Name,InstanceId,Status | "
+                    "Select-Object FriendlyName,Name,InstanceId,Status,Class,Manufacturer,Service | "
                     "ConvertTo-Json -Compress"
                 ),
             ],
@@ -678,7 +739,13 @@ async def get_bluetooth_devices(timeout=10):
         bleak_module = importlib.import_module("bleak")
         try:
             devices = await bleak_module.BleakScanner.discover(timeout=timeout)
-            bluetooth_objects.extend(BluetoothDevice(address=device.address, name=device.name) for device in devices)
+            for device in devices:
+                bluetooth_objects.append(BluetoothDevice(
+                    address=device.address,
+                    name=device.name,
+                    details=getattr(device, 'details', None),
+                    rssi=getattr(device, 'rssi', None),
+                ))
         except Exception as e:
             print(f"Error discovering BLE devices: {e}")
     else:
