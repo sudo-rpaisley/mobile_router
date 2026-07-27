@@ -7,6 +7,7 @@ from .network import Network
 
 # Global dictionary to store networks
 networks = {}
+scan_diagnostics = {}
 
 # Add the BSSIDs of authorized access points here
 authorized_aps = {
@@ -63,7 +64,17 @@ def send_alerts():
     alerts.clear()
 
 
-def _add_network(ssid, bssid=None, channel=None, signal=None, security=None):
+def _add_network(
+    ssid,
+    bssid=None,
+    channel=None,
+    signal=None,
+    security=None,
+    wps=False,
+    wps_status=None,
+    channel_width=None,
+    width_source='inferred',
+):
     network_key = ssid or "<Hidden SSID>"
     if network_key not in networks:
         networks[network_key] = Network(network_key)
@@ -72,7 +83,15 @@ def _add_network(ssid, bssid=None, channel=None, signal=None, security=None):
         networks[network_key].security = security
 
     if bssid:
-        networks[network_key].add_access_point(_normalize_mac(bssid), channel, signal)
+        networks[network_key].add_access_point(
+            _normalize_mac(bssid),
+            channel,
+            signal,
+            wps=wps,
+            wps_status=wps_status,
+            channel_width=channel_width,
+            width_source=width_source,
+        )
 
 
 def _normalize_mac(mac):
@@ -136,6 +155,34 @@ def _run_command(command, timeout=20):
     return subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
 
 
+def _record_scan_attempt(tool, scope, returncode=None, note=None):
+    scan_diagnostics.setdefault('attempts', []).append({
+        'tool': tool,
+        'scope': scope,
+        'returncode': returncode,
+        'note': note,
+        'time': time.time(),
+    })
+
+
+def _remember_raw_output(tool, output):
+    if output:
+        scan_diagnostics.setdefault('raw_outputs', {})[tool] = output[-8000:]
+
+
+def _parse_channel_width(text):
+    match = re.search(r'(?i)(?:channel width|width|\* channel width):\s*(?:\d+ \()?(20|40|80|160)\s*MHz', text or '')
+    if match:
+        return int(match.group(1)), 'reported'
+    match = re.search(r'(?i)\b(HT20|HT40|VHT80|HE80|EHT80|VHT160|HE160|EHT160)\b', text or '')
+    if match:
+        token = match.group(1).upper()
+        for width in (160, 80, 40, 20):
+            if str(width) in token:
+                return width, 'reported'
+    return None, 'inferred'
+
+
 def _scan_linux_with_nmcli(interface_name):
     command = [
         "nmcli",
@@ -153,6 +200,8 @@ def _scan_linux_with_nmcli(interface_name):
     command.extend(["--rescan", "yes"])
 
     result = _run_command(command)
+    _record_scan_attempt('nmcli', interface_name or 'all interfaces', result.returncode, 'fresh rescan requested')
+    _remember_raw_output('nmcli', result.stdout)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "nmcli wireless scan failed")
 
@@ -165,7 +214,7 @@ def _scan_linux_with_nmcli(interface_name):
         channel = parts[-3]
         bssid = ":".join(parts[-9:-3])
         ssid = ":".join(parts[:-9])
-        _add_network(ssid, bssid, channel, _parse_signal(signal), security)
+        _add_network(ssid, bssid, channel, _parse_signal(signal), security, wps=_security_mentions_wps(security), channel_width=20, width_source='inferred')
 
 
 
@@ -178,6 +227,8 @@ def _scan_linux_with_iw(interface_name):
         raise RuntimeError('A wireless interface is required for iw scanning')
 
     result = _run_command(['iw', 'dev', interface_name, 'scan'], timeout=30)
+    _record_scan_attempt('iw', interface_name, result.returncode, 'fresh scan requested')
+    _remember_raw_output('iw', result.stdout)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or 'iw wireless scan failed')
 
@@ -186,10 +237,24 @@ def _scan_linux_with_iw(interface_name):
     current_channel = None
     current_signal = None
     current_security = 'Open'
+    current_wps = False
+    current_wps_status = None
+    current_channel_width = None
+    current_width_source = 'inferred'
 
     def flush_bss():
         if current_bssid:
-            _add_network(current_ssid, current_bssid, current_channel, current_signal, current_security)
+            _add_network(
+                current_ssid,
+                current_bssid,
+                current_channel,
+                current_signal,
+                current_security,
+                wps=current_wps or _security_mentions_wps(current_security),
+                wps_status=current_wps_status,
+                channel_width=current_channel_width or 20,
+                width_source=current_width_source,
+            )
 
     for line in result.stdout.splitlines():
         stripped = line.strip()
@@ -200,6 +265,10 @@ def _scan_linux_with_iw(interface_name):
             current_channel = None
             current_signal = None
             current_security = 'Open'
+            current_wps = False
+            current_wps_status = None
+            current_channel_width = None
+            current_width_source = 'inferred'
         elif stripped.startswith('SSID:'):
             current_ssid = stripped.split(':', 1)[1].strip()
         elif stripped.startswith('freq:') and current_channel is None:
@@ -212,12 +281,22 @@ def _scan_linux_with_iw(interface_name):
                 current_signal = _parse_signal(signal_value)
         elif stripped.startswith('DS Parameter set:') and 'channel' in stripped:
             current_channel = _parse_signal(stripped.rsplit(' ', 1)[-1])
+        elif 'channel width' in stripped.lower() or re.search(r'(?i)\b(HT20|HT40|VHT80|HE80|EHT80|VHT160|HE160|EHT160)\b', stripped):
+            width, source = _parse_channel_width(stripped)
+            if width:
+                current_channel_width = width
+                current_width_source = source
         elif stripped.startswith('capability:') and 'Privacy' in stripped:
             current_security = 'Secured'
         elif stripped.startswith('RSN:'):
             current_security = 'WPA2/WPA3'
         elif stripped.startswith('WPA:'):
             current_security = 'WPA'
+        elif stripped.startswith('WPS:'):
+            current_wps = True
+        elif 'Wi-Fi Protected Setup State:' in stripped:
+            current_wps = True
+            current_wps_status = stripped.split(':', 1)[1].strip()
 
     flush_bss()
 
@@ -245,7 +324,16 @@ def _scan_linux_with_scapy(interface_name, timeout):
             if packet.haslayer(Dot11Elt) and packet.getlayer(Dot11Elt, ID=3):
                 channel_info = packet.getlayer(Dot11Elt, ID=3).info
                 channel = channel_info[0] if channel_info else None
-            _add_network(ssid, bssid, channel, dbm_signal)
+            wps = False
+            element = packet.getlayer(Dot11Elt) if packet.haslayer(Dot11Elt) else None
+            while element:
+                if getattr(element, 'ID', None) == 221 and bytes(getattr(element, 'info', b'')).startswith(b'\x00P\xf2\x04'):
+                    wps = True
+                    break
+                element = getattr(element, 'payload', None)
+                if not isinstance(element, Dot11Elt):
+                    break
+            _add_network(ssid, bssid, channel, dbm_signal, wps=wps)
             return
 
         bssid = _known_bssid_from_addresses(addr3, addr1, addr2)
@@ -270,12 +358,42 @@ def _parse_percent_signal(signal):
     return _parse_signal(value)
 
 
+def _security_mentions_wps(security):
+    return 'wps' in str(security or '').lower()
+
+
+def _wps_exposure(wps=False, wps_status=None):
+    if not wps and not wps_status:
+        return {
+            'wps': False,
+            'wps_status': None,
+            'wps_note': None,
+        }
+    status = str(wps_status or 'advertised')
+    return {
+        'wps': True,
+        'wps_status': status,
+        'wps_note': (
+            'WPS is advertised by this AP. Review lab router settings and disable WPS when possible because WPS can weaken credential protection, especially when PIN enrolment is enabled.'
+        ),
+    }
+
+
 def _scan_windows_with_netsh(interface_name=None):
+    scan_command = ['netsh', 'wlan', 'scan']
+    if interface_name:
+        scan_command.append(f'interface={interface_name}')
+    scan_result = _run_command(scan_command, timeout=15)
+    _record_scan_attempt('netsh scan', interface_name or 'all interfaces', scan_result.returncode, 'fresh scan requested')
+    time.sleep(2)
+
     command = ['netsh', 'wlan', 'show', 'networks', 'mode=bssid']
     if interface_name:
         command.append(f'interface={interface_name}')
 
     result = _run_command(command)
+    _record_scan_attempt('netsh show networks', interface_name or 'all interfaces', result.returncode, 'fresh or OS-cached results returned')
+    _remember_raw_output('netsh', result.stdout)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or 'netsh wireless scan failed')
 
@@ -284,10 +402,24 @@ def _scan_windows_with_netsh(interface_name=None):
     current_bssid = None
     current_signal = None
     current_channel = None
+    current_wps = False
+    current_wps_status = None
+    current_channel_width = None
+    current_width_source = 'inferred'
 
     def flush_bssid():
         if current_bssid:
-            _add_network(current_ssid, current_bssid, current_channel, current_signal, current_security)
+            _add_network(
+                current_ssid,
+                current_bssid,
+                current_channel,
+                current_signal,
+                current_security,
+                wps=current_wps or _security_mentions_wps(current_security),
+                wps_status=current_wps_status,
+                channel_width=current_channel_width or 20,
+                width_source=current_width_source,
+            )
 
     for line in result.stdout.splitlines():
         stripped = line.strip()
@@ -304,6 +436,10 @@ def _scan_windows_with_netsh(interface_name=None):
             current_bssid = None
             current_signal = None
             current_channel = None
+            current_wps = False
+            current_wps_status = None
+            current_channel_width = None
+            current_width_source = 'inferred'
         elif key_lower == 'authentication':
             current_security = value or 'Open'
         elif key_lower.startswith('bssid '):
@@ -311,10 +447,17 @@ def _scan_windows_with_netsh(interface_name=None):
             current_bssid = value
             current_signal = None
             current_channel = None
+            current_channel_width = None
+            current_width_source = 'inferred'
         elif key_lower == 'signal':
             current_signal = _parse_percent_signal(value)
         elif key_lower == 'channel':
             current_channel = _parse_signal(value)
+        elif 'width' in key_lower:
+            current_channel_width, current_width_source = _parse_channel_width(value)
+        elif 'wps' in key_lower:
+            current_wps = value.lower() not in {'no', 'false', 'disabled', 'not supported'}
+            current_wps_status = value or 'advertised'
 
     flush_bssid()
 
@@ -343,8 +486,16 @@ def _scan_windows_with_pywifi(interface_name):
 
 def scan_networks(interface_name=None, timeout=12):
     """Scan nearby wireless networks for the requested interface."""
-    global networks
+    global networks, scan_diagnostics
     networks = {}
+    scan_diagnostics = {
+        'requested_interface': interface_name,
+        'started_at': time.time(),
+        'freshness': 'fresh scan requested',
+        'attempts': [],
+        'fallbacks': [],
+        'raw_outputs': {},
+    }
 
     system = platform.system()
     if system == "Linux":
@@ -370,14 +521,16 @@ def scan_networks(interface_name=None, timeout=12):
         scan_errors = []
         try:
             _scan_windows_with_netsh(interface_name)
+            if interface_name and _network_count() <= 1:
+                scan_diagnostics.setdefault('fallbacks', []).append('Selected-interface Windows scan returned one or fewer APs; retried all interfaces.')
+                _scan_windows_with_netsh(None)
         except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
             scan_errors.append(str(exc))
 
-        if _network_count() <= 1:
-            try:
-                _scan_windows_with_pywifi(interface_name)
-            except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
-                scan_errors.append(str(exc))
+        try:
+            _scan_windows_with_pywifi(interface_name)
+        except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, ModuleNotFoundError) as exc:
+            scan_errors.append(str(exc))
 
         if _network_count() == 0 and scan_errors:
             raise RuntimeError('; '.join(error for error in scan_errors if error) or 'No wireless scan backend succeeded')
@@ -388,6 +541,15 @@ def scan_networks(interface_name=None, timeout=12):
     detect_rogue_aps()
     send_alerts()
     display_all_networks()
+    scan_diagnostics['completed_at'] = time.time()
+    scan_diagnostics['raw_entry_count'] = _network_count()
+    scan_diagnostics['grouped_ssid_count'] = len(networks)
+    if _network_count() <= 1:
+        scan_diagnostics.setdefault('warnings', []).append('Only one access point was returned. Results may be cached, the adapter may be connected-only, or nearby APs may be hidden/out of range.')
+
+
+def get_scan_diagnostics():
+    return dict(scan_diagnostics)
 
 
 def get_frequent_clients(threshold=3600):
@@ -404,6 +566,25 @@ def get_networks_summary():
         access_points = network.access_points
         strongest_ap = max(access_points, key=lambda ap: ap.signal if isinstance(ap.signal, int) else -999, default=None)
         radio = _ap_radio_details(strongest_ap.channel, strongest_ap.signal) if strongest_ap else {}
+        wps_aps = [ap for ap in access_points if getattr(ap, 'wps', False)]
+        wps_status = next((getattr(ap, 'wps_status', None) for ap in wps_aps if getattr(ap, 'wps_status', None)), None)
+        wps_details = _wps_exposure(bool(wps_aps), wps_status)
+        ap_details = []
+        for ap in access_points:
+            ap_radio = _ap_radio_details(ap.channel, ap.signal)
+            ap_details.append({
+                'ssid': network.ssid,
+                'bssid': ap.bssid,
+                'bssid_manufacturer': _mac_manufacturer(ap.bssid),
+                'channel': ap_radio.get('channel'),
+                'frequency': ap_radio.get('frequency'),
+                'band': ap_radio.get('band'),
+                'signal': ap.signal,
+                'security': getattr(network, 'security', 'Unknown'),
+                'channel_width': getattr(ap, 'channel_width', None) or 20,
+                'channel_width_source': getattr(ap, 'width_source', 'inferred'),
+                'wps': getattr(ap, 'wps', False),
+            })
         results.append({
             'ssid': network.ssid,
             'bssid': strongest_ap.bssid if strongest_ap else None,
@@ -414,6 +595,10 @@ def get_networks_summary():
             'band': radio.get('band') if strongest_ap else 'Unknown band',
             'signal': strongest_ap.signal if strongest_ap else None,
             'security': getattr(network, 'security', 'Unknown'),
+            'channel_width': 20,
+            'access_point_details': ap_details,
+            **wps_details,
+            'wps_access_points': len(wps_aps),
             'access_points': len(access_points),
         })
     return sorted(results, key=lambda item: item['signal'] if isinstance(item['signal'], int) else -999, reverse=True)
@@ -659,6 +844,7 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
                 for client in ap.clients
             ]
             radio = _ap_radio_details(ap.channel, ap.signal)
+            wps_details = _wps_exposure(getattr(ap, 'wps', False), getattr(ap, 'wps_status', None))
             access_points.append({
                 'bssid': ap.bssid,
                 'manufacturer': _mac_manufacturer(ap.bssid),
@@ -669,7 +855,8 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
                 'signal': ap.signal,
                 'signal_label': _format_signal(ap.signal),
                 'signal_quality': radio['signal_quality'],
-                'notes': radio['notes'],
+                'notes': [*radio['notes'], *([wps_details['wps_note']] if wps_details['wps_note'] else [])],
+                **wps_details,
                 'clients': ap_clients,
             })
             clients.extend(ap_clients)
@@ -680,6 +867,8 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         primary_bssid = strongest_ap.bssid if strongest_ap else (bssid or None)
         channel = strongest_ap.channel if strongest_ap else None
         signal = strongest_ap.signal if strongest_ap else None
+        wps_aps = [ap for ap in matched.access_points if getattr(ap, 'wps', False)]
+        wps_status = next((getattr(ap, 'wps_status', None) for ap in wps_aps if getattr(ap, 'wps_status', None)), None)
     else:
         detail_ssid = requested_ssid or '<Hidden SSID>'
         security = 'Unknown'
@@ -687,6 +876,10 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         channel = None
         signal = None
         ap_groups = []
+        wps_aps = []
+        wps_status = None
+
+    wps_details = _wps_exposure(bool(wps_aps), wps_status)
 
     return {
         'ssid': detail_ssid,
@@ -695,6 +888,8 @@ def get_network_detail(ssid=None, bssid=None, interface_name=None):
         'channel': channel,
         'signal': signal,
         'signal_label': _format_signal(signal),
+        **wps_details,
+        'wps_access_points': len(wps_aps),
         'interface': interface_name,
         'gateway': get_default_gateway(interface_name),
         'bands': sorted({ap['band'] for ap in access_points if ap.get('band') and ap.get('band') != 'Unknown band'}),

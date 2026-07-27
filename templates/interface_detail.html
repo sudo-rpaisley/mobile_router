@@ -18,6 +18,11 @@
         </div>
       </div>
       <div class="interface-actions">
+        <div class="btn-group mb-2" role="group" aria-label="Interface power controls">
+          <button class="btn btn-outline-success btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="up">Turn on</button>
+          <button class="btn btn-outline-warning btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="down">Turn off</button>
+        </div>
+        <div class="alert d-none py-2 px-3 small" role="alert" data-interface-power-output></div>
         {% if interface.interface_type == 'Wireless' %}
           <div id="wlan-modes-{{ interface.name }}" class="adapter-mode-switches" data-interface="{{ interface.name }}">
             <p class="adapter-mode-loading mb-2">Loading adapter modes...</p>
@@ -63,6 +68,7 @@
               <li><span class="badge badge-info">Optional</span> pywifi/scapy may unlock deeper Wi-Fi actions</li>
             {% elif interface.interface_type == 'Bluetooth' %}
               <li><span class="badge badge-primary">Available</span> Bluetooth device scan</li>
+              <li><span class="badge badge-success">Phone pairing</span> Pair phones and request authorised contacts, call history, messages, controls, media, or tethering from this page</li>
               <li><span class="badge badge-info">Host tools</span> Actions require BlueZ bluetoothctl or busctl support</li>
             {% else %}
               <li><span class="badge badge-primary">Available</span> Active/passive network scans from the Scan page</li>
@@ -120,6 +126,69 @@
         </div>
       </article>
 
+
+      {% if interface.interface_type == 'Bluetooth' and bluetooth_phone_settings is defined %}
+        <article class="card shadow-sm bluetooth-phone-card">
+          <div class="card-body">
+            <h2 class="interface-section-title">Phone Integration</h2>
+            {% if bluetooth_phone_notice %}
+              <div class="alert alert-{{ bluetooth_phone_notice_style }}" role="alert">{{ bluetooth_phone_notice }}</div>
+            {% endif %}
+            <form method="post" action="/bluetooth-phone" class="bluetooth-phone-form">
+              <input type="hidden" name="return_to" value="{{ request.path }}">
+              <div class="form-group">
+                <label for="bluetooth-display-name">Device name</label>
+                <input
+                  id="bluetooth-display-name"
+                  class="form-control"
+                  type="text"
+                  name="display_name"
+                  value="{{ bluetooth_phone_settings.display_name }}"
+                  maxlength="248"
+                  required>
+              </div>
+
+              <div class="custom-control custom-switch mb-3">
+                <input
+                  id="advertise-enabled"
+                  class="custom-control-input"
+                  type="checkbox"
+                  name="advertise_enabled"
+                  value="true"
+                  {% if bluetooth_phone_settings.advertise_enabled %}checked{% endif %}
+                  {% if not bluetooth_phone_pairing_capability.available %}disabled{% endif %}>
+                <label class="custom-control-label" for="advertise-enabled">Advertise device for phone pairing</label>
+              </div>
+              <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
+              <div class="alert alert-info py-2 px-3 small d-none" role="status" data-bluetooth-phone-status></div>
+              <p class="text-muted small mb-3">Changes autosave. Toggle advertising off and back on to restart the app-scoped Bluetooth service.</p>
+
+              <fieldset>
+                <legend class="h6">Allowed phone features</legend>
+                <div class="bluetooth-feature-grid mt-2">
+                  {% for feature in bluetooth_phone_feature_options %}
+                    <label class="bluetooth-feature-option" for="feature-{{ feature.key }}">
+                      <span class="custom-control custom-checkbox">
+                        <input
+                          id="feature-{{ feature.key }}"
+                          class="custom-control-input"
+                          type="checkbox"
+                          name="features"
+                          value="{{ feature.key }}"
+                          {% if feature.enabled %}checked{% endif %}>
+                        <span class="custom-control-label bluetooth-feature-label">{{ feature.label }}</span>
+                      </span>
+                      <span class="badge badge-light border">{{ feature.profile }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </fieldset>
+
+            </form>
+          </div>
+        </article>
+      {% endif %}
+
       {% if interface.interface_type == 'Bridge' or interface.interface_type == 'Bond' or interface.interface_type == 'Station' %}
         <article class="card shadow-sm interface-extra-card">
           <div class="card-body">
@@ -144,6 +213,8 @@
     <div id="bluetooth-devices"></div>
   </main>
 
+  <script src="/static/js/interface-power.js"></script>
+  <script src="/static/js/bluetooth-phone-autosave.js"></script>
   {% if interface.interface_type == 'Wireless' %}
     <script src="/static/js/wireless-adapters.js"></script>
   {% elif interface.interface_type == 'Bluetooth' %}
