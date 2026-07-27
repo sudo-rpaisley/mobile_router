@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Protected records</p><h1 class="page-title">{% if mode == 'setup' %}Set up Social Profiles{% else %}Sign in to Social Profiles{% endif %}</h1><p class="page-subtitle">{% if mode == 'setup' %}Create the first local administrator account.{% else %}Authentication is required to view personal records and credentials.{% endif %}</p></div></section>
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Protected application</p><h1 class="page-title">{% if mode == 'setup' %}Set up Mobile Router{% else %}Sign in to Mobile Router{% endif %}</h1><p class="page-subtitle">{% if mode == 'setup' %}Create the first local administrator account for the entire application.{% else %}Authentication is required to access network tools, records, and credentials.{% endif %}</p></div></section>
 <section class="theme-card card social-auth-card"><div class="card-body">
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   <form class="theme-form" method="post">

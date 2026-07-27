@@ -7,6 +7,11 @@ from app import app
 
 def test_bluetooth_device_page_renders_contextual_browser_controls():
     client = app.test_client()
+    app_module.social_users.setdefault('browser-test', {
+        'id': 'browser-test', 'username': 'browser-test', 'role': 'admin', 'password_hash': 'unused',
+    })
+    with client.session_transaction() as flask_session:
+        flask_session['social_user'] = {'username': 'browser-test', 'role': 'admin'}
     app_module.device_inventory.clear()
     app_module.record_inventory_devices([
         {

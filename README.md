@@ -122,7 +122,10 @@ python -m pytest -q
 
 ### Protecting Social Engineering profiles
 
-The first visit to `/social-engineering` creates a local administrator account.
+The first visit to Mobile Router creates a local administrator account, and
+authentication then protects the entire application. Administrators can create
+additional role-based accounts from **System → User Management**. Each account
+has its own private Social Engineering profiles, devices, and credentials.
 Set `MOBILE_ROUTER_SECRET_KEY` to a long, stable random value so login sessions
 remain valid across application restarts. New credential secrets are encrypted
 in the browser with a user-supplied vault password before they are written to

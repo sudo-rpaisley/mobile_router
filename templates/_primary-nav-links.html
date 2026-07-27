@@ -40,9 +40,10 @@
 </div>
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Capabilities', 'Roadmap'] %}active{% endif %}" data-toggle="dropdown">System</a>
+  <a href="#" class="nav-link {% if title in ['Capabilities', 'Roadmap', 'User Management'] %}active{% endif %}" data-toggle="dropdown">System</a>
   <div class="dropdown-menu dropdown-menu-right">
     <a href="/capabilities" class="dropdown-item {% if title == 'Capabilities' %}active{% endif %}">Capabilities</a>
     <a href="/roadmap" class="dropdown-item {% if title == 'Roadmap' %}active{% endif %}">Roadmap</a>
+    {% if app_user and app_user.role == 'admin' %}<a href="/users" class="dropdown-item {% if title == 'User Management' %}active{% endif %}">User Management</a>{% endif %}
   </div>
 </div>

@@ -17,13 +17,16 @@ class RouteSmokeTest(unittest.TestCase):
         app_module.social_profiles.clear()
         app_module.social_users.clear()
         app_module.social_audit_log.clear()
+        app_module.social_users['test-admin'] = {
+            'id': 'test-admin', 'username': 'test-admin', 'role': 'admin',
+            'password_hash': 'unused-in-authenticated-tests',
+        }
+        self.csrf_token = 'test-csrf-token'
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            flask_session['social_csrf_token'] = self.csrf_token
 
     def login_social_admin(self):
-        app_module.social_auth_service.create_user(
-            'test-admin', 'correct-horse-battery', 'admin',
-            app_module.social_users, app_module.social_users_lock,
-        )
-        self.csrf_token = 'test-csrf-token'
         with self.client.session_transaction() as flask_session:
             flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
             flask_session['social_csrf_token'] = self.csrf_token
@@ -131,7 +134,7 @@ class RouteSmokeTest(unittest.TestCase):
             flask_session.pop('social_user', None)
         response = self.client.get('/social-engineering')
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/social-engineering/login', response.location)
+        self.assertIn('/login', response.location)
 
         with self.client.session_transaction() as flask_session:
             flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
@@ -150,6 +153,34 @@ class RouteSmokeTest(unittest.TestCase):
             'full_name': 'Forbidden', 'csrf_token': self.csrf_token,
         })
         self.assertEqual(response.status_code, 403)
+
+    def test_application_login_and_private_profile_ownership(self):
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.location)
+
+        self.login_social_admin()
+        response = self.client.post('/users', data={
+            'username': 'alice', 'password': 'alice-secure-password', 'role': 'editor',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('alice', app_module.social_users)
+
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Admin Private Record', 'csrf_token': self.csrf_token,
+        })
+        profile_id = next(iter(app_module.social_profiles))
+        self.assertEqual(app_module.social_profiles[profile_id]['owner'], 'test-admin')
+
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'alice', 'role': 'editor'}
+        response = self.client.get('/social-engineering')
+        self.assertNotIn(b'Admin Private Record', response.data)
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertEqual(response.status_code, 404)
 
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')

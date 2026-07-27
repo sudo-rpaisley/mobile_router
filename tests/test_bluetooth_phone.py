@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import app as app_module
 from app import app
 from scripts.bluetooth_phone import (
     BluetoothPhoneSettingsError,
@@ -287,6 +288,11 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.previous_config = app.config.get("BLUETOOTH_PHONE_CONFIG")
         app.config["BLUETOOTH_PHONE_CONFIG"] = str(self.config_path)
         self.client = app.test_client()
+        app_module.social_users.setdefault('bluetooth-test', {
+            'id': 'bluetooth-test', 'username': 'bluetooth-test', 'role': 'admin', 'password_hash': 'unused',
+        })
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'bluetooth-test', 'role': 'admin'}
 
     def tearDown(self):
         if self.previous_config is None:
