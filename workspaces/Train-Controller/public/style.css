@@ -1,0 +1,620 @@
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(120deg, #f0f4f7, #d9e2ec);
+  color: #333;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  background: #f1f1f1;
+  color: #333;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.top-bar label {
+  margin-right: 8px;
+}
+
+.top-bar .settings {
+  display: flex;
+  align-items: center;
+}
+
+.controller-bar .controller-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.controller-info,
+.controller-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.controller-info {
+  margin-bottom: 4px;
+}
+
+.controller-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin-bottom: 4px;
+}
+
+
+button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #007bff;
+  color: #fff;
+  cursor: pointer;
+  margin-right: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: background 0.3s ease;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.red {
+  background: #dc3545 !important;
+}
+
+button.red:hover,
+#emergency:hover {
+  background: #c82333;
+}
+
+.edit-ip-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  margin-right: 4px;
+  padding: 0;
+  transition: transform 0.2s;
+  color: #000;
+}
+
+.edit-ip-btn:hover {
+  transform: scale(1.2);
+}
+
+.collapse-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  margin-right: 4px;
+  color: #555;
+}
+
+.edit-ip-btn.save {
+  color: #000;
+}
+
+#emergency {
+  background: #dc3545;
+  font-weight: bold;
+}
+
+input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Controller IP field should look like text when not editing */
+.ip-field[readonly] {
+  border: none;
+  padding: 0;
+  background: transparent;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+body.dark .ip-field[readonly] {
+  color: #fff;
+}
+
+.ip-field.editing {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.ip-display {
+  margin-right: 4px;
+}
+
+body.dark .ip-display {
+  color: #fff;
+}
+
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.engine {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+  margin: 10px;
+  flex: 1;
+  min-width: 280px;
+  position: relative;
+}
+
+.delete-engine-btn {
+  position: absolute;
+  top: 8px;
+  right: 72px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-weight: bold;
+  cursor: pointer;
+  display: none;
+}
+
+.delete-engine-btn:hover {
+  color: #c82333;
+}
+
+.engine.editing .delete-engine-btn {
+  display: block;
+}
+
+.edit-engine-btn {
+  position: absolute;
+  top: 8px;
+  right: 36px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0;
+  transition: transform 0.2s;
+  color: #000;
+}
+
+.edit-engine-btn:hover {
+  transform: scale(1.2);
+}
+
+.edit-engine-btn.save {
+  color: #000;
+}
+
+
+.slider {
+  flex: 1;
+  width: auto;
+}
+
+.speed-value {
+  display: inline-block;
+  width: 48px;
+  text-align: right;
+  font-weight: bold;
+  margin-left: 8px;
+  font-size: 1.1rem;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.speed-group {
+  margin-bottom: 8px;
+}
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #555;
+  margin-bottom: 4px;
+  width: calc(100% - 56px);
+}
+
+.engine-address {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.btn {
+  margin: 5px 0;
+}
+
+h1 {
+  margin-top: 0;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.layout-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layout-name-field {
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
+
+.theme-switch {
+  position: relative;
+  width: 50px;
+  height: 26px;
+}
+
+.theme-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.theme-switch .switch {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffcc33;
+  border-radius: 26px;
+  transition: background 0.3s;
+}
+
+.theme-switch .switch:after {
+  content: '☀️';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 22px;
+  height: 22px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: transform 0.3s;
+}
+
+#theme-toggle:checked + .switch {
+  background: #4e4e4e;
+}
+
+#theme-toggle:checked + .switch:after {
+  content: '🌙';
+  transform: translateX(24px);
+}
+
+body.dark {
+  background: #121212;
+  color: #eee;
+}
+
+body.dark .container {
+  background: #1e1e1e;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+body.dark .top-bar {
+  background: #212529;
+  color: #fff;
+}
+
+body.dark .controller {
+  background: #2c2c2c;
+  border-color: #444;
+}
+
+body.dark .engine {
+  background: #2c2c2c;
+  border-color: #444;
+}
+
+body.dark input[type="text"] {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .ip-field.editing {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .edit-ip-btn {
+  color: #fff;
+}
+body.dark .edit-ip-btn.save {
+  color: #fff;
+}
+
+body.dark .collapse-btn {
+  color: #fff;
+}
+
+body.dark .edit-engine-btn {
+  color: #fff;
+}
+body.dark .edit-engine-btn.save {
+  color: #fff;
+}
+
+body.dark .delete-engine-btn {
+  color: #fff;
+}
+
+body.dark .edit-controller-btn {
+  color: #fff;
+}
+body.dark .edit-controller-btn.save {
+  color: #fff;
+}
+
+body.dark .delete-controller-btn {
+  color: #fff;
+}
+
+body.dark .slider-labels {
+  color: #ccc;
+}
+
+body.dark .engine-address {
+  color: #ccc;
+}
+
+
+body.dark .red-team summary {
+  color: #fff;
+}
+
+.manual-add-form {
+  display: none;
+  margin-bottom: 20px;
+  align-items: center;
+  gap: 8px;
+}
+.manual-add-form input {
+  flex: 1;
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
+.engine-name-input {
+  margin-left: 0;
+  margin-right: 4px;
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
+.engine-id-input {
+  margin-left: 0;
+  margin-right: 4px;
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
+.controller-name-field {
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
+.engine-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+
+.red-team {
+  margin-top: 10px;
+}
+
+.red-team summary {
+  cursor: pointer;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.red-team-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+body.dark .engine-name-input {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .engine-id-input {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .controller-name-field {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .layout-name-field {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+body.dark .manual-add-form input {
+  background: #333;
+  color: #fff;
+  border-color: #555;
+}
+
+.controller {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+/* Toast notifications */
+#toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.toast {
+  background: #333;
+  color: #fff;
+  padding: 10px 15px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  opacity: 0.95;
+  transition: opacity 0.5s, transform 0.5s;
+}
+
+.toast.hide {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+body.dark .toast {
+  background: #555;
+  color: #fff;
+}
+
+.toast.error {
+  background: #dc3545;
+}
+
+.toast.success {
+  background: #28a745;
+}
+
+/* Confirm deletion overlay */
+#confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+#confirm-overlay.show {
+  display: flex;
+}
+
+#confirm-box {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+body.dark #confirm-box {
+  background: #333;
+  color: #fff;
+}
+
+.delete-controller-btn {
+  position: absolute;
+  top: 4px;
+  right: 72px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-weight: bold;
+  cursor: pointer;
+  display: none;
+}
+.delete-controller-btn:hover {
+  color: #c82333;
+}
+
+.edit-controller-btn {
+  position: absolute;
+  top: 4px;
+  right: 36px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0;
+  transition: transform 0.2s;
+  color: #000;
+}
+
+.edit-controller-btn:hover {
+  transform: scale(1.2);
+}
+
+.edit-controller-btn.save {
+  color: #000;
+}
+

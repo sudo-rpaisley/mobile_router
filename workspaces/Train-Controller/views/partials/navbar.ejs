@@ -1,0 +1,25 @@
+<div class="top-bar controller-bar">
+  <div class="controller-settings">
+    <div class="controller-title">
+      <button
+        id="collapse-<%= id %>"
+        class="collapse-btn"
+        onclick="toggleController('<%= id %>')"
+        title="Collapse controller"
+      >▼</button>
+      <span id="controller-display-<%= id %>"><%= name || 'Controller' %></span>
+      <input type="text" class="controller-name-field" id="controller-name-<%= id %>" value="<%= name %>" style="display:none" />
+    </div>
+    <div class="controller-info">
+      <label for="ip-<%= id %>">IP:</label>
+      <span class="ip-display" id="ip-display-<%= id %>"><%= ip %></span>
+      <input type="text" class="ip-field" id="ip-<%= id %>" value="<%= ip %>" style="display:none" />
+    </div>
+    <div class="controller-actions">
+      <button onclick="initController('<%= ip %>')">Setup</button>
+      <button data-action="scan" onclick="scanEngines('<%= ip %>', '<%= id %>')">Scan Engines</button>
+      <button onclick="toggleAddEngine('<%= id %>')">Add Engine</button>
+    </div>
+  </div>
+  <button id="emergency" onclick="sendCmd('<%= ip %>', '<!>')">EMERGENCY STOP</button>
+</div>

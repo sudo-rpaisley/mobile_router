@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DCC Train Control</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>DCC Train Control</h1>
+      <div class="header-right">
+        <div class="layout-name-wrapper">
+          <span id="layout-name-display"><%= config.layoutName %></span>
+          <input
+            type="text"
+            id="layout-name-input"
+            class="layout-name-field"
+            value="<%= config.layoutName %>"
+            style="display:none"
+          />
+          <button
+            id="edit-layout-name"
+            class="edit-ip-btn"
+            onclick="toggleEditLayoutName()"
+            title="Edit Layout Name"
+          >🖉</button>
+        </div>
+        <div class="theme-switch">
+          <input type="checkbox" id="theme-toggle" onchange="toggleTheme()" />
+          <label for="theme-toggle" class="switch"></label>
+        </div>
+      </div>
+    </header>
+
+    <div id="toast-container"></div>
+
+    <datalist id="speedmarks">
+      <option value="-127" label="-127"></option>
+      <option value="-64"></option>
+      <option value="0" label="0"></option>
+      <option value="64"></option>
+      <option value="127" label="127"></option>
+    </datalist>
+
+    <%- include('partials/addController') %>
+
+    <% config.controllers.forEach(controller => { %>
+      <%- include('partials/controller', { controller, engines: controller.engines || [] }) %>
+    <% }) %>
+  </div>
+
+  <div id="confirm-overlay">
+    <div id="confirm-box">
+      <p>Are you sure you want to delete this controller?</p>
+      <button id="confirm-delete-btn" class="red">Delete</button>
+      <button onclick="hideConfirm()">Cancel</button>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
