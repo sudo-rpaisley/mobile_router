@@ -32,21 +32,15 @@ TRAINING_STEPS = (
 class TrainControllerService:
     def __init__(self, data_path, enabled=None, port=None, timeout=None, socket_factory=None):
         self.data_path = Path(data_path)
-        self.enabled = _env_enabled("TRAIN_CONTROLLER_ENABLED") if enabled is None else bool(enabled)
+        self.enabled = _env_bool("TRAIN_CONTROLLER_ENABLED") if enabled is None else bool(enabled)
         self.port = int(port or os.getenv("TRAIN_CONTROLLER_PORT", "2560"))
         self.timeout = float(timeout or os.getenv("TRAIN_CONTROLLER_TIMEOUT", "2"))
         self.socket_factory = socket_factory or socket.create_connection
         self._lock = threading.RLock()
 
     def capability(self):
-        reason = None if self.enabled else "Hardware controls were disabled by TRAIN_CONTROLLER_ENABLED=0."
-        return {
-            "available": self.enabled,
-            "reason": reason,
-            "port": self.port,
-            "protocol": "DCC-EX TCP",
-            "reachability": "checked_on_action" if self.enabled else "not_checked",
-        }
+        reason = None if self.enabled else "Set TRAIN_CONTROLLER_ENABLED=1 after connecting to an authorized DCC-EX controller network."
+        return {"available": self.enabled, "reason": reason, "port": self.port, "protocol": "DCC-EX TCP"}
 
     def state(self):
         with self._lock:
@@ -272,12 +266,8 @@ class TrainControllerService:
         return index == 0 or names[index - 1] in data["training"]["completed"]
 
 
-def _env_enabled(name):
-    """Default the supported TCP integration on, while retaining an admin kill switch."""
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return True
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def _env_bool(name):
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _valid_ip(value):

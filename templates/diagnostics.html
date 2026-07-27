@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Diagnostics{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Reachability</p>
+    <h1 class="page-title">Ping &amp; Route Diagnostics</h1>
+    <p class="page-subtitle">Test single hosts, run bounded subnet sweeps, and inspect gateways, routes, VPN hints, and scan-path context.</p>
+  </div>
+</section>
+
+<section class="theme-grid">
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Ping and reachability</h2>
+      <form id="ping-form" class="theme-form">
+        <div class="form-group mb-0">
+          <label for="ping-host">Host or IP</label>
+          <input type="text" class="form-control" id="ping-host" placeholder="8.8.8.8 or example.com">
+        </div>
+        <div class="theme-actions">
+          <button id="ping-btn" class="btn btn-primary">Ping Host</button>
+        </div>
+      </form>
+      <form id="ping-sweep-form" class="theme-form mt-3">
+        <div class="form-group mb-0">
+          <label for="ping-cidr">Subnet sweep CIDR</label>
+          <input type="text" class="form-control" id="ping-cidr" placeholder="192.168.1.0/30">
+        </div>
+        <div class="theme-actions">
+          <button id="ping-sweep-btn" class="btn btn-outline-primary">Run Sweep</button>
+        </div>
+      </form>
+      <div id="ping-results" class="theme-results"></div>
+    </div>
+  </article>
+
+  <article class="theme-card card">
+    <div class="card-body">
+      <h2 class="theme-section-title">Route table and gateways</h2>
+      <form id="route-diagnostics-form" class="theme-form">
+        <div class="form-group mb-0">
+          <label for="route-target">Optional target for scan-path context</label>
+          <input type="text" class="form-control" id="route-target" placeholder="1.1.1.1">
+        </div>
+        <div class="theme-actions">
+          <button id="route-diagnostics-btn" class="btn btn-secondary">Inspect Routes</button>
+        </div>
+      </form>
+      <div id="route-results" class="theme-results"></div>
+    </div>
+  </article>
+</section>
+<script src="/static/js/diagnostics.js"></script>
+{% endblock %}

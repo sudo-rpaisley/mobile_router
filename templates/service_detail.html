@@ -1,0 +1,36 @@
+{% include '_header.html' %}
+
+<body class="d-flex flex-column min-vh-100">
+  <main class="theme-page container py-4">
+    <section class="theme-card card">
+      <div class="card-body">
+        <p class="interface-kicker mb-1">Saved Service</p>
+        <h1 class="page-title">{{ host }}:{{ port }}</h1>
+        {% if service %}
+          <div class="theme-actions">
+            {% if service.web_url %}<a class="btn btn-primary" href="{{ service.web_url }}" target="_blank" rel="noopener noreferrer">Open web service</a>{% endif %}
+            <a class="btn btn-outline-secondary" href="/clients/{{ host|urlencode }}">Back to device</a>
+          </div>
+          <dl class="interface-definition-list mt-3">
+            <div><dt>Service</dt><dd>{{ service.service or 'Unknown' }}</dd></div>
+            <div><dt>Description</dt><dd>{{ service.description or 'No service description saved.' }}</dd></div>
+            <div><dt>HTTP Status</dt><dd>{{ service.http_status or 'Not captured' }}</dd></div>
+            <div><dt>HTTP Title</dt><dd>{{ service.http_title or 'Not captured' }}</dd></div>
+            <div><dt>Server Header</dt><dd>{{ service.http_server or 'Not captured' }}</dd></div>
+            <div><dt>URL</dt><dd>{% if service.web_url %}<a href="{{ service.web_url }}" target="_blank" rel="noopener noreferrer">{{ service.web_url }}</a>{% else %}No web URL saved{% endif %}</dd></div>
+          </dl>
+          {% if service.http_thumbnail_url %}
+            <img class="web-service-preview-image mt-3" src="{{ service.http_thumbnail_url }}" alt="Preview of {{ service.web_url }}">
+          {% else %}
+            <p class="text-muted mt-3">No screenshot preview is available yet. A preview is captured automatically when browser screenshot tooling is installed on the host.</p>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-warning">No saved service profile exists for this port yet.</div>
+          <a class="btn btn-outline-secondary" href="/clients/{{ host|urlencode }}">Back to device</a>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+  {% include '_footer.html' %}
+</body>
+</html>

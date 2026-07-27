@@ -26,15 +26,7 @@ def service(tmp_path, enabled=True, response=b""):
 def test_capability_detection_explains_disabled_hardware(tmp_path):
     capability = service(tmp_path, enabled=False)[0].capability()
     assert capability["available"] is False
-    assert "TRAIN_CONTROLLER_ENABLED=0" in capability["reason"]
-
-
-def test_capability_is_enabled_by_default_without_claiming_reachability(tmp_path, monkeypatch):
-    monkeypatch.delenv("TRAIN_CONTROLLER_ENABLED", raising=False)
-    capability = TrainControllerService(tmp_path / "trains.json").capability()
-    assert capability["available"] is True
-    assert capability["reason"] is None
-    assert capability["reachability"] == "checked_on_action"
+    assert "TRAIN_CONTROLLER_ENABLED=1" in capability["reason"]
 
 
 def test_service_persists_roster_sends_generated_command_and_history(tmp_path):
@@ -68,7 +60,7 @@ def test_service_rejects_invalid_values_duplicates_and_unavailable_hardware(tmp_
     controller = instance.add_controller("192.0.2.10")["controllers"][0]
     with pytest.raises(TrainControllerError, match="already exists"):
         instance.add_controller("192.0.2.10")
-    with pytest.raises(TrainControllerError, match="TRAIN_CONTROLLER_ENABLED=0"):
+    with pytest.raises(TrainControllerError, match="TRAIN_CONTROLLER_ENABLED"):
         instance.run_action(controller["id"], "setup")
 
 
@@ -157,6 +149,6 @@ def test_route_reports_unavailable_hardware(tmp_path):
     try:
         response = app.test_client().post(f"/api/train-controller/controllers/{controller['id']}/actions", json={"action": "setup", "authorized": True})
         assert response.status_code == 503
-        assert "TRAIN_CONTROLLER_ENABLED=0" in response.get_json()["message"]
+        assert "TRAIN_CONTROLLER_ENABLED" in response.get_json()["message"]
     finally:
         app.config.pop("TRAIN_CONTROLLER_SERVICE", None)

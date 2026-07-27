@@ -10,13 +10,11 @@ action history and Evidence Vault capture; and a persistent guided Training mode
 with trophies. This is a clean-room Python implementation; it does not embed or
 run the source Node app.
 
-The cross-platform TCP integration is enabled by default. Controller reachability
-is checked only when an authorized action is requested, so an offline controller
-produces a real connection error rather than a simulated result. Administrators
-can disable all hardware operations with the explicit kill switch:
+Hardware commands are disabled by default. After connecting Mobile Router to an
+authorized model-railway network, enable them with:
 
 ```bash
-export TRAIN_CONTROLLER_ENABLED=0       # optional administrative kill switch
+export TRAIN_CONTROLLER_ENABLED=1
 export TRAIN_CONTROLLER_PORT=2560       # optional
 export TRAIN_CONTROLLER_TIMEOUT=2       # optional, seconds
 ```

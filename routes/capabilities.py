@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, render_template, request
 
-from scripts.capabilities import build_capabilities, install_optional_package
+from scripts.capabilities import build_capabilities, install_host_dependency, install_optional_package
+from services.oui import refresh_oui_database
+from scripts.update_oui_db import download_oui_database
 
 
 def create_capabilities_blueprint(context_provider):
@@ -28,6 +30,44 @@ def create_capabilities_blueprint(context_provider):
 
         try:
             result = install_optional_package(package)
+            return jsonify({'status': 'success', **result})
+        except ValueError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+    @blueprint.route('/capabilities/update-oui-database', methods=['POST'])
+    def update_oui_database_route():
+        confirm = request.form.get('confirm') == 'download'
+        if not confirm:
+            return jsonify({'status': 'error', 'message': 'Confirm full IEEE OUI database download before continuing.'}), 400
+
+        try:
+            path, count = download_oui_database()
+            oui_status = refresh_oui_database()
+            return jsonify({
+                'status': 'success',
+                'message': f'Downloaded {count} OUI entries.',
+                'path': path,
+                'count': count,
+                'oui_database': oui_status,
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+    @blueprint.route('/capabilities/install-host-dependency', methods=['POST'])
+    def install_host_dependency_route():
+        dependency = request.form.get('dependency')
+        confirm = request.form.get('confirm') == 'install'
+        if not dependency:
+            return jsonify({'status': 'error', 'message': 'Missing dependency'}), 400
+        if not confirm:
+            return jsonify({'status': 'error', 'message': 'Confirm host package installation before continuing.'}), 400
+
+        try:
+            result = install_host_dependency(dependency)
             return jsonify({'status': 'success', **result})
         except ValueError as e:
             return jsonify({'status': 'error', 'message': str(e)}), 400
