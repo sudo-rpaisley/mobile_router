@@ -109,6 +109,17 @@ Run the application directly with Python:
 python app.py
 ```
 
+### Running tests
+
+Install the development dependencies, then invoke pytest through Python. Using
+`python -m pytest` also works on Windows when the standalone `pytest` command is
+not available on `PATH`.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
 The server listens on `0.0.0.0:8080`. Once running, navigate to
 `http://localhost:8080` in a web browser to access the UI. From there you can
 browse interfaces or open the **Red Team** page to try the network utilities.

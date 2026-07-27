@@ -2934,7 +2934,6 @@ def client_detail(identifier):
         is_bluetooth=is_bluetooth,
         display_name_source=(inventory_device or {}).get('display_name_source'),
         inventory_device=inventory_device or {},
-        is_bluetooth=is_bluetooth,
         open_port_details=[] if is_bluetooth else (inventory_device or {}).get('open_port_details', []),
         open_ports=[] if is_bluetooth else (inventory_device or {}).get('open_ports', []),
         last_port_scan_label=(
@@ -3635,29 +3634,6 @@ def bluetooth_action():
     except ValueError as e:
         history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
         return json_error(str(e), history=history)
-    except BluetoothToolUnavailable as e:
-        history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
-        return json_error(str(e), 501, history=history)
-    except Exception as e:
-        message = f'Bluetooth action error: {str(e)}'
-        history = record_bluetooth_action_history(address, action, 'error', message, adapter=adapter)
-        return json_error(message, 500, history=history)
-
-
-@app.route('/bluetooth-device/<address>/refresh', methods=['POST'])
-def bluetooth_device_refresh(address):
-    try:
-        output = run_bluetoothctl_action('info', address, adapter=request.form.get('adapter'))
-        device = _merge_inventory_device_state(address, _parse_bluetooth_info_output(output))
-        history = record_bluetooth_action_history(address, 'refresh', 'success', output or 'Device info refreshed.', adapter=request.form.get('adapter'))
-        return json_success(message='Bluetooth device refreshed', output=output, device=device, history=history, actions=bluetooth_contextual_actions(device), device_state=bluetooth_device_state(device))
-    except ValueError as e:
-        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
-        return json_error(str(e), history=history)
-    except BluetoothToolUnavailable as e:
-        history = record_bluetooth_action_history(address, 'refresh', 'error', str(e), adapter=request.form.get('adapter'))
-        return json_error(str(e), 501, history=history)
-    except Exception as e:
     except BluetoothToolUnavailable as e:
         history = record_bluetooth_action_history(address, action, 'error', str(e), adapter=adapter)
         return json_error(str(e), 501, history=history)
