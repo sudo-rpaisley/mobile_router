@@ -101,18 +101,20 @@ def add_credential(profile_id, values, store, lock, now=None):
     """Add a website or device credential to a profile."""
     label = str(values.get('label') or '').strip()
     username = str(values.get('username') or '').strip()
-    secret = str(values.get('secret') or '')
+    secret_ciphertext = str(values.get('secret_ciphertext') or '')
     website_url = _clean_url(values.get('website_url'), 'Website link')
     device_id = str(values.get('device_id') or '').strip()
     if not label:
         raise ValueError('Credential label is required.')
-    if not username and not secret:
+    if not username and not secret_ciphertext:
         raise ValueError('Enter a username or password/secret.')
-    if len(secret) > 10000:
-        raise ValueError('Password/secret must be 10,000 characters or fewer.')
+    if secret_ciphertext and not secret_ciphertext.startswith('vault:v1:'):
+        raise ValueError('Password/secret must be encrypted by the credential vault.')
+    if len(secret_ciphertext) > 20000:
+        raise ValueError('Encrypted password/secret is too large.')
     credential = {
         'id': str(uuid.uuid4()), 'label': label[:160], 'username': username[:320],
-        'secret': secret, 'website_url': website_url, 'device_id': device_id,
+        'secret_ciphertext': secret_ciphertext, 'website_url': website_url, 'device_id': device_id,
         'created_at': now if now is not None else time.time(),
     }
     with lock:

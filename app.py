@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for
+from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for, session
 from flask_socketio import SocketIO
 import os
 import json
@@ -12,6 +12,8 @@ import subprocess
 import csv
 import io
 import socket
+import secrets
+from functools import wraps
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -30,6 +32,7 @@ from services import reports as reports_service
 from services import alerts as alerts_service
 from services import evidence as evidence_service
 from services import social_profiles as social_profile_service
+from services import social_auth as social_auth_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
     get_network_interfaces,
@@ -56,6 +59,7 @@ from scripts.networkScan import (
 
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('MOBILE_ROUTER_SECRET_KEY') or secrets.token_hex(32)
 log_path = configure_logging(app)
 socketio = SocketIO(app)
 
@@ -82,6 +86,10 @@ handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
 social_profiles = {}
 social_profiles_lock = threading.Lock()
+social_users = {}
+social_users_lock = threading.Lock()
+social_audit_log = []
+social_audit_lock = threading.Lock()
 ping_history = []
 vlan_segmentation_notes = []
 watched_clients = set()
@@ -114,6 +122,10 @@ def runtime_state_snapshot():
         timelines = {key: [dict(item) for item in value] for key, value in client_timelines.items()}
     with social_profiles_lock:
         profiles = {key: dict(value) for key, value in social_profiles.items()}
+    with social_users_lock:
+        users = {key: dict(value) for key, value in social_users.items()}
+    with social_audit_lock:
+        audit = [dict(value) for value in social_audit_log]
     return {
         'device_inventory': inventory,
         'new_device_alerts': alerts,
@@ -129,6 +141,8 @@ def runtime_state_snapshot():
         'pineap_lab_runs': pineap_lab_runs,
         'handshake_lab_records': handshake_lab_records,
         'social_profiles': profiles,
+        'social_users': users,
+        'social_audit_log': audit,
     }
 
 
@@ -167,6 +181,10 @@ def load_runtime_state():
     handshake_lab_records.extend(state.get('handshake_lab_records') or [])
     with social_profiles_lock:
         social_profiles.update(state.get('social_profiles') or {})
+    with social_users_lock:
+        social_users.update(state.get('social_users') or {})
+    with social_audit_lock:
+        social_audit_log.extend(state.get('social_audit_log') or [])
     return state
 
 
@@ -2623,17 +2641,109 @@ def contact_page():
     return render_template('contact.html', title='Contact', **current_context())
 
 
+def social_csrf_token():
+    if 'social_csrf_token' not in session:
+        session['social_csrf_token'] = secrets.token_urlsafe(32)
+    return session['social_csrf_token']
+
+
+def social_login_required(roles=None):
+    allowed_roles = set(roles or social_auth_service.ROLES)
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if not social_users:
+                return redirect(url_for('social_auth_setup'))
+            user = session.get('social_user')
+            if not user:
+                return redirect(url_for('social_auth_login', next=request.path))
+            if user.get('role') not in allowed_roles:
+                return json_error('You do not have permission for this action.', 403)
+            if request.method == 'POST' and not secrets.compare_digest(
+                str(request.form.get('csrf_token') or ''), str(session.get('social_csrf_token') or ''),
+            ):
+                return json_error('Invalid or expired form token.', 400)
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def record_social_audit(action, profile_id=None, detail=None):
+    username = (session.get('social_user') or {}).get('username')
+    social_auth_service.record_audit(
+        action, username, social_audit_log, social_audit_lock, profile_id, detail,
+    )
+
+
+def recent_social_audit(limit=50):
+    with social_audit_lock:
+        return [dict(item) for item in social_audit_log[:limit]]
+
+
+@app.route('/social-engineering/setup', methods=['GET', 'POST'])
+def social_auth_setup():
+    if social_users:
+        return redirect(url_for('social_auth_login'))
+    if request.method == 'POST':
+        if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
+            return json_error('Invalid or expired form token.', 400)
+        try:
+            user = social_auth_service.create_user(
+                request.form.get('username'), request.form.get('password'), 'admin',
+                social_users, social_users_lock,
+            )
+        except ValueError as exc:
+            return render_template('social_auth.html', title='Social Profile Setup', mode='setup', error=str(exc), csrf_token=social_csrf_token(), **current_context()), 400
+        session['social_user'] = {'username': user['username'], 'role': user['role']}
+        record_social_audit('auth.setup')
+        save_runtime_state('social-auth-setup')
+        return redirect(url_for('social_engineering_page'))
+    return render_template('social_auth.html', title='Social Profile Setup', mode='setup', csrf_token=social_csrf_token(), **current_context())
+
+
+@app.route('/social-engineering/login', methods=['GET', 'POST'])
+def social_auth_login():
+    if not social_users:
+        return redirect(url_for('social_auth_setup'))
+    if request.method == 'POST':
+        if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
+            return json_error('Invalid or expired form token.', 400)
+        user = social_auth_service.authenticate(
+            request.form.get('username'), request.form.get('password'), social_users, social_users_lock,
+        )
+        if not user:
+            return render_template('social_auth.html', title='Social Profile Login', mode='login', error='Invalid username or password.', csrf_token=social_csrf_token(), **current_context()), 401
+        session['social_user'] = {'username': user['username'], 'role': user['role']}
+        record_social_audit('auth.login')
+        save_runtime_state('social-auth-login')
+        return redirect(url_for('social_engineering_page'))
+    return render_template('social_auth.html', title='Social Profile Login', mode='login', csrf_token=social_csrf_token(), **current_context())
+
+
+@app.route('/social-engineering/logout', methods=['POST'])
+@social_login_required()
+def social_auth_logout():
+    record_social_audit('auth.logout')
+    save_runtime_state('social-auth-logout')
+    session.pop('social_user', None)
+    return redirect(url_for('social_auth_login'))
+
+
 @app.route('/social-engineering')
+@social_login_required()
 def social_engineering_page():
     return render_template(
         'social_engineering.html',
         title='Social Engineering',
         profiles=social_profile_service.list_profiles(social_profiles, social_profiles_lock),
+        social_user=session.get('social_user'), csrf_token=social_csrf_token(),
+        social_audit=recent_social_audit(),
         **current_context(),
     )
 
 
 @app.route('/social-engineering/profiles', methods=['POST'])
+@social_login_required({'editor', 'credential_manager', 'admin'})
 def create_social_profile():
     try:
         profile = social_profile_service.create_profile(request.form, social_profiles, social_profiles_lock)
@@ -2641,23 +2751,27 @@ def create_social_profile():
         return render_template(
             'social_engineering.html', title='Social Engineering',
             profiles=social_profile_service.list_profiles(social_profiles, social_profiles_lock),
-            form_values=request.form, error=str(exc), **current_context(),
+            form_values=request.form, error=str(exc), social_user=session.get('social_user'),
+            csrf_token=social_csrf_token(), **current_context(),
         ), 400
+    record_social_audit('profile.create', profile['id'])
     save_runtime_state('social-profile-create')
     return redirect(url_for('social_profile_detail', profile_id=profile['id']))
 
 
 @app.route('/social-engineering/profiles/<profile_id>')
+@social_login_required()
 def social_profile_detail(profile_id):
     profile = social_profile_service.get_profile(profile_id, social_profiles, social_profiles_lock)
     if not profile:
         return render_template('social_profile_detail.html', title='Profile not found', profile=None, **current_context()), 404
     for device in profile.get('devices', []):
         device['inventory_match'] = find_inventory_device(device.get('mac')) if device.get('mac') else None
-    return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, **current_context())
+    return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context())
 
 
 @app.route('/social-engineering/profiles/<profile_id>/update', methods=['POST'])
+@social_login_required({'editor', 'credential_manager', 'admin'})
 def update_social_profile(profile_id):
     try:
         profile = social_profile_service.update_profile(
@@ -2669,21 +2783,26 @@ def update_social_profile(profile_id):
         current = social_profile_service.get_profile(profile_id, social_profiles, social_profiles_lock)
         return render_template(
             'social_profile_detail.html', title=(current or {}).get('full_name', 'Profile'),
-            profile={**(current or {}), **request.form}, error=str(exc), **current_context(),
+            profile={**(current or {}), **request.form}, error=str(exc), social_user=session.get('social_user'),
+            csrf_token=social_csrf_token(), **current_context(),
         ), 400
+    record_social_audit('profile.update', profile_id)
     save_runtime_state('social-profile-update')
     return redirect(url_for('social_profile_detail', profile_id=profile['id']))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/delete', methods=['POST'])
+@social_login_required({'admin'})
 def delete_social_profile(profile_id):
     if not social_profile_service.delete_profile(profile_id, social_profiles, social_profiles_lock):
         return json_error('Profile not found', 404)
+    record_social_audit('profile.delete', profile_id)
     save_runtime_state('social-profile-delete')
     return redirect(url_for('social_engineering_page'))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/credentials', methods=['POST'])
+@social_login_required({'credential_manager', 'admin'})
 def add_social_profile_credential(profile_id):
     try:
         social_profile_service.add_credential(profile_id, request.form, social_profiles, social_profiles_lock)
@@ -2691,11 +2810,13 @@ def add_social_profile_credential(profile_id):
         return json_error('Profile not found', 404)
     except ValueError as exc:
         return json_error(str(exc))
+    record_social_audit('credential.create', profile_id)
     save_runtime_state('social-profile-credential-create')
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/credentials/<credential_id>/delete', methods=['POST'])
+@social_login_required({'credential_manager', 'admin'})
 def delete_social_profile_credential(profile_id, credential_id):
     try:
         removed = social_profile_service.delete_credential(profile_id, credential_id, social_profiles, social_profiles_lock)
@@ -2703,11 +2824,13 @@ def delete_social_profile_credential(profile_id, credential_id):
         return json_error('Profile not found', 404)
     if not removed:
         return json_error('Credential not found', 404)
+    record_social_audit('credential.delete', profile_id)
     save_runtime_state('social-profile-credential-delete')
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/devices', methods=['POST'])
+@social_login_required({'editor', 'credential_manager', 'admin'})
 def add_social_profile_device(profile_id):
     try:
         social_profile_service.add_device(
@@ -2717,11 +2840,13 @@ def add_social_profile_device(profile_id):
         return json_error('Profile not found', 404)
     except ValueError as exc:
         return json_error(str(exc))
+    record_social_audit('device.create', profile_id)
     save_runtime_state('social-profile-device-create')
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/devices/<device_id>/delete', methods=['POST'])
+@social_login_required({'editor', 'credential_manager', 'admin'})
 def delete_social_profile_device(profile_id, device_id):
     try:
         removed = social_profile_service.delete_device(profile_id, device_id, social_profiles, social_profiles_lock)
@@ -2729,8 +2854,20 @@ def delete_social_profile_device(profile_id, device_id):
         return json_error('Profile not found', 404)
     if not removed:
         return json_error('Device not found', 404)
+    record_social_audit('device.delete', profile_id)
     save_runtime_state('social-profile-device-delete')
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/audit', methods=['POST'])
+@social_login_required()
+def social_profile_client_audit(profile_id):
+    action = str(request.form.get('action') or '')
+    if action not in {'credential.reveal', 'vault.unlock'}:
+        return json_error('Unsupported audit action.')
+    record_social_audit(action, profile_id)
+    save_runtime_state('social-profile-audit')
+    return json_success()
 
 
 @app.route('/submit-contact', methods=['POST'])

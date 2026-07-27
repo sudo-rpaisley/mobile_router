@@ -15,8 +15,21 @@ class RouteSmokeTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
         app_module.social_profiles.clear()
+        app_module.social_users.clear()
+        app_module.social_audit_log.clear()
+
+    def login_social_admin(self):
+        app_module.social_auth_service.create_user(
+            'test-admin', 'correct-horse-battery', 'admin',
+            app_module.social_users, app_module.social_users_lock,
+        )
+        self.csrf_token = 'test-csrf-token'
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            flask_session['social_csrf_token'] = self.csrf_token
 
     def test_social_engineering_profile_crud(self):
+        self.login_social_admin()
         response = self.client.get('/social-engineering')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Social Engineering Profiles', response.data)
@@ -29,6 +42,7 @@ class RouteSmokeTest(unittest.TestCase):
                 'facebook_url': 'facebook.com/alex.example',
                 'linkedin_url': 'https://linkedin.com/in/alex-example',
                 'notes': 'Authorized awareness exercise participant.',
+                'csrf_token': self.csrf_token,
             })
 
         self.assertEqual(response.status_code, 302)
@@ -52,6 +66,7 @@ class RouteSmokeTest(unittest.TestCase):
             response = self.client.post(f'/social-engineering/profiles/{profile_id}/devices', data={
                 'name': 'iPhone 13', 'device_type': 'iphone',
                 'mac': 'AC-16-2D-A2-71-9E', 'notes': 'Personal phone',
+                'csrf_token': self.csrf_token,
             })
         self.assertEqual(response.status_code, 302)
         save_state.assert_called_once_with('social-profile-device-create')
@@ -63,7 +78,8 @@ class RouteSmokeTest(unittest.TestCase):
             response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
                 'label': 'Apple ID', 'website_url': 'appleid.apple.com',
                 'device_id': device['id'], 'username': 'alex@example.com',
-                'secret': 'Swordfish!',
+                'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:Y2lwaGVydGV4dA==',
+                'csrf_token': self.csrf_token,
             })
         self.assertEqual(response.status_code, 302)
         save_state.assert_called_once_with('social-profile-credential-create')
@@ -75,31 +91,65 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'credential-reveal', response.data)
         self.assertIn(b'\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2', response.data)
         self.assertIn(b'social-profiles.js', response.data)
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/audit', data={
+            'action': 'credential.reveal', 'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(app_module.social_audit_log[0]['action'], 'credential.reveal')
 
         with patch('app.save_runtime_state') as save_state:
             response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
                 **profile, 'full_name': 'Alex Updated',
+                'csrf_token': self.csrf_token,
             })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(app_module.social_profiles[profile_id]['full_name'], 'Alex Updated')
         save_state.assert_called_once_with('social-profile-update')
 
         with patch('app.save_runtime_state') as save_state:
-            response = self.client.post(f'/social-engineering/profiles/{profile_id}/delete')
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/delete', data={'csrf_token': self.csrf_token})
         self.assertEqual(response.status_code, 302)
         self.assertNotIn(profile_id, app_module.social_profiles)
         save_state.assert_called_once_with('social-profile-delete')
 
     def test_social_profile_rejects_invalid_contact_fields(self):
+        self.login_social_admin()
         response = self.client.post('/social-engineering/profiles', data={
             'full_name': 'Unsafe Link',
             'email': 'safe@example.com',
             'facebook_url': 'javascript:alert(1)',
+            'csrf_token': self.csrf_token,
         })
 
         self.assertEqual(response.status_code, 400)
         self.assertIn(b'Facebook link must be a valid HTTP or HTTPS URL', response.data)
         self.assertFalse(app_module.social_profiles)
+
+    def test_social_profiles_require_login_csrf_and_role(self):
+        self.login_social_admin()
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/social-engineering')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/social-engineering/login', response.location)
+
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+        response = self.client.post('/social-engineering/profiles', data={'full_name': 'No Token'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Invalid or expired form token', response.data)
+
+        app_module.social_auth_service.create_user(
+            'test-viewer', 'another-correct-password', 'viewer',
+            app_module.social_users, app_module.social_users_lock,
+        )
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-viewer', 'role': 'viewer'}
+            flask_session['social_csrf_token'] = self.csrf_token
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Forbidden', 'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 403)
 
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')

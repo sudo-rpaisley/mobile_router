@@ -9,6 +9,7 @@
     <h1 class="page-title">Social Engineering Profiles</h1>
     <p class="page-subtitle">Keep contact and public-profile references together for consent-based awareness exercises.</p>
   </div>
+  <form method="post" action="/social-engineering/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-secondary" type="submit">Sign out ({{ social_user.username }})</button></form>
 </section>
 
 <div class="alert alert-warning" role="alert">
@@ -21,6 +22,7 @@
       <h2 class="theme-section-title">Add an individual</h2>
       {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
       <form class="theme-form" method="post" action="/social-engineering/profiles">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="form-group"><label for="full_name">Full name</label><input class="form-control" id="full_name" name="full_name" maxlength="160" value="{{ (form_values or {}).get('full_name', '') }}" required></div>
         <div class="form-group"><label for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ (form_values or {}).get('email', '') }}"></div>
         <div class="form-group"><label for="facebook_url">Facebook link</label><input class="form-control" type="url" id="facebook_url" name="facebook_url" placeholder="https://facebook.com/..." value="{{ (form_values or {}).get('facebook_url', '') }}"></div>
@@ -49,4 +51,11 @@
     </div>
   </article>
 </section>
+
+{% if social_user.role == 'admin' and social_audit %}
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Recent security activity</h2>
+  <div class="table-responsive"><table class="table theme-table"><thead><tr><th>Action</th><th>User</th><th>Profile</th></tr></thead><tbody>{% for item in social_audit %}<tr><td>{{ item.action }}</td><td>{{ item.username }}</td><td>{{ item.profile_id or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+</div></section>
+{% endif %}
 {% endblock %}
