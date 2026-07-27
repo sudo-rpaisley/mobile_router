@@ -1,4 +1,6 @@
+import io
 import json
+import runpy
 import sys
 import tempfile
 import unittest
@@ -96,7 +98,7 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
         capability = bluetooth_display_name_capability(system="Windows")
 
         self.assertFalse(capability["available"])
-        self.assertIn("computer name", capability["message"])
+        self.assertIn("app-scoped Mobile Router Bluetooth LE service", capability["message"])
 
     @patch("scripts.bluetooth_phone.subprocess.run")
     @patch("scripts.bluetooth_phone.bluetooth_display_name_capability")
@@ -177,15 +179,79 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             self.assertFalse(bluetooth_pairing_mode_capability(system="Windows")["available"])
 
-
     @patch("scripts.bluetooth_phone.shutil.which", return_value=None)
-    def test_pairing_mode_capability_discovers_bundled_windows_helper(self, _which):
+    def test_pairing_mode_capability_uses_bundled_app_scoped_windows_helper(self, _which):
         with patch.dict("os.environ", {}, clear=True):
             capability = bluetooth_pairing_mode_capability(system="Windows")
 
         self.assertTrue(capability["available"])
         self.assertEqual(capability["tool"], "native-helper")
         self.assertTrue(capability["path"].endswith("helpers/windows/mobile-router-bluetooth-helper.py"))
+        self.assertIn("app-scoped", capability["message"])
+
+    def test_windows_pairing_message_uses_app_scoped_native_helper(self):
+        with tempfile.NamedTemporaryFile() as helper:
+            with patch.dict(
+                "os.environ",
+                {"MOBILE_ROUTER_BLUETOOTH_HELPER": helper.name},
+                clear=False,
+            ):
+                capability = bluetooth_pairing_mode_capability(system="Windows")
+
+        self.assertTrue(capability["available"])
+        self.assertIn("app-scoped", capability["message"])
+
+    def test_bundled_windows_helper_starts_app_scoped_ble_advertising(self):
+        helper_module = runpy.run_path(
+            str(Path(__file__).resolve().parents[1] / "helpers" / "windows" / "mobile-router-bluetooth-helper.py"),
+            run_name="mobile_router_bluetooth_helper",
+        )
+        helper_globals = helper_module["handle_set_advertising"].__globals__
+
+        response_buffer = io.StringIO()
+        fake_process = SimpleNamespace(pid=4321)
+        with patch.dict(helper_globals, {
+            "ADVERTISING_STATE_PATH": str(Path(self.temp_dir.name) / "advertising.json"),
+            "STOP_SIGNAL_PATH": str(Path(self.temp_dir.name) / "advertising.stop"),
+            "_powershell_executable": lambda: "powershell",
+        }), \
+             patch.object(helper_module["subprocess"], "Popen", return_value=fake_process) as popen, \
+             patch.object(helper_module["sys"], "stdout", response_buffer):
+            helper_module["handle_set_advertising"]({
+                "enabled": True,
+                "display_name": "Camper Router",
+            })
+
+        response = json.loads(response_buffer.getvalue())
+        self.assertEqual(response["status"], "success")
+        self.assertTrue(response["enabled"])
+        self.assertTrue(response["app_scoped_pairing"])
+        self.assertEqual(response["display_name"], "Camper Router")
+        self.assertEqual(response["service_uuid"], helper_module["MOBILE_ROUTER_BLE_SERVICE_UUID"])
+        self.assertIn("app-scoped Bluetooth LE service", response["message"])
+        self.assertIn("BluetoothLEAdvertisementPublisher", popen.call_args.args[0][-1])
+
+    def test_bundled_windows_helper_reports_missing_powershell(self):
+        helper_module = runpy.run_path(
+            str(Path(__file__).resolve().parents[1] / "helpers" / "windows" / "mobile-router-bluetooth-helper.py"),
+            run_name="mobile_router_bluetooth_helper",
+        )
+        helper_globals = helper_module["handle_set_advertising"].__globals__
+
+        response_buffer = io.StringIO()
+        with patch.dict(helper_globals, {
+            "ADVERTISING_STATE_PATH": str(Path(self.temp_dir.name) / "advertising.json"),
+            "STOP_SIGNAL_PATH": str(Path(self.temp_dir.name) / "advertising.stop"),
+            "_powershell_executable": lambda: None,
+        }), \
+             patch.object(helper_module["sys"], "stdout", response_buffer):
+            helper_module["handle_set_advertising"]({"enabled": True})
+
+        response = json.loads(response_buffer.getvalue())
+        self.assertEqual(response["status"], "error")
+        self.assertFalse(response["enabled"])
+        self.assertTrue(response["app_scoped_pairing"])
+        self.assertIn("PowerShell is required", response["message"])
 
     @patch("scripts.bluetooth_phone.BluetoothPhoneHelperClient")
     @patch("scripts.bluetooth_phone.bluetooth_pairing_mode_capability")
@@ -251,6 +317,25 @@ class BluetoothPhoneRouteTest(unittest.TestCase):
         self.assertTrue(saved["enabled_features"]["contacts"])
         self.assertTrue(saved["enabled_features"]["call_history"])
         self.assertFalse(saved["enabled_features"]["messages"])
+
+
+    def test_ajax_post_autosaves_settings(self):
+        response = self.client.post(
+            "/bluetooth-phone",
+            data={
+                "display_name": "Auto Router",
+                "features": ["contacts"],
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "success")
+        self.assertIn("Bluetooth phone settings saved", payload["notice"])
+        saved = load_bluetooth_phone_settings(self.config_path)
+        self.assertEqual(saved["display_name"], "Auto Router")
+        self.assertTrue(saved["enabled_features"]["contacts"])
 
     def test_post_rejects_unknown_feature(self):
         response = self.client.post(

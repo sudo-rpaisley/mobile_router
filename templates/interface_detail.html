@@ -18,6 +18,11 @@
         </div>
       </div>
       <div class="interface-actions">
+        <div class="btn-group mb-2" role="group" aria-label="Interface power controls">
+          <button class="btn btn-outline-success btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="up">Turn on</button>
+          <button class="btn btn-outline-warning btn-sm" type="button" data-interface-power data-interface="{{ interface.name }}" data-state="down">Turn off</button>
+        </div>
+        <div class="alert d-none py-2 px-3 small" role="alert" data-interface-power-output></div>
         {% if interface.interface_type == 'Wireless' %}
           <div id="wlan-modes-{{ interface.name }}" class="adapter-mode-switches" data-interface="{{ interface.name }}">
             <p class="adapter-mode-loading mb-2">Loading adapter modes...</p>
@@ -154,9 +159,9 @@
                   {% if not bluetooth_phone_pairing_capability.available %}disabled{% endif %}>
                 <label class="custom-control-label" for="advertise-enabled">Advertise device for phone pairing</label>
               </div>
-              {% if not bluetooth_phone_pairing_capability.available %}
-                <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
-              {% endif %}
+              <p class="text-muted small mb-3">{{ bluetooth_phone_pairing_capability.message }}</p>
+              <div class="alert alert-info py-2 px-3 small d-none" role="status" data-bluetooth-phone-status></div>
+              <p class="text-muted small mb-3">Changes autosave. Toggle advertising off and back on to restart the app-scoped Bluetooth service.</p>
 
               <fieldset>
                 <legend class="h6">Allowed phone features</legend>
@@ -179,9 +184,6 @@
                 </div>
               </fieldset>
 
-              <div class="theme-actions mt-3">
-                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save and apply</button>
-              </div>
             </form>
           </div>
         </article>
@@ -211,6 +213,8 @@
     <div id="bluetooth-devices"></div>
   </main>
 
+  <script src="/static/js/interface-power.js"></script>
+  <script src="/static/js/bluetooth-phone-autosave.js"></script>
   {% if interface.interface_type == 'Wireless' %}
     <script src="/static/js/wireless-adapters.js"></script>
   {% elif interface.interface_type == 'Bluetooth' %}
