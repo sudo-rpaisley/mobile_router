@@ -1718,7 +1718,8 @@ def inventory_records():
         records = [dict(item) for item in device_inventory.values()]
     for item in records:
         item['display_name'] = display_name_for_inventory_device(item)
-        item['manufacturer'] = item.get('manufacturer') or 'Unknown'
+        if not item.get('manufacturer') or str(item['manufacturer']).casefold() == 'unknown':
+            item['manufacturer'] = lookup_manufacturer(item.get('mac') or item.get('address'))
         item['likely_randomized_mac'] = device_intel.is_locally_administered_mac(item.get('mac') or item.get('address'))
         item['device_role_guess'] = item.get('device_role_guess') or device_intel.infer_device_role(item)
         item['is_unknown_manufacturer'] = item['manufacturer'] == 'Unknown'
@@ -2900,7 +2901,6 @@ def client_detail(identifier):
     if is_bluetooth:
         ip = None
 
-    manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
     display_name = (
         (inventory_device or {}).get('name')
         or (inventory_device or {}).get('display_name')
@@ -2912,7 +2912,9 @@ def client_detail(identifier):
         inventory_device = enrich_ip_client_display_name(ip, inventory_device)
         mac = (inventory_device or {}).get('mac') or mac
 
-    manufacturer = (inventory_device or {}).get('manufacturer') or (lookup_manufacturer(mac) if mac else 'Unknown')
+    manufacturer = (inventory_device or {}).get('manufacturer')
+    if not manufacturer or str(manufacturer).casefold() == 'unknown':
+        manufacturer = lookup_manufacturer(mac)
     display_name = display_name_for_inventory_device(inventory_device or {}, mac or ip or identifier)
 
     last_port_scan = None if is_bluetooth else (inventory_device or {}).get('last_port_scan')

@@ -884,10 +884,25 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(lookup_manufacturer('52:54:00:12:34:56'), 'QEMU/KVM Virtual NIC')
         self.assertEqual(lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('8C-49-62-BD-7D-37'), 'Roku, Inc.')
+        self.assertEqual(lookup_manufacturer('ac:16:2d:a2:71:9e'), 'Hewlett Packard')
         from scripts.wifi import utils as wifi_utils
         self.assertEqual(wifi_utils._mac_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(app_module.lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('not-a-mac'), 'Unknown')
+
+    def test_client_detail_replaces_unknown_manufacturer_with_oui_vendor(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([{
+            'mac': 'ac:16:2d:a2:71:9e',
+            'manufacturer': 'Unknown',
+        }], 'active-scan', 'eth0')
+
+        response = self.client.get('/clients/ac:16:2d:a2:71:9e')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Hewlett Packard', response.data)
+        device = app_module.find_inventory_device('ac:16:2d:a2:71:9e')
+        self.assertEqual(device['manufacturer'], 'Hewlett Packard')
 
     def test_oui_downloader_tries_fallback_urls(self):
         from scripts import update_oui_db
