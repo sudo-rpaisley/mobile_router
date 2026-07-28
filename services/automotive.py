@@ -42,8 +42,17 @@ class AutomotiveStore:
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS vin_data (wmi TEXT PRIMARY KEY, manufacturer TEXT, country TEXT, details TEXT);
-                CREATE TABLE IF NOT EXISTS dtc (code TEXT NOT NULL, make TEXT NOT NULL DEFAULT '', description TEXT NOT NULL,
-                    source TEXT NOT NULL DEFAULT '', PRIMARY KEY(code, make));
+                CREATE TABLE IF NOT EXISTS dtc_definitions (id INTEGER PRIMARY KEY, code TEXT NOT NULL, category TEXT NOT NULL,
+                    description TEXT NOT NULL, scope TEXT NOT NULL DEFAULT 'generic', make TEXT NOT NULL DEFAULT '',
+                    model TEXT NOT NULL DEFAULT '', year_start INTEGER, year_end INTEGER, module TEXT NOT NULL DEFAULT '',
+                    engine TEXT NOT NULL DEFAULT '', transmission TEXT NOT NULL DEFAULT '', market TEXT NOT NULL DEFAULT '',
+                    protocol TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT 'en', lookup_priority INTEGER NOT NULL DEFAULT 0,
+                    is_override INTEGER NOT NULL DEFAULT 0, source_name TEXT NOT NULL DEFAULT '', source_url TEXT NOT NULL DEFAULT '',
+                    source_version TEXT NOT NULL DEFAULT '', retrieved_at TEXT NOT NULL DEFAULT '', license TEXT NOT NULL DEFAULT '',
+                    source_sha256 TEXT NOT NULL DEFAULT '', source_line INTEGER, confidence TEXT NOT NULL DEFAULT 'unverified',
+                    status TEXT NOT NULL DEFAULT 'active', applicability_notes TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+                    created_at REAL NOT NULL);
+                CREATE INDEX IF NOT EXISTS idx_dtc_definitions_code ON dtc_definitions(code);
                 CREATE TABLE IF NOT EXISTS vehicles (id INTEGER PRIMARY KEY, vin TEXT UNIQUE NOT NULL, nickname TEXT,
                     year TEXT, make TEXT, model TEXT, notes TEXT, created_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS workshop_reports (id INTEGER PRIMARY KEY, vehicle_id INTEGER, title TEXT NOT NULL,
@@ -78,7 +87,13 @@ class AutomotiveStore:
             db.execute('DROP TABLE IF EXISTS diagnostic_capabilities')
             db.execute("DELETE FROM pending_imports WHERE kind = 'capability'")
             db.execute("DELETE FROM import_batches WHERE kind = 'capability'")
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '6')")
+            legacy_dtc = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dtc'").fetchone()
+            if legacy_dtc:
+                db.execute("""INSERT INTO dtc_definitions(code,category,description,scope,make,source_name,status,created_at)
+                    SELECT code,SUBSTR(code,1,1),description,CASE WHEN make='' THEN 'generic' ELSE 'manufacturer' END,
+                    make,source,'active',? FROM dtc""", (time.time(),))
+                db.execute('DROP TABLE dtc')
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '7')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -176,9 +191,8 @@ class AutomotiveStore:
                     (row['wmi'], row.get('manufacturer', ''), row.get('country', ''), json.dumps(row.get('details', {}))) for row in records
                 ])
             else:
-                db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [
-                    (row['code'], row.get('make', ''), row['description'], pending['source']) for row in records
-                ])
+                for row in records:
+                    self._insert_dtc_definition(db, row, pending['source'], pending['sha256'])
             cursor = db.execute('INSERT INTO import_batches(kind,source,sha256,record_count,imported_at) VALUES(?,?,?,?,?)',
                                 (pending['kind'], pending['source'], pending['sha256'], len(records), time.time()))
             db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
@@ -249,37 +263,100 @@ class AutomotiveStore:
             if not description and index + 1 < len(lines) and not DTC_RE.search(lines[index + 1]):
                 description = lines[index + 1]
             if description:
-                records[code] = {'code': code, 'make': make.strip(), 'description': description}
+                records[code] = {'code': code, 'category': code[0], 'scope': 'manufacturer' if make.strip() else 'generic',
+                                 'make': make.strip(), 'description': description, 'language': 'en',
+                                 'lookup_priority': 50 if make.strip() else 20, 'is_override': False,
+                                 'confidence': 'unverified', 'status': 'active'}
         return list(records.values())
 
     def import_dtc_text(self, text, make='', source='upload'):
         records = self.parse_dtc_text(text, make)
         with self.connect() as db:
             for record in records:
-                db.execute('INSERT OR REPLACE INTO dtc VALUES (?, ?, ?, ?)', (record['code'], record['make'], record['description'], source))
+                self._insert_dtc_definition(db, record, source)
         return len(records)
+
+    @staticmethod
+    def _optional_int(value, minimum=None, maximum=None):
+        text = str(value or '').strip()
+        if not text:
+            return None
+        try:
+            number = int(text)
+        except ValueError:
+            return None
+        if minimum is not None and number < minimum or maximum is not None and number > maximum:
+            return None
+        return number
+
+    @staticmethod
+    def _truthy(value):
+        return str(value or '').strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+    def _normalize_dtc_row(self, raw, default_make=''):
+        row = {str(k or '').strip().lower(): str(v or '').strip() for k, v in raw.items()}
+        code = (row.get('code') or row.get('dtc') or '').upper()
+        description = row.get('description') or row.get('definition') or row.get('meaning') or row.get('translation') or ''
+        if not DTC_RE.fullmatch(code) or not description:
+            return None
+        scope = (row.get('scope') or row.get('definition_scope') or '').lower()
+        make = row.get('make') or row.get('manufacturer') or default_make.strip()
+        if make.lower() in {'generic', 'generic obd-ii', 'generic obd2', 'obd-ii', 'obd2'}:
+            make = ''
+        if not scope:
+            scope = 'manufacturer' if make else 'generic'
+        scope = {'make': 'manufacturer', 'saab': 'manufacturer'}.get(scope, scope)
+        if scope not in {'generic', 'manufacturer', 'model', 'module', 'user_translation'}:
+            scope = 'manufacturer' if make else 'generic'
+        priority = self._optional_int(row.get('lookup_priority'))
+        return {
+            'code': code, 'category': code[0], 'description': description, 'scope': scope, 'make': make,
+            'model': row.get('model', ''), 'year_start': self._optional_int(row.get('year_start'), 1880, 2200),
+            'year_end': self._optional_int(row.get('year_end'), 1880, 2200), 'module': row.get('module', ''),
+            'engine': row.get('engine', ''), 'transmission': row.get('transmission', ''), 'market': row.get('market', ''),
+            'protocol': row.get('protocol', ''), 'language': row.get('language') or 'en',
+            'lookup_priority': priority if priority is not None else (50 if make else 20),
+            'is_override': self._truthy(row.get('is_override') or row.get('saab_specific_override')),
+            'source_name': row.get('source_name', ''), 'source_url': row.get('source_url', ''),
+            'source_version': row.get('source_version', ''), 'retrieved_at': row.get('retrieved_at', ''),
+            'license': row.get('license', ''), 'source_sha256': row.get('source_sha256', ''),
+            'source_line': self._optional_int(row.get('source_line'), 1),
+            'confidence': row.get('confidence') or 'unverified', 'status': row.get('status') or 'active',
+            'applicability_notes': row.get('applicability_notes') or row.get('applicability') or '',
+            'notes': row.get('notes', ''),
+        }
 
     def parse_dtc_csv(self, content, make=''):
         reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig', errors='replace')))
-        records = []
-        for raw in reader:
-            row = {str(k or '').strip().lower(): str(v or '').strip() for k, v in raw.items()}
-            code = (row.get('code') or row.get('dtc') or '').upper()
-            description = row.get('description') or row.get('meaning') or row.get('translation') or ''
-            if DTC_RE.fullmatch(code) and description:
-                records.append({'code': code, 'make': row.get('make') or make.strip(), 'description': description})
-        return records
+        return [record for raw in reader if (record := self._normalize_dtc_row(raw, make))]
+
+    @staticmethod
+    def _insert_dtc_definition(db, record, fallback_source='upload', source_sha256=''):
+        fields = ('code', 'category', 'description', 'scope', 'make', 'model', 'year_start', 'year_end', 'module', 'engine',
+                  'transmission', 'market', 'protocol', 'language', 'lookup_priority', 'is_override', 'source_name',
+                  'source_url', 'source_version', 'retrieved_at', 'license', 'source_sha256', 'source_line', 'confidence',
+                  'status', 'applicability_notes', 'notes')
+        values = [record.get(field, '') for field in fields]
+        values[15] = 1 if values[15] else 0
+        values[16] = values[16] or fallback_source
+        values[21] = values[21] or source_sha256
+        placeholders = ','.join('?' for _ in fields)
+        db.execute(f"INSERT INTO dtc_definitions({','.join(fields)},created_at) VALUES({placeholders},?)", values + [time.time()])
 
     def import_dtc_csv(self, content, make='', source='upload'):
         records = self.parse_dtc_csv(content, make)
         with self.connect() as db:
-            db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [(r['code'], r['make'], r['description'], source) for r in records])
+            for record in records:
+                self._insert_dtc_definition(db, record, source, self.digest(content))
         return len(records)
 
     def lookup_code(self, code, make=''):
         code = str(code or '').strip().upper()
         with self.connect() as db:
-            rows = db.execute('SELECT * FROM dtc WHERE code = ? ORDER BY CASE WHEN make = ? THEN 0 WHEN make = \'\' THEN 1 ELSE 2 END', (code, make)).fetchall()
+            rows = db.execute("""SELECT * FROM dtc_definitions WHERE code=? AND status='active'
+                ORDER BY CASE WHEN LOWER(make)=LOWER(?) AND make<>'' THEN 0 WHEN make='' THEN 1 ELSE 2 END,
+                CASE scope WHEN 'module' THEN 0 WHEN 'model' THEN 1 WHEN 'manufacturer' THEN 2
+                    WHEN 'user_translation' THEN 3 ELSE 4 END, lookup_priority DESC, id DESC""", (code, make)).fetchall()
         return [dict(row) for row in rows]
 
     def save_vehicle(self, values):

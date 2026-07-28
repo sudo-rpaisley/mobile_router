@@ -376,6 +376,24 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'2002', response.data)
         self.assertIn(b'Database match', response.data)
 
+    def test_detailed_dtc_import_uses_dtc_review_columns(self):
+        content = (
+            b'code,definition,definition_scope,manufacturer,module,lookup_priority,source_name\n'
+            b'B0001,Driver Frontal Stage 1 Deployment Control,Generic,Generic OBD-II,SRS,2,Example source\n'
+        )
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(content), 'detailed.csv'), 'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        for heading in (b'Code', b'Scope', b'Make / applicability', b'Priority', b'Definition', b'Source'):
+            self.assertIn(heading, response.data)
+        self.assertIn(b'B0001', response.data)
+        self.assertIn(b'SRS', response.data)
+        self.assertIn(b'Example source', response.data)
+
 
 
     def test_scrollable_interface_lists_do_not_render_blue_focus_box(self):

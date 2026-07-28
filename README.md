@@ -222,3 +222,12 @@ flagged without replacing the saved vehicle identity.
 Database uploads are staged before they affect live lookups. The review page
 shows every parsed record and lets an administrator exclude incorrect rows,
 approve the selected records in one transaction, or discard the staged import.
+
+The **DTC CSV, text, or searchable PDF** upload option accepts both simple CSV
+files (`code,description,make`) and detailed versioned definitions. Detailed
+columns include `definition`/`description`, `definition_scope`/`scope`, make,
+model, year range, module, engine, transmission, market, protocol, language,
+lookup priority, override state, source name/URL/version/hash/line, retrieval
+date, license, confidence, status, applicability notes, and general notes.
+Multiple definitions for one code are retained and make-specific active matches
+rank ahead of generic definitions during lookup.

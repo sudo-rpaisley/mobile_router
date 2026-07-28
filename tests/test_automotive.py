@@ -143,6 +143,36 @@ class AutomotiveStoreTest(unittest.TestCase):
             table = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='diagnostic_capabilities'").fetchone()
         self.assertIsNone(table)
 
+    def test_detailed_dtc_csv_preserves_provenance_and_applicability(self):
+        content = (
+            'code,category,definition,definition_scope,manufacturer,model,year_start,year_end,module,'
+            'lookup_priority,saab_specific_override,source_name,source_url,license,confidence,applicability,notes\n'
+            'B0001,B,Driver Frontal Stage 1 Deployment Control,Generic,Generic OBD-II,,,,SRS,2,No,'
+            'Wal33D generic B-codes,https://example.test/b_codes.txt,MIT,community,'
+            'Apply only where the vehicle and module support this DTC.,Imported example\n'
+        ).encode()
+        records = self.store.parse_dtc_csv(content)
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record['description'], 'Driver Frontal Stage 1 Deployment Control')
+        self.assertEqual(record['scope'], 'generic')
+        self.assertEqual(record['make'], '')
+        self.assertEqual(record['module'], 'SRS')
+        self.assertEqual(record['lookup_priority'], 2)
+        self.assertEqual(record['source_name'], 'Wal33D generic B-codes')
+        self.assertEqual(record['confidence'], 'community')
+        pending_id = self.store.stage_import('dtc', 'detailed.csv', content, records)
+        self.store.apply_pending_import(pending_id)
+        saved = self.store.lookup_code('B0001')[0]
+        self.assertEqual(saved['source_url'], 'https://example.test/b_codes.txt')
+        self.assertEqual(saved['applicability_notes'], 'Apply only where the vehicle and module support this DTC.')
+
+    def test_multiple_definitions_for_same_code_are_retained_and_ranked(self):
+        self.store.import_dtc_csv(b'code,description,make,lookup_priority\nP0300,Generic misfire,,20\n')
+        self.store.import_dtc_csv(b'code,description,make,lookup_priority\nP0300,Saab misfire,Saab,50\n')
+        matches = self.store.lookup_code('P0300', 'Saab')
+        self.assertEqual([item['description'] for item in matches], ['Saab misfire', 'Generic misfire'])
+
 
 if __name__ == '__main__':
     unittest.main()
