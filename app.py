@@ -40,7 +40,6 @@ from scripts.interfaceTools import (
     spoof_mac,
 )
 
-lookup_manufacturer = oui_service.lookup_manufacturer
 from scripts.bluetooth_phone import (
     BluetoothPhoneSettingsError,
     bluetooth_pairing_mode_capability,
@@ -57,6 +56,8 @@ from scripts.networkScan import (
     get_mac_by_ip,
     get_ip_by_mac,
 )
+
+lookup_manufacturer = oui_service.lookup_manufacturer
 
 
 app = Flask(__name__)
@@ -244,10 +245,6 @@ ROADMAP_SECTIONS = [
             {'title': 'Comprehensive network device scan', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Network Scan now combines active ARP, passive observations, local ARP/neighbor tables, optional ping sweeps, mDNS, UPnP/SSDP, and LLDP/CDP metadata into one inventory-building workflow.', 'description': 'Scan local networks for devices using multiple discovery methods and merge results into inventory with source attribution.'},
             {'title': 'IP client profiles and watchlists', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Client pages now include health scoring, saved service history, web inspection, watch alerts, timeline events, owner/location/tags, baselines, drift checks, reachability history, and per-client JSON/Markdown exports.', 'description': 'Turn discovered IP clients into investigation profiles with health, ownership, baseline, watch, timeline, and export workflows.'},
             {'title': 'Network map', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Visualize adapters, SSIDs, access points, clients, and wired hosts as a simple topology map.'},
-            {'title': 'Dedicated wireless occupancy report page', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Create a drill-down page that compares adapters, channel congestion, BSSID detail, historical heatmaps, and exportable recommendations.'},
-            {'title': 'Manufacturer/OUI insights', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Inventory groups devices by manufacturer and highlights unknown OUIs for review.', 'description': 'Group discovered devices by vendor and highlight unknown or unusual manufacturers.'},
-            {'title': 'New device alerts', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'New devices create unread alerts with a navbar badge and alert center.', 'description': 'Notify when a newly observed MAC, IP, SSID, or Bluetooth device appears.'},
-            {'title': 'Grouped discovery notifications', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'When multiple devices are discovered in the same scan, group them into one notification while keeping individual passive-discovery alerts for devices that appear later.'},
             {'title': 'Client relationship map', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles now show relationship nodes and links for interfaces, discovery sources, saved services, and related evidence records.', 'description': 'Show each IP client connected to interfaces, SSIDs, gateways, VLAN context, services, evidence records, and alerts.'},
             {'title': 'Scheduled client checks', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Client profiles can save recurring check plans and run due/on-demand ping, bounded common-port refresh, HTTP inspection, service fingerprinting, and baseline drift checks.', 'description': 'Run recurring reachability, common-port, service-fingerprint, and drift checks for watched clients with alerting.'},
             {'title': 'Client remediation checklist', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Turn baseline drift, sensitive services, and unknown identity hints into suggested remediation tasks with resolved/accepted-risk state.'},
@@ -262,12 +259,8 @@ ROADMAP_SECTIONS = [
         'title': 'Core network tools',
         'items': [
             {'title': 'Tabbed connectivity diagnostics workspace', 'priority': 'High', 'priority_class': 'danger', 'description': 'Create an option-A diagnostics workspace with Overview, Reachability, DNS, Routes, Neighbors, Services, Traffic, and History tabs rather than adding more controls to a single long page.'},
-            {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
             {'title': 'Device-page reachability actions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add contextual Ping, Traceroute, and bounded Port Scan actions to IP device pages with live reachability state, last-checked time, latency, and packet-loss summaries.'},
             {'title': 'Reachability history and comparisons', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Store recent reachability checks so users can compare latency and loss across hosts, interfaces, IPv4/IPv6, and repeated assessments.'},
-            {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
-            {'title': 'DNS lookup and diagnostics toolkit', 'priority': 'High', 'priority_class': 'danger', 'description': 'Support A, AAAA, PTR, MX, TXT, NS, and CNAME lookups, resolver comparison, timing, and split-horizon troubleshooting.'},
-            {'title': 'Route table and gateway diagnostics', 'priority': 'High', 'priority_class': 'danger', 'description': 'Display default gateways, per-interface routes, metrics, IPv4/IPv6 routes, VPN route hints, and scan-path context.'},
             {'title': 'Ping and reachability testing', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Diagnostics now includes single-host ping, bounded subnet sweeps, packet loss, latency parsing, and recent reachability history.', 'description': 'Add single-host ping, subnet ping sweeps, packet-loss summaries, latency stats, and IPv4/IPv6 reachability history.'},
             {'title': 'ARP and neighbor discovery viewer', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Comprehensive network scans now include local ARP cache and neighbor-table observations with OUI/vendor enrichment and inventory links.', 'description': 'Show local ARP and IPv6 neighbor tables with interface, state, OUI/vendor enrichment, and inventory links.'},
             {'title': 'DNS lookup and diagnostics toolkit', 'priority': 'High', 'priority_class': 'danger', 'description': 'Support A, AAAA, PTR, MX, TXT, NS, and CNAME lookups, resolver comparison, timing, and split-horizon troubleshooting.'},
@@ -276,7 +269,6 @@ ROADMAP_SECTIONS = [
             {'title': 'Packet capture and protocol summary', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Start and stop scoped packet captures, export PCAP files, summarize protocols/top talkers, and attach captures to evidence.'},
             {'title': 'Live traffic monitor', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show bandwidth, packets per second, top talkers, protocol mix, and short history per interface.'},
             {'title': 'Local socket and listener inventory', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'List local listening ports and established connections with process names where available and highlight externally exposed listeners.'},
-            {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
             {'title': 'Service fingerprinting and banner detection', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'IP client profiles can run safe banner probes and HTTP checks against saved open ports with confidence labels.', 'description': 'Identify services beyond port numbers using banners and safe protocol checks with confidence labels.'},
             {'title': 'HTTP service inspector', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Inspect HTTP/HTTPS services for status, redirects, page title, server headers, login forms, TLS details, and basic security headers.'},
         ],
@@ -286,14 +278,14 @@ ROADMAP_SECTIONS = [
         'items': [
             {'title': 'TLS certificate inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Show certificate subject, issuer, SANs, expiration, self-signed status, hostname mismatch, and chain details.'},
             {'title': 'DHCP lease and server inspection', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Display DHCP lease details, DNS/router options, renewal timing, and warnings for multiple or unexpected DHCP servers.'},
-            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
-            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
-            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
-            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
-            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
-            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
-            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
-            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
+            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now parses mDNS/Bonjour service records, hostnames, ports, TXT records, roles, and inventory metadata.', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
+            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now performs bounded SSDP discovery and catalogs friendly names, model/manufacturer hints, service types, and control URLs.', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
+            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now surfaces lldpctl neighbor data including switch/router names, ports, VLAN hints, and management addresses when visible.', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
+            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now inventories VLAN interfaces/tags and stores SSID-to-VLAN segmentation validation notes.', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
+            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now reports public IP hints, NAT context, DNS resolvers, IPv6 egress, VPN/proxy hints, and per-interface route context.', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
+            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now runs bounded iperf3 client/server checks for LAN throughput baselines when iperf3 is installed.', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
+            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now safely collects SNMP system and interface metadata from authorized targets when credentials are supplied.', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
+            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now includes IPv6 ping, traceroute, neighbor/default-route views, AAAA lookup, and bounded IPv6 TCP checks.', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
         ],
     },
     {
@@ -304,14 +296,6 @@ ROADMAP_SECTIONS = [
             {'title': 'Train Controller feature inventory and import plan', 'priority': 'High', 'priority_class': 'danger', 'description': 'Catalog the linked repository\'s user-facing controls and supporting services, identify code that can be reused versus adapted, and split the integration into independently testable phases before implementation.'},
             {'title': 'Train Controller integration boundary', 'priority': 'High', 'priority_class': 'danger', 'description': 'Define a capability-backed adapter or plugin boundary so selected Train Controller functionality can be added without tightly coupling either application or duplicating platform-specific logic.'},
             {'title': 'Train Controller workflow and progress bridge', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Expose approved Train Controller workflows through Full and Training modes while sharing guided steps, progress, trophies, action history, and evidence exports where appropriate.'},
-            {'title': 'mDNS and Bonjour service discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now parses mDNS/Bonjour service records, hostnames, ports, TXT records, roles, and inventory metadata.', 'description': 'Discover local mDNS services, hostnames, ports, TXT records, device roles, and add service metadata to inventory.'},
-            {'title': 'UPnP and SSDP discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now performs bounded SSDP discovery and catalogs friendly names, model/manufacturer hints, service types, and control URLs.', 'description': 'Discover UPnP devices, friendly names, model/manufacturer metadata, service lists, and exposed control URLs.'},
-            {'title': 'LLDP and CDP neighbor discovery', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Service Discovery now surfaces lldpctl neighbor data including switch/router names, ports, VLAN hints, and management addresses when visible.', 'description': 'Reveal switch/router neighbors, port IDs, chassis IDs, VLAN hints, and management addresses when packets are visible.'},
-            {'title': 'VLAN discovery and segmentation notes', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now inventories VLAN interfaces/tags and stores SSID-to-VLAN segmentation validation notes.', 'description': 'Track VLAN interfaces, observed tags, SSID-to-VLAN notes, and segmentation validation context.'},
-            {'title': 'Egress and public IP diagnostics', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now reports public IP hints, NAT context, DNS resolvers, IPv6 egress, VPN/proxy hints, and per-interface route context.', 'description': 'Show public IP, NAT context, DNS egress resolver, IPv6 egress, VPN/proxy hints, and per-interface egress differences.'},
-            {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now runs bounded iperf3 client/server checks for LAN throughput baselines when iperf3 is installed.', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
-            {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now safely collects SNMP system and interface metadata from authorized targets when credentials are supplied.', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
-            {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now includes IPv6 ping, traceroute, neighbor/default-route views, AAAA lookup, and bounded IPv6 TCP checks.', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
         ],
     },
     {
@@ -578,237 +562,6 @@ def evidence_as_csv(records):
 
 def evidence_as_markdown(records):
     return evidence_service.evidence_as_markdown(records)
-
-
-def set_interface_power_state(interface_name, desired_state, interface_type=None):
-    state = str(desired_state or '').casefold()
-    if state not in {'up', 'down'}:
-        raise ValueError('Interface state must be up or down')
-    system = os.name
-    normalized_type = str(interface_type or '').casefold()
-
-    if system == 'nt':
-        if normalized_type == 'bluetooth':
-            powershell = shutil.which('powershell') or shutil.which('pwsh')
-            if not powershell:
-                raise RuntimeError('PowerShell is required to toggle Bluetooth adapters on Windows')
-            verb = 'Enable-PnpDevice' if state == 'up' else 'Disable-PnpDevice'
-            escaped_name = str(interface_name).replace("'", "''")
-            command = (
-                "$device = Get-PnpDevice -Class Bluetooth -PresentOnly:$false | "
-                f"Where-Object {{ $_.FriendlyName -eq '{escaped_name}' -or $_.Name -eq '{escaped_name}' }} | "
-                "Select-Object -First 1; "
-                "if (-not $device) { throw 'Bluetooth adapter was not found.' }; "
-                f"{verb} -InstanceId $device.InstanceId -Confirm:$false"
-            )
-            result = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-Command', command], capture_output=True, text=True, timeout=20, check=False)
-        else:
-            result = subprocess.run(['netsh', 'interface', 'set', 'interface', f'name={interface_name}', f'admin={"enabled" if state == "up" else "disabled"}'], capture_output=True, text=True, timeout=20, check=False)
-    else:
-        if normalized_type == 'bluetooth':
-            bluetoothctl = shutil.which('bluetoothctl')
-            if bluetoothctl:
-                result = subprocess.run([bluetoothctl, 'power', 'on' if state == 'up' else 'off'], capture_output=True, text=True, timeout=15, check=False)
-            else:
-                ip_tool = shutil.which('ip')
-                if not ip_tool:
-                    raise RuntimeError('Toggling this interface requires bluetoothctl or ip')
-                result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
-        else:
-            ip_tool = shutil.which('ip')
-            if not ip_tool:
-                raise RuntimeError('Toggling interfaces requires the ip command on this host')
-            result = subprocess.run([ip_tool, 'link', 'set', 'dev', interface_name, state], capture_output=True, text=True, timeout=15, check=False)
-
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout or 'Interface state change failed').strip())
-    return f'{interface_name} was turned {"on" if state == "up" else "off"}.'
-
-def bluetooth_device_summary(device):
-    summary = device.to_dict() if hasattr(device, 'to_dict') else {
-        'address': getattr(device, 'address', None),
-        'name': getattr(device, 'name', None),
-    }
-    address = summary.get('address')
-    summary['address'] = address
-    summary['mac'] = normalize_mac(address) if address else None
-    summary['manufacturer'] = summary.get('manufacturer') or lookup_manufacturer(address)
-    summary['device_type'] = 'Bluetooth device'
-    return {key: value for key, value in summary.items() if value not in (None, '')}
-
-
-def find_inventory_device(identifier):
-    return inventory_service.find_device(identifier, device_inventory, device_inventory_lock, normalize_mac)
-
-
-def _bluetooth_truthy(value):
-    return str(value or '').strip().casefold() in {'1', 'true', 'yes', 'on', 'connected', 'paired', 'trusted', 'blocked'}
-
-
-def bluetooth_device_state(device):
-    device = device or {}
-    status = str(device.get('status') or '').casefold()
-    return {
-        'connected': _bluetooth_truthy(device.get('connected')) or 'connected' in status,
-        'paired': _bluetooth_truthy(device.get('paired')) or 'paired' in status,
-        'trusted': _bluetooth_truthy(device.get('trusted')) or 'trusted' in status,
-        'blocked': _bluetooth_truthy(device.get('blocked')) or 'blocked' in status,
-    }
-
-
-def bluetooth_contextual_actions(device):
-    state = bluetooth_device_state(device)
-    actions = [{'action': 'info', 'label': 'Info', 'style': 'outline-secondary', 'icon': 'circle-info'}]
-    if state['blocked']:
-        actions.append({'action': 'unblock', 'label': 'Unblock', 'style': 'outline-success', 'icon': 'check'})
-    else:
-        if state['connected']:
-            actions.append({'action': 'disconnect', 'label': 'Disconnect', 'style': 'outline-warning', 'icon': 'link-slash'})
-        else:
-            actions.append({'action': 'connect', 'label': 'Connect', 'style': 'outline-primary', 'icon': 'link'})
-        if not state['paired']:
-            actions.append({'action': 'pair', 'label': 'Pair', 'style': 'outline-primary', 'icon': 'handshake'})
-        if state['trusted']:
-            actions.append({'action': 'untrust', 'label': 'Untrust', 'style': 'outline-secondary', 'icon': 'shield'})
-        else:
-            actions.append({'action': 'trust', 'label': 'Trust', 'style': 'outline-success', 'icon': 'shield-halved'})
-        actions.append({'action': 'block', 'label': 'Block', 'style': 'outline-danger', 'icon': 'ban'})
-    actions.append({'action': 'remove', 'label': 'Remove Pairing', 'style': 'outline-danger', 'icon': 'trash'})
-    return actions
-
-
-def bluetooth_adapter_choices():
-    choices = []
-    for iface in network_interfaces:
-        if str(getattr(iface, 'interface_type', '')).casefold() != 'bluetooth':
-            continue
-        adapter_id = None
-        if hasattr(iface, 'get_mac_address'):
-            adapter_id = iface.get_mac_address()
-        adapter_id = adapter_id or getattr(iface, 'name', None)
-        if adapter_id:
-            choices.append({'id': adapter_id, 'name': getattr(iface, 'name', adapter_id), 'state': getattr(iface, 'state', None)})
-    return choices
-
-
-def bluetooth_action_history(address):
-    normalized = normalize_mac(address) if address else None
-    with bluetooth_action_histories_lock:
-        return list(bluetooth_action_histories.get(normalized or address, []))
-
-
-def record_bluetooth_action_history(address, action, status, message, adapter=None):
-    normalized = normalize_mac(address) if address else address
-    if not normalized:
-        return []
-    entry = {
-        'time': time.time(),
-        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-        'action': action,
-        'status': status,
-        'message': message,
-        'adapter': adapter,
-    }
-    with bluetooth_action_histories_lock:
-        history = list(bluetooth_action_histories.get(normalized, []))
-        history.insert(0, entry)
-        bluetooth_action_histories[normalized] = history[:20]
-        return list(bluetooth_action_histories[normalized])
-
-
-
-def _merge_inventory_device_state(address, updates):
-    normalized = normalize_mac(address) if address else None
-    if not normalized:
-        return find_inventory_device(address)
-    with device_inventory_lock:
-        key = f'mac:{normalized}'
-        existing_key = key if key in device_inventory else None
-        if existing_key is None:
-            for candidate_key, item in device_inventory.items():
-                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
-                    existing_key = candidate_key
-                    break
-        if existing_key is None:
-            existing_key = key
-            device_inventory[existing_key] = {'id': key, 'mac': normalized, 'address': normalized, 'device_type': 'Bluetooth device', 'sources': ['bluetooth-action'], 'interfaces': []}
-        device_inventory[existing_key].update({k: v for k, v in updates.items() if v is not None})
-        device_inventory[existing_key]['last_seen'] = time.time()
-        return dict(device_inventory[existing_key])
-
-
-def _bluetooth_state_updates_for_action(action):
-    return {
-        'connect': {'connected': True},
-        'disconnect': {'connected': False},
-        'pair': {'paired': True},
-        'trust': {'trusted': True},
-        'untrust': {'trusted': False},
-        'block': {'blocked': True},
-        'unblock': {'blocked': False},
-        'remove': {'paired': False, 'connected': False, 'trusted': False},
-    }.get(action, {})
-
-
-def _parse_bluetooth_info_output(output):
-    updates = {}
-    for line in str(output or '').splitlines():
-        if ':' not in line:
-            continue
-        key, value = [part.strip() for part in line.split(':', 1)]
-        key = key.casefold()
-        value_bool = _bluetooth_truthy(value)
-        if key in {'connected', 'paired', 'trusted', 'blocked'}:
-            updates[key] = value_bool
-        elif key in {'name', 'alias'} and value:
-            updates['name'] = value
-    return updates
-
-def forget_inventory_device(identifier):
-    normalized = normalize_mac(identifier) if identifier else None
-    removed = None
-    with device_inventory_lock:
-        keys = []
-        if normalized:
-            keys.extend([f'mac:{normalized}', normalized])
-        keys.append(identifier)
-        for key in keys:
-            if key in device_inventory:
-                removed = device_inventory.pop(key)
-                break
-        if removed is None and normalized:
-            for key, item in list(device_inventory.items()):
-                if normalize_mac(item.get('mac') or item.get('address')) == normalized:
-                    removed = device_inventory.pop(key)
-                    break
-    return removed
-
-def bluetooth_detail_fields(device):
-    skip = {
-        'id', 'name', 'display_name', 'ip', 'mac', 'address', 'manufacturer',
-        'first_seen', 'last_seen', 'sources', 'interfaces', 'is_unknown_manufacturer',
-    }
-    labels = {
-        'status': 'Status',
-        'instance_id': 'Windows Instance ID',
-        'device_class': 'Device Class',
-        'service': 'Service',
-        'pnp_manufacturer': 'PnP Manufacturer',
-        'rssi': 'RSSI',
-        'details': 'Adapter Details',
-        'device_type': 'Device Type',
-    }
-    fields = []
-    for key, value in sorted((device or {}).items()):
-        if key in skip or value in (None, ''):
-            continue
-        if isinstance(value, (list, tuple, set)):
-            value = ', '.join(str(item) for item in value if item not in (None, ''))
-        elif isinstance(value, dict):
-            value = json.dumps(value, sort_keys=True)
-        fields.append({'label': labels.get(key, key.replace('_', ' ').title()), 'value': value})
-    return fields
-
 
 
 def set_interface_power_state(interface_name, desired_state, interface_type=None):
@@ -3042,7 +2795,7 @@ def update_social_profile_credential(profile_id, credential_id):
     if not owned_social_profile(profile_id):
         return json_error('Profile not found', 404)
     try:
-        credential = social_profile_service.update_credential(
+        social_profile_service.update_credential(
             profile_id, credential_id, request.form, social_profiles, social_profiles_lock,
         )
     except KeyError:

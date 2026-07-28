@@ -144,102 +144,67 @@ def validate_profile(values):
     return profile
 
 
+def _normalize_profile(profile):
+    """Apply backward-compatible defaults to a detached profile record."""
+    profile.setdefault('credentials', [])
+    profile.setdefault('devices', [])
+    profile.setdefault('emails', [{'label': 'Email', 'value': profile['email']}] if profile.get('email') else [])
+    profile.setdefault('social_links', [
+        {'platform': platform, 'url': profile.get(key)}
+        for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
+    ])
+    profile.setdefault('phone_status', 'complete')
+    profile.setdefault('phone_source', '')
+    profile.setdefault('phone_confidence', 'unverified')
+    profile.setdefault('phone_verified_date', '')
+    profile.setdefault('tags', [])
+    profile.setdefault('profile_status', 'active')
+    profile.setdefault('relationships', [])
+    profile.setdefault('attachments', [])
+    profile.setdefault('custom_fields', [])
+    profile.setdefault('retention_until', '')
+    profile.setdefault('review_date', '')
+    profile.setdefault('authorization_basis', '')
+    for email in profile['emails']:
+        email.setdefault('id', str(uuid.uuid4()))
+        email.setdefault('status', 'complete')
+        email.setdefault('source', '')
+        email.setdefault('confidence', 'unverified')
+        email.setdefault('verified_date', '')
+    for link in profile['social_links']:
+        link.setdefault('id', str(uuid.uuid4()))
+        link.setdefault('status', 'complete')
+        link.setdefault('account', '')
+        link.setdefault('recovery_emails', [])
+        link.setdefault('recovery_phone', '')
+        link.setdefault('recovery_notes', '')
+        link.setdefault('recovery_refs', [])
+        link.setdefault('source', '')
+        link.setdefault('confidence', 'unverified')
+        link.setdefault('verified_date', '')
+    for credential in profile['credentials']:
+        credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
+        credential.setdefault('purpose', '')
+        credential.setdefault('notes', '')
+    for device in profile['devices']:
+        device.setdefault('manufacturer', '')
+        device.setdefault('model', '')
+        device.setdefault('operating_system', '')
+        device.setdefault('hostname', '')
+        device.setdefault('status', 'active')
+    return profile
+
+
 def list_profiles(store, lock):
     with lock:
-        profiles = [deepcopy(profile) for profile in store.values()]
-    for profile in profiles:
-        profile.setdefault('credentials', [])
-        profile.setdefault('devices', [])
-        profile.setdefault('emails', [{'label': 'Email', 'value': profile['email']}] if profile.get('email') else [])
-        profile.setdefault('social_links', [
-            {'platform': platform, 'url': profile.get(key)}
-            for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
-        ])
-        profile.setdefault('phone_status', 'complete')
-        profile.setdefault('phone_source', '')
-        profile.setdefault('phone_confidence', 'unverified')
-        profile.setdefault('phone_verified_date', '')
-        profile.setdefault('tags', [])
-        profile.setdefault('profile_status', 'active')
-        _profile_defaults(profile)
-        for email in profile['emails']:
-            email.setdefault('id', str(uuid.uuid4()))
-            email.setdefault('status', 'complete')
-            email.setdefault('source', '')
-            email.setdefault('confidence', 'unverified')
-            email.setdefault('verified_date', '')
-        for link in profile['social_links']:
-            link.setdefault('id', str(uuid.uuid4()))
-            link.setdefault('status', 'complete')
-            link.setdefault('account', '')
-            link.setdefault('recovery_emails', [])
-            link.setdefault('recovery_phone', '')
-            link.setdefault('recovery_notes', '')
-            link.setdefault('recovery_refs', [])
-            link.setdefault('source', '')
-            link.setdefault('confidence', 'unverified')
-            link.setdefault('verified_date', '')
-        for credential in profile['credentials']:
-            credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
-            credential.setdefault('purpose', '')
-            credential.setdefault('notes', '')
-        for device in profile['devices']:
-            device.setdefault('manufacturer', '')
-            device.setdefault('model', '')
-            device.setdefault('operating_system', '')
-            device.setdefault('hostname', '')
-            device.setdefault('status', 'active')
+        profiles = [_normalize_profile(deepcopy(profile)) for profile in store.values()]
     return sorted(profiles, key=lambda profile: profile.get('updated_at', 0), reverse=True)
 
 
 def get_profile(profile_id, store, lock):
     with lock:
         profile = store.get(profile_id)
-        if not profile:
-            return None
-        result = deepcopy(profile)
-        result.setdefault('credentials', [])
-        result.setdefault('devices', [])
-        result.setdefault('emails', [{'label': 'Email', 'value': result['email']}] if result.get('email') else [])
-        result.setdefault('social_links', [
-            {'platform': platform, 'url': result.get(key)}
-            for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if result.get(key)
-        ])
-        result.setdefault('phone_status', 'complete')
-        result.setdefault('phone_source', '')
-        result.setdefault('phone_confidence', 'unverified')
-        result.setdefault('phone_verified_date', '')
-        result.setdefault('tags', [])
-        result.setdefault('profile_status', 'active')
-        _profile_defaults(result)
-        for email in result['emails']:
-            email.setdefault('id', str(uuid.uuid4()))
-            email.setdefault('status', 'complete')
-            email.setdefault('source', '')
-            email.setdefault('confidence', 'unverified')
-            email.setdefault('verified_date', '')
-        for link in result['social_links']:
-            link.setdefault('status', 'complete')
-            link.setdefault('account', '')
-            link.setdefault('recovery_emails', [])
-            link.setdefault('recovery_phone', '')
-            link.setdefault('recovery_notes', '')
-            link.setdefault('recovery_refs', [])
-            link.setdefault('source', '')
-            link.setdefault('confidence', 'unverified')
-            link.setdefault('verified_date', '')
-        for credential in result['credentials']:
-            credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
-            credential.setdefault('purpose', '')
-            credential.setdefault('notes', '')
-        for device in result['devices']:
-            device.setdefault('manufacturer', '')
-            device.setdefault('model', '')
-            device.setdefault('operating_system', '')
-            device.setdefault('hostname', '')
-            device.setdefault('status', 'active')
-        return result
-
+        return _normalize_profile(deepcopy(profile)) if profile else None
 
 def create_profile(values, store, lock, now=None):
     profile = validate_profile(values)
@@ -251,15 +216,6 @@ def create_profile(values, store, lock, now=None):
     with lock:
         store[profile['id']] = profile
     return dict(profile)
-
-
-def _profile_defaults(profile):
-    profile.setdefault('relationships', [])
-    profile.setdefault('attachments', [])
-    profile.setdefault('custom_fields', [])
-    profile.setdefault('retention_until', '')
-    profile.setdefault('review_date', '')
-    profile.setdefault('authorization_basis', '')
 
 
 def add_relationship(profile_id, values, store, lock, now=None):

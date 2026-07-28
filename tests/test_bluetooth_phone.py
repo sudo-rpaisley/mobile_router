@@ -603,7 +603,8 @@ class BluetoothPhoneRuntimeTest(unittest.TestCase):
 
     def test_windows_and_macos_use_native_helper_backends(self):
         settings = build_settings("Mobile Router", ["contacts"])
-        no_commands = lambda _command: None
+        def no_commands(_command):
+            return None
 
         windows = build_bluetooth_phone_runtime(
             settings,
