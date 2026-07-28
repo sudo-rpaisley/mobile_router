@@ -376,6 +376,25 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'2002', response.data)
         self.assertIn(b'Database match', response.data)
 
+    def test_capability_import_review_has_specific_columns(self):
+        content = (
+            b'model\tyear\tsystem\tsubitem\tfunction\tsubfunction\n'
+            b'SAAB 9-5\t2011 - 2012\tECM\t1.6L(LLU)\tSpecial Function\tAPP learn\n'
+        )
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/databases/capabilities', data={
+                'database': (io.BytesIO(content), 'saab.tsv'), 'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        for heading in (b'Model', b'Years', b'System', b'Subitem / variant', b'Function', b'Subfunction'):
+            self.assertIn(heading, response.data)
+        self.assertIn(b'SAAB 9-5', response.data)
+        self.assertIn('2011–2012'.encode(), response.data)
+        self.assertIn(b'1.6L(LLU)', response.data)
+        self.assertIn(b'APP learn', response.data)
+
 
 
     def test_scrollable_interface_lists_do_not_render_blue_focus_box(self):
