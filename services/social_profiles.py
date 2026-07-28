@@ -45,14 +45,16 @@ def validate_profile(values):
     getlist = values.getlist if hasattr(values, 'getlist') else lambda key: values.get(key, []) if isinstance(values.get(key, []), list) else [values.get(key, '')]
     email_labels = getlist('email_label')
     email_values = getlist('email_value')
+    email_statuses = getlist('email_status')
     emails = []
     for index, raw_email in enumerate(email_values):
         email = str(raw_email or '').strip()
         if not email:
             continue
-        if not EMAIL_RE.fullmatch(email):
+        status = 'partial' if index < len(email_statuses) and email_statuses[index] == 'partial' else 'complete'
+        if status == 'complete' and not EMAIL_RE.fullmatch(email):
             raise ValueError(f'Email #{index + 1} must be a valid address.')
-        emails.append({'label': str(email_labels[index] if index < len(email_labels) else 'Email').strip()[:40] or 'Email', 'value': email})
+        emails.append({'label': str(email_labels[index] if index < len(email_labels) else 'Email').strip()[:40] or 'Email', 'value': email[:320], 'status': status})
     legacy_email = str(values.get('email') or '').strip()
     if legacy_email and not emails:
         if not EMAIL_RE.fullmatch(legacy_email):
@@ -60,12 +62,26 @@ def validate_profile(values):
         emails.append({'label': 'Email', 'value': legacy_email})
     social_platforms = getlist('social_platform')
     social_urls = getlist('social_url')
+    social_statuses = getlist('social_status')
+    social_accounts = getlist('social_account')
+    social_recovery_emails = getlist('social_recovery_emails')
+    social_recovery_phones = getlist('social_recovery_phone')
+    social_recovery_notes = getlist('social_recovery_notes')
     social_links = []
     for index, raw_url in enumerate(social_urls):
         if not str(raw_url or '').strip():
             continue
         platform = str(social_platforms[index] if index < len(social_platforms) else 'Website').strip()[:40] or 'Website'
-        social_links.append({'platform': platform, 'url': _clean_url(raw_url, f'{platform} link')})
+        status = 'partial' if index < len(social_statuses) and social_statuses[index] == 'partial' else 'complete'
+        url = str(raw_url).strip()[:1000] if status == 'partial' else _clean_url(raw_url, f'{platform} link')
+        recovery_emails = [item.strip()[:320] for item in str(social_recovery_emails[index] if index < len(social_recovery_emails) else '').split(',') if item.strip()]
+        social_links.append({
+            'platform': platform, 'url': url, 'status': status,
+            'account': str(social_accounts[index] if index < len(social_accounts) else '').strip()[:320],
+            'recovery_emails': recovery_emails,
+            'recovery_phone': str(social_recovery_phones[index] if index < len(social_recovery_phones) else '').strip()[:100],
+            'recovery_notes': str(social_recovery_notes[index] if index < len(social_recovery_notes) else '').strip()[:1000],
+        })
     for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')):
         legacy_url = str(values.get(key) or '').strip()
         if legacy_url and not any(link['platform'] == platform for link in social_links):
@@ -73,6 +89,7 @@ def validate_profile(values):
     profile['emails'] = emails
     profile['email'] = emails[0]['value'] if emails else ''
     profile['social_links'] = social_links
+    profile['phone_status'] = 'partial' if values.get('phone_status') == 'partial' else 'complete'
     profile['facebook_url'] = next((link['url'] for link in social_links if link['platform'] == 'Facebook'), '')
     profile['linkedin_url'] = next((link['url'] for link in social_links if link['platform'] == 'LinkedIn'), '')
     if len(profile['notes']) > 10000:
@@ -91,6 +108,15 @@ def list_profiles(store, lock):
             {'platform': platform, 'url': profile.get(key)}
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
         ])
+        profile.setdefault('phone_status', 'complete')
+        for email in profile['emails']:
+            email.setdefault('status', 'complete')
+        for link in profile['social_links']:
+            link.setdefault('status', 'complete')
+            link.setdefault('account', '')
+            link.setdefault('recovery_emails', [])
+            link.setdefault('recovery_phone', '')
+            link.setdefault('recovery_notes', '')
         for credential in profile['credentials']:
             credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
             credential.setdefault('purpose', '')
@@ -111,6 +137,15 @@ def get_profile(profile_id, store, lock):
             {'platform': platform, 'url': result.get(key)}
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if result.get(key)
         ])
+        result.setdefault('phone_status', 'complete')
+        for email in result['emails']:
+            email.setdefault('status', 'complete')
+        for link in result['social_links']:
+            link.setdefault('status', 'complete')
+            link.setdefault('account', '')
+            link.setdefault('recovery_emails', [])
+            link.setdefault('recovery_phone', '')
+            link.setdefault('recovery_notes', '')
         for credential in result['credentials']:
             credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
             credential.setdefault('purpose', '')

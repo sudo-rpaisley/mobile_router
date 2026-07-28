@@ -4,6 +4,8 @@
     var list = document.querySelector('[data-repeat-list="' + type + '"]');
     var row = list.querySelector('.social-repeat-row').cloneNode(true);
     row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+    row.querySelectorAll('textarea').forEach(function (textarea) { textarea.value = ''; });
+    row.querySelectorAll('select').forEach(function (select) { select.selectedIndex = 0; });
     list.appendChild(row);
   }
   document.addEventListener('click', function (event) {

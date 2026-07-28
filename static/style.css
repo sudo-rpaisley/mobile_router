@@ -630,3 +630,9 @@ html[data-theme="dark"] .evidence-output {
 .social-credential-card .badge { margin-bottom: .55rem; }
 .social-credential-notes { margin: .75rem 0 0; padding-top: .75rem; border-top: 1px solid var(--theme-border, #dee2e6); white-space: pre-wrap; }
 @media (max-width: 768px) { .social-section-heading { flex-direction: column; } }
+.social-account-row { grid-template-columns: minmax(7rem, .5fr) minmax(12rem, 1.5fr) minmax(6rem, .5fr) auto; }
+.social-recovery-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .5rem; padding: .65rem; background: rgba(80, 115, 160, .07); border-radius: .65rem; }
+.social-account-card { padding: .8rem; border: 1px solid var(--theme-border, #dee2e6); border-radius: .65rem; }
+.social-account-card small, .social-account-card a, .social-recovery-summary { display: block; margin-top: .3rem; overflow-wrap: anywhere; }
+.social-account-card a { padding: 0; border: 0; border-radius: 0; }
+.social-recovery-summary { padding-top: .6rem; border-top: 1px dashed var(--theme-border, #dee2e6); }

@@ -43,11 +43,18 @@ class RouteSmokeTest(unittest.TestCase):
         with patch('app.save_runtime_state') as save_state:
             response = self.client.post('/social-engineering/profiles', data={
                 'full_name': 'Alex Example',
-                'email_label': ['Personal', 'Work'],
-                'email_value': ['alex@example.com', 'alex@work.example'],
+                'email_label': ['Personal', 'Work', 'Old account'],
+                'email_value': ['alex@example.com', 'alex@work.example', 'al***@old.example'],
+                'email_status': ['complete', 'complete', 'partial'],
                 'social_platform': ['Facebook', 'GitHub', 'Instagram'],
                 'social_url': ['facebook.com/alex.example', 'https://github.com/alex', 'https://instagram.com/alex'],
+                'social_status': ['complete', 'complete', 'complete'],
+                'social_account': ['alex.example', 'alex', 'alexphotos'],
+                'social_recovery_emails': ['', 'alex@example.com, alex@work.example', ''],
+                'social_recovery_phone': ['', '+1 555 0100', ''],
+                'social_recovery_notes': ['', 'Recovery codes held offline', ''],
                 'organization': 'Example Company', 'job_title': 'Analyst',
+                'phone': '+1 555 01**', 'phone_status': 'partial',
                 'notes': 'Authorized awareness exercise participant.',
                 'csrf_token': self.csrf_token,
                 'profile_photo': (io.BytesIO(b'GIF89a-test-image'), 'alex.gif'),
@@ -58,8 +65,10 @@ class RouteSmokeTest(unittest.TestCase):
         profile_id = next(iter(app_module.social_profiles))
         profile = app_module.social_profiles[profile_id]
         self.assertEqual(profile['facebook_url'], 'https://facebook.com/alex.example')
-        self.assertEqual(len(profile['emails']), 2)
+        self.assertEqual(len(profile['emails']), 3)
         self.assertEqual(len(profile['social_links']), 3)
+        self.assertEqual(profile['emails'][2]['status'], 'partial')
+        self.assertEqual(profile['social_links'][1]['recovery_emails'], ['alex@example.com', 'alex@work.example'])
         self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_PHOTO_DIR, True)
 
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
@@ -70,6 +79,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Instagram', response.data)
         self.assertIn(b'alex@work.example', response.data)
         self.assertIn(b'Profile picture for Alex Example', response.data)
+        self.assertIn(b'Recovery codes held offline', response.data)
+        self.assertIn(b'al***@old.example', response.data)
+        self.assertIn(b'Partial', response.data)
 
         app_module.device_inventory['mac:ac:16:2d:a2:71:9e'] = {
             'id': 'mac:ac:16:2d:a2:71:9e', 'mac': 'ac:16:2d:a2:71:9e',
