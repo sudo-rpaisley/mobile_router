@@ -385,6 +385,58 @@ class AutomotiveStore:
                     WHEN 'user_translation' THEN 3 ELSE 4 END, lookup_priority DESC, id DESC""", (code, make)).fetchall()
         return [dict(row) for row in rows]
 
+    def dtc_browse_facets(self, make=''):
+        """Return locally available manufacturers and models for the code browser."""
+        with self.connect() as db:
+            manufacturers = [dict(row) for row in db.execute(
+                """SELECT make, COUNT(DISTINCT code) AS code_count
+                   FROM dtc_definitions WHERE status='active' AND TRIM(make)<>''
+                   GROUP BY LOWER(make) ORDER BY make COLLATE NOCASE"""
+            )]
+            model_params = []
+            model_filter = ''
+            if make:
+                model_filter = ' AND LOWER(make)=LOWER(?)'
+                model_params.append(make)
+            models = [dict(row) for row in db.execute(
+                f"""SELECT model, make, COUNT(DISTINCT code) AS code_count
+                    FROM dtc_definitions WHERE status='active' AND TRIM(model)<>''{model_filter}
+                    GROUP BY LOWER(make), LOWER(model) ORDER BY make COLLATE NOCASE, model COLLATE NOCASE""",
+                model_params,
+            )]
+        return {'manufacturers': manufacturers, 'models': models}
+
+    def browse_codes(self, make='', model='', category='', query='', limit=25, offset=0):
+        """Browse active local definitions, collapsing duplicate imported rows."""
+        clauses = ["status='active'"]
+        params = []
+        if make:
+            clauses.append('LOWER(make)=LOWER(?)')
+            params.append(make)
+        if model:
+            clauses.append('LOWER(model)=LOWER(?)')
+            params.append(model)
+        if category:
+            clauses.append('UPPER(category)=UPPER(?)')
+            params.append(category)
+        if query:
+            clauses.append('(UPPER(code) LIKE UPPER(?) OR LOWER(description) LIKE LOWER(?))')
+            params.extend([f'%{query}%', f'%{query}%'])
+        where = ' AND '.join(clauses)
+        grouped = f"""SELECT MIN(id) AS id, code, category, description, scope, make, model,
+            year_start, year_end, module, engine, applicability_notes,
+            MAX(lookup_priority) AS lookup_priority, COUNT(*) AS duplicate_count
+            FROM dtc_definitions WHERE {where}
+            GROUP BY UPPER(code), LOWER(make), LOWER(model), description, scope,
+                year_start, year_end, LOWER(module), LOWER(engine), applicability_notes"""
+        with self.connect() as db:
+            total = db.execute(f'SELECT COUNT(*) FROM ({grouped})', params).fetchone()[0]
+            rows = db.execute(
+                grouped + " ORDER BY code, CASE WHEN make='' THEN 1 ELSE 0 END, make COLLATE NOCASE, model COLLATE NOCASE LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
+        return [dict(row) for row in rows], total
+
     def save_vehicle(self, values):
         decoded = self.lookup_vin(values.get('vin'))
         with self.connect() as db:

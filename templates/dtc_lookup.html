@@ -1,2 +1,75 @@
-{% extends 'base.html' %}{% block title %}Code Lookup{% endblock %}{% block content %}
-<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Local translations</p><h1 class="page-title">Diagnostic code lookup</h1><p class="page-subtitle">Make-specific translations are shown before generic definitions.</p></div></section><section class="theme-card card"><div class="card-body"><form method="get"><input class="form-control" name="code" value="{{ code }}" placeholder="P0300" required><input class="form-control" name="make" value="{{ request.args.get('make','') }}" placeholder="Vehicle make (optional)"><button class="btn btn-primary">Look up code</button></form>{% if code %}<h2>{{ code|upper }}</h2><ul>{% for match in matches %}<li><strong>{{ match.make or 'Generic' }}:</strong> {{ match.description }} <small>{{ match.source }}</small></li>{% else %}<li>No matching definition in the local database.</li>{% endfor %}</ul>{% endif %}</div></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Code Lookup{% endblock %}
+{% macro brand_icon(make) -%}
+  <span class="dtc-brand-icon" aria-hidden="true">{{ (make[:2] if make else 'OBD')|upper }}</span>
+{%- endmacro %}
+{% macro definition_card(match, show_code=false) -%}
+  <article class="dtc-definition-card">
+    <header>
+      {{ brand_icon(match.make) }}
+      <div>
+        {% if show_code %}<a class="dtc-code-link" href="{{ url_for('automotive.code_lookup', code=match.code, make=match.make) }}">{{ match.code }}</a>{% endif %}
+        <h3>{{ match.make or 'Generic OBD-II' }}</h3>
+        {% if match.model %}<p>{{ match.model }}</p>{% endif %}
+      </div>
+      <span class="badge badge-secondary">{{ match.scope|replace('_', ' ')|title }}</span>
+    </header>
+    <p class="dtc-definition-text">{{ match.description }}</p>
+    {% if match.year_start or match.year_end or match.module or match.engine %}
+      <dl class="dtc-applicability">
+        {% if match.year_start or match.year_end %}<div><dt>Years</dt><dd>{{ match.year_start or '?' }}–{{ match.year_end or match.year_start or '?' }}</dd></div>{% endif %}
+        {% if match.module %}<div><dt>Module</dt><dd>{{ match.module }}</dd></div>{% endif %}
+        {% if match.engine %}<div><dt>Engine</dt><dd>{{ match.engine }}</dd></div>{% endif %}
+      </dl>
+    {% endif %}
+    {% if match.applicability_notes %}<small>{{ match.applicability_notes }}</small>{% endif %}
+    {% if match.duplicate_count > 1 %}<small>{{ match.duplicate_count }} identical imported records combined.</small>{% endif %}
+  </article>
+{%- endmacro %}
+{% block content %}
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Local translations</p><h1 class="page-title">Diagnostic code lookup</h1><p class="page-subtitle">Look up an exact code or browse the locally imported catalogue by manufacturer and model.</p></div></section>
+
+<section class="theme-card card"><div class="card-body">
+  <h2>Look up a code</h2>
+  <form method="get" class="automotive-lookup-form">
+    <div class="automotive-lookup-controls">
+      <input class="form-control" name="code" value="{{ code }}" placeholder="P0300" aria-label="Diagnostic code" required>
+      <input class="form-control" name="make" value="{{ selected_make }}" placeholder="Vehicle make (optional)" aria-label="Vehicle make">
+      <button class="btn btn-primary">Look up code</button>
+    </div>
+  </form>
+  {% if code %}
+    <div class="automotive-result-heading"><div><p class="page-kicker">Local matches</p><h2>{{ code|upper }}</h2></div><span class="badge badge-info">{{ matches|length }} definition{{ '' if matches|length == 1 else 's' }}</span></div>
+    <div class="dtc-definition-grid">
+      {% for match in matches %}{{ definition_card(match) }}{% else %}<p>No matching definition is in the local database.</p>{% endfor %}
+    </div>
+  {% endif %}
+</div></section>
+
+<section class="theme-card card"><div class="card-body">
+  <div class="automotive-result-heading"><div><p class="page-kicker">Offline catalogue</p><h2>Browse codes</h2></div><span>{{ browse_total }} result{{ '' if browse_total == 1 else 's' }}</span></div>
+  <form method="get" class="dtc-browse-controls">
+    <label>Manufacturer<select class="form-control" name="make"><option value="">All manufacturers</option>{% for item in facets.manufacturers %}<option value="{{ item.make }}" {% if item.make|lower == selected_make|lower %}selected{% endif %}>{{ item.make }} ({{ item.code_count }})</option>{% endfor %}</select></label>
+    <label>Model<select class="form-control" name="model"><option value="">All models</option>{% for item in facets.models %}<option value="{{ item.model }}" {% if item.model|lower == selected_model|lower %}selected{% endif %}>{{ item.model }} ({{ item.code_count }})</option>{% endfor %}</select></label>
+    <label>Category<select class="form-control" name="category"><option value="">All categories</option>{% for value, label in [('P','Powertrain'),('B','Body'),('C','Chassis'),('U','Network')] %}<option value="{{ value }}" {% if value == selected_category %}selected{% endif %}>{{ value }} — {{ label }}</option>{% endfor %}</select></label>
+    <label>Code or description<input class="form-control" name="q" value="{{ browse_query }}" placeholder="misfire"></label>
+    <label>Per page<select class="form-control" name="per_page">{% for size in [12,25,50,100] %}<option value="{{ size }}" {% if size == per_page %}selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary">Browse</button>
+  </form>
+
+  {% if not selected_make and facets.manufacturers %}
+  <div class="dtc-manufacturer-strip" aria-label="Browse manufacturers">
+    {% for item in facets.manufacturers %}<a href="{{ url_for('automotive.code_lookup', make=item.make) }}">{{ brand_icon(item.make) }}<span>{{ item.make }}<small>{{ item.code_count }} codes</small></span></a>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="dtc-definition-grid dtc-browse-grid">
+    {% for match in browse_rows %}{{ definition_card(match, true) }}{% else %}<p>No definitions match these browse filters.</p>{% endfor %}
+  </div>
+  {% if page_count > 1 %}<nav class="automotive-pagination" aria-label="Code pages">
+    {% if page > 1 %}<a class="btn btn-secondary" href="{{ url_for('automotive.code_lookup', make=selected_make, model=selected_model, category=selected_category, q=browse_query, per_page=per_page, page=page-1) }}">Previous</a>{% endif %}
+    <span>Page {{ page }} of {{ page_count }}</span>
+    {% if page < page_count %}<a class="btn btn-secondary" href="{{ url_for('automotive.code_lookup', make=selected_make, model=selected_model, category=selected_category, q=browse_query, per_page=per_page, page=page+1) }}">Next</a>{% endif %}
+  </nav>{% endif %}
+</div></section>
+{% endblock %}

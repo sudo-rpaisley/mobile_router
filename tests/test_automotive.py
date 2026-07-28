@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from services.automotive import AutomotiveStore, simple_pdf
-from routes.automotive import MAX_ARCHIVE_UNCOMPRESSED_BYTES, _validate_download_url
+from routes.automotive import MAX_ARCHIVE_UNCOMPRESSED_BYTES, _collapse_dtc_matches, _validate_download_url
 
 
 class AutomotiveStoreTest(unittest.TestCase):
@@ -38,6 +38,31 @@ class AutomotiveStoreTest(unittest.TestCase):
         matches = self.store.lookup_code('p0300', 'Saab')
         self.assertEqual(matches[0]['description'], 'Saab-specific misfire')
         self.assertEqual(matches[1]['description'], 'Generic misfire')
+
+    def test_code_browser_filters_manufacturers_models_and_collapses_duplicates(self):
+        content = (b'code,description,make,model,scope\n'
+                   b'P0300,Random misfire,Saab,9-5,model\n'
+                   b'P0300,Random misfire,Saab,9-5,model\n'
+                   b'P0420,Catalyst efficiency,Saab,9-3,model\n'
+                   b'P0300,Random misfire,Toyota,Corolla,model\n')
+        self.store.import_dtc_csv(content)
+        facets = self.store.dtc_browse_facets('Saab')
+        self.assertEqual([(row['make'], row['code_count']) for row in facets['manufacturers']],
+                         [('Saab', 2), ('Toyota', 1)])
+        self.assertEqual([row['model'] for row in facets['models']], ['9-3', '9-5'])
+        rows, total = self.store.browse_codes(make='Saab', model='9-5')
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0]['duplicate_count'], 2)
+
+    def test_lookup_cards_collapse_only_identical_definitions(self):
+        matches = [
+            {'make': 'SAAB', 'model': '', 'description': 'Random misfire', 'scope': 'manufacturer'},
+            {'make': 'Saab', 'model': '', 'description': 'Random misfire', 'scope': 'manufacturer'},
+            {'make': 'Saab', 'model': '9-5', 'description': 'Random misfire', 'scope': 'model'},
+        ]
+        collapsed = _collapse_dtc_matches(matches)
+        self.assertEqual(len(collapsed), 2)
+        self.assertEqual(collapsed[0]['duplicate_count'], 2)
 
     def test_text_parser_and_reports(self):
         self.assertEqual(self.store.import_dtc_text('P0171 - System too lean\nP0300: Random misfire', 'Saab'), 2)

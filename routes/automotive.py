@@ -63,6 +63,22 @@ def _download(url):
     return data
 
 
+def _collapse_dtc_matches(matches):
+    """Collapse repeated imports without hiding distinct applicability or wording."""
+    collapsed = {}
+    fields = ('make', 'model', 'description', 'scope', 'year_start', 'year_end', 'module', 'engine')
+    for match in matches:
+        key = tuple(str(match.get(field) or '').strip().casefold() for field in fields)
+        if key not in collapsed:
+            collapsed[key] = dict(match, duplicate_count=1, sources=[])
+        else:
+            collapsed[key]['duplicate_count'] += 1
+        source = match.get('source_name') or match.get('source')
+        if source and source not in collapsed[key]['sources']:
+            collapsed[key]['sources'].append(source)
+    return list(collapsed.values())
+
+
 def _pdf_text(content):
     PdfReader = importlib.import_module('pypdf').PdfReader
     try:
@@ -241,9 +257,34 @@ def create_automotive_blueprint(context_provider):
 
     @blueprint.get('/automotive/codes')
     def code_lookup():
-        code = request.args.get('code', '')
-        matches = store().lookup_code(code, request.args.get('make', '')) if code else []
-        return render_template('dtc_lookup.html', title='Code Lookup', code=code, matches=matches, **context_provider())
+        database = store()
+        code = request.args.get('code', '').strip()
+        make = request.args.get('make', '').strip()
+        model = request.args.get('model', '').strip()
+        category = request.args.get('category', '').strip().upper()
+        query = request.args.get('q', '').strip()
+        try:
+            per_page = int(request.args.get('per_page', 25))
+            page = max(1, int(request.args.get('page', 1)))
+        except (TypeError, ValueError):
+            per_page, page = 25, 1
+        per_page = per_page if per_page in {12, 25, 50, 100} else 25
+        matches = _collapse_dtc_matches(database.lookup_code(code, make)) if code else []
+        browse_rows, browse_total = database.browse_codes(
+            make, model, category, query, per_page, (page - 1) * per_page,
+        )
+        page_count = max(1, math.ceil(browse_total / per_page))
+        if page > page_count:
+            page = page_count
+            browse_rows, browse_total = database.browse_codes(
+                make, model, category, query, per_page, (page - 1) * per_page,
+            )
+        return render_template(
+            'dtc_lookup.html', title='Code Lookup', code=code, matches=matches,
+            browse_rows=browse_rows, browse_total=browse_total, facets=database.dtc_browse_facets(make),
+            selected_make=make, selected_model=model, selected_category=category, browse_query=query,
+            page=page, page_count=page_count, per_page=per_page, **context_provider(),
+        )
 
     @blueprint.post('/automotive/reports')
     def save_report():

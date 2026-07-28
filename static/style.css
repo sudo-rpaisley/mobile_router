@@ -726,6 +726,27 @@ html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1;
 .automotive-review-toolbar, .automotive-pagination { display: flex; justify-content: space-between; align-items: end; gap: .75rem; flex-wrap: wrap; }
 .automotive-review-toolbar .form-control { width: auto; min-width: 7rem; }
 .automotive-pagination { justify-content: center; margin: 1rem 0; }
+.dtc-definition-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+.dtc-definition-card { display: flex; flex-direction: column; gap: .75rem; min-width: 0; padding: 1rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .85rem; background: rgba(128, 144, 168, .06); }
+.dtc-definition-card header { display: flex; align-items: center; gap: .75rem; }
+.dtc-definition-card header > div { min-width: 0; flex: 1; }
+.dtc-definition-card h3, .dtc-definition-card header p, .dtc-definition-text { margin: 0; }
+.dtc-definition-card header p, .dtc-definition-card small { color: var(--theme-muted); }
+.dtc-brand-icon { display: inline-flex; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; align-items: center; justify-content: center; border: 1px solid rgba(96, 165, 250, .45); border-radius: 50%; background: var(--theme-primary-soft, rgba(59, 130, 246, .14)); color: var(--theme-primary, #3b82f6); font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+.dtc-code-link { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 800; }
+.dtc-definition-text { flex: 1; font-size: 1.05rem; }
+.dtc-applicability { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 0; }
+.dtc-applicability div { min-width: 5rem; }
+.dtc-applicability dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--theme-muted); }
+.dtc-applicability dd { margin: 0; }
+.dtc-browse-controls { display: grid; grid-template-columns: repeat(5, minmax(9rem, 1fr)) auto; gap: .75rem; align-items: end; margin: 1.25rem 0; }
+.dtc-browse-controls label { margin: 0; }
+.dtc-manufacturer-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; margin: 1rem 0; }
+.dtc-manufacturer-strip a { display: flex; align-items: center; gap: .65rem; padding: .65rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .7rem; color: inherit; }
+.dtc-manufacturer-strip a:hover { border-color: var(--theme-primary); text-decoration: none; }
+.dtc-manufacturer-strip small { display: block; color: var(--theme-muted); }
+@media (max-width: 1000px) { .dtc-browse-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .dtc-browse-controls { grid-template-columns: 1fr; } .dtc-definition-grid { grid-template-columns: 1fr; } }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
 html[data-theme="dark"] .form-control:focus,
