@@ -133,6 +133,14 @@ the Git-ignored `data/runtime_state.json` file. Browser encryption requires a
 secure context, such as `localhost` or HTTPS. The vault password is not stored
 and cannot be recovered by the application.
 
+Person profiles can store photographed identity cards and signatures. JPG, PNG,
+and WebP identity images receive their own review page with the original card,
+editable digital fields, the complete OCR text, and its extraction status. OCR
+runs locally through the optional `tesseract` command and never uploads identity
+images to an online service; when Tesseract is unavailable, the image is still
+saved and its fields can be entered manually. Identity and signature images are
+limited to 10 MB, ownership-protected, audit logged, and removed with the person.
+
 The server listens on `0.0.0.0:8080`. Once running, navigate to
 `http://localhost:8080` in a web browser to access the UI. From there you can
 browse interfaces or open the **Red Team** page to try the network utilities.

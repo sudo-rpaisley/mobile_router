@@ -161,6 +161,8 @@ def _normalize_profile(profile):
     profile.setdefault('profile_status', 'active')
     profile.setdefault('relationships', [])
     profile.setdefault('attachments', [])
+    profile.setdefault('identity_documents', [])
+    profile.setdefault('signatures', [])
     profile.setdefault('custom_fields', [])
     profile.setdefault('retention_until', '')
     profile.setdefault('review_date', '')
@@ -272,7 +274,7 @@ def merge_profiles(primary_id, duplicate_id, store, lock, now=None):
             raise KeyError(duplicate_id)
         if primary.get('owner') != duplicate.get('owner'):
             raise ValueError('Profiles must have the same owner.')
-        for field in ('emails', 'social_links', 'devices', 'credentials', 'relationships', 'attachments', 'custom_fields'):
+        for field in ('emails', 'social_links', 'devices', 'credentials', 'relationships', 'attachments', 'identity_documents', 'signatures', 'custom_fields'):
             existing = {item.get('id') for item in primary.setdefault(field, [])}
             primary[field].extend(deepcopy(item) for item in duplicate.get(field, []) if item.get('id') not in existing)
         primary['tags'] = sorted(set(primary.get('tags', [])) | set(duplicate.get('tags', [])), key=str.casefold)

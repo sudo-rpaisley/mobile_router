@@ -717,6 +717,12 @@ html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1;
 .automotive-save-form textarea, .automotive-save-form #save-notes, .automotive-save-form .btn { grid-column: 1 / -1; }
 @media (max-width: 600px) { .automotive-save-form { grid-template-columns: 1fr; } .automotive-save-form > * { grid-column: 1 !important; } }
 @media (max-width: 600px) { .automotive-lookup-controls { flex-direction: column; } .automotive-result-heading { align-items: flex-start; flex-direction: column; } }
+.identity-document-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin: 1rem 0; }
+.identity-document-card { display: flex; flex-direction: column; gap: .6rem; padding: .75rem; border: 1px solid var(--theme-border); border-radius: .75rem; color: inherit; }
+.identity-document-card img { width: 100%; aspect-ratio: 1.586 / 1; object-fit: contain; background: #0b1220; border-radius: .5rem; }
+.identity-document-card small { display: block; color: var(--theme-muted); }
+.identity-document-large { width: 100%; max-height: 34rem; object-fit: contain; border-radius: .75rem; background: #0b1220; }
+.identity-ocr-text { max-height: 28rem; overflow: auto; white-space: pre-wrap; }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
 html[data-theme="dark"] .form-control:focus,

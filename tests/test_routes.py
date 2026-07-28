@@ -206,6 +206,41 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertNotIn(profile_id, app_module.social_profiles)
         save_state.assert_called_once_with('social-profile-delete')
 
+    def test_person_identity_card_ocr_page_and_signature(self):
+        profile_id = 'identity-profile'
+        app_module.social_profiles[profile_id] = {
+            'id': profile_id, 'full_name': 'Alex Driver', 'owner': 'test-admin',
+            'emails': [], 'social_links': [], 'devices': [], 'credentials': [], 'relationships': [],
+            'attachments': [], 'identity_documents': [], 'signatures': [], 'custom_fields': [],
+        }
+        self.addCleanup(app_module.social_profiles.pop, profile_id, None)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_ID_DIR, True)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_SIGNATURE_DIR, True)
+        with patch('app.identity_image_ocr', return_value=('ID NO: SAAB12345\nDOB: 1980-01-02\nEXP: 2030-01-02', 'complete')):
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/identity-documents', data={
+                'document_type': 'driving_licence', 'identity_image': (io.BytesIO(b'fake-png'), 'licence.png'),
+                'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Card image', response.data)
+        self.assertIn(b'SAAB12345', response.data)
+        self.assertIn(b'1980-01-02', response.data)
+        self.assertIn(b'OCR result', response.data)
+        document = app_module.social_profiles[profile_id]['identity_documents'][0]
+        update = self.client.post(
+            f'/social-engineering/profiles/{profile_id}/identity-documents/{document["id"]}',
+            data={'document_type': 'driving_licence', 'document_number': 'REVIEWED-1',
+                  'issuing_country': 'Sweden', 'csrf_token': self.csrf_token}, follow_redirects=True,
+        )
+        self.assertIn(b'Identity document details saved', update.data)
+        signature = self.client.post(f'/social-engineering/profiles/{profile_id}/signatures', data={
+            'label': 'Driver signature', 'signed_at': '2026-07-28',
+            'signature_image': (io.BytesIO(b'fake-signature'), 'signature.png'), 'csrf_token': self.csrf_token,
+        }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(signature.status_code, 200)
+        self.assertIn(b'Driver signature', signature.data)
+        self.assertIn(b'REVIEWED-1', signature.data)
+
     def test_social_profile_rejects_invalid_contact_fields(self):
         self.login_social_admin()
         response = self.client.post('/social-engineering/profiles', data={
