@@ -13,6 +13,7 @@ import csv
 import io
 import socket
 import secrets
+import hashlib
 from functools import wraps
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -106,6 +107,7 @@ passive_analytics_lock = threading.Lock()
 HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 SOCIAL_PROFILE_PHOTO_DIR = os.path.join(app.instance_path, 'social_profile_photos')
+SOCIAL_PROFILE_ATTACHMENT_DIR = os.path.join(app.instance_path, 'social_profile_attachments')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -2861,13 +2863,15 @@ def social_engineering_page():
     tag = request.args.get('tag', '')
     filtered_profiles = social_profile_service.search_profiles(profiles, query, status, tag)
     available_tags = sorted({item for profile in profiles for item in profile.get('tags', [])}, key=str.casefold)
+    summary = social_profile_service.dashboard_summary(profiles)
+    duplicates = social_profile_service.duplicate_candidates(profiles)
     return render_template(
         'social_engineering.html',
         title='Social Engineering',
         profiles=filtered_profiles, total_profiles=len(profiles), available_tags=available_tags,
         search_query=query, selected_status=status, selected_tag=tag,
         social_user=session.get('social_user'), csrf_token=social_csrf_token(),
-        social_audit=recent_social_audit(),
+        social_audit=recent_social_audit(), summary=summary, duplicates=duplicates,
         **current_context(),
     )
 
@@ -2878,9 +2882,11 @@ def create_social_profile():
     try:
         profile = social_profile_service.create_profile(request.form, social_profiles, social_profiles_lock)
     except ValueError as exc:
+        profiles = owned_social_profiles()
         return render_template(
             'social_engineering.html', title='Social Engineering',
-            profiles=owned_social_profiles(),
+            profiles=profiles, total_profiles=len(profiles), available_tags=[], search_query='', selected_status='', selected_tag='',
+            summary=social_profile_service.dashboard_summary(profiles), duplicates=social_profile_service.duplicate_candidates(profiles), social_audit=recent_social_audit(),
             form_values=request.form, error=str(exc), social_user=session.get('social_user'),
             csrf_token=social_csrf_token(), **current_context(),
         ), 400
@@ -2891,8 +2897,10 @@ def create_social_profile():
         save_social_profile_photo(profile['id'], request.files.get('profile_photo'))
     except ValueError as exc:
         social_profile_service.delete_profile(profile['id'], social_profiles, social_profiles_lock)
+        profiles = owned_social_profiles()
         return render_template(
-            'social_engineering.html', title='Social Engineering', profiles=owned_social_profiles(),
+            'social_engineering.html', title='Social Engineering', profiles=profiles, total_profiles=len(profiles), available_tags=[], search_query='', selected_status='', selected_tag='',
+            summary=social_profile_service.dashboard_summary(profiles), duplicates=social_profile_service.duplicate_candidates(profiles), social_audit=recent_social_audit(),
             form_values=request.form, error=str(exc), social_user=session.get('social_user'),
             csrf_token=social_csrf_token(), **current_context(),
         ), 400
@@ -2920,10 +2928,20 @@ def social_profile_detail(profile_id):
         if (item.get('mac') or item.get('address')) and not item.get('is_control_traffic')
     ]
     user_record = current_user_record() or {}
+    owned_profiles = owned_social_profiles()
+    vault_credentials = [
+        {'id': credential['id'], 'ciphertext': credential.get('secret_ciphertext', '')}
+        for owned_profile in owned_profiles for credential in owned_profile.get('credentials', [])
+        if credential.get('secret_ciphertext')
+    ]
+    profile_by_id = {item['id']: item for item in owned_profiles}
+    for relationship in profile.get('relationships', []):
+        relationship['target'] = profile_by_id.get(relationship.get('target_profile_id'))
     return render_template(
         'social_profile_detail.html', title=profile['full_name'], profile=profile,
         contact_refs=contact_refs, inventory_choices=inventory_choices,
-        vault_verifier=user_record.get('vault_verifier', ''),
+        vault_verifier=user_record.get('vault_verifier', ''), vault_credentials=vault_credentials,
+        relationship_choices=[item for item in owned_profiles if item['id'] != profile_id],
         social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context(),
     )
 
@@ -2977,6 +2995,10 @@ def delete_social_profile(profile_id):
         photo_path = os.path.join(SOCIAL_PROFILE_PHOTO_DIR, profile['photo_filename'])
         if os.path.exists(photo_path):
             os.unlink(photo_path)
+    for attachment in profile.get('attachments', []):
+        attachment_path = os.path.join(SOCIAL_PROFILE_ATTACHMENT_DIR, attachment.get('filename', ''))
+        if os.path.isfile(attachment_path):
+            os.unlink(attachment_path)
     record_social_audit('profile.delete', profile_id)
     save_runtime_state('social-profile-delete')
     return redirect(url_for('social_engineering_page'))
@@ -3101,6 +3123,191 @@ def save_vault_verifier():
     record_social_audit('vault.initialize')
     save_runtime_state('vault-verifier')
     return json_success()
+
+
+@app.route('/vault-rotate', methods=['POST'])
+@social_login_required({'credential_manager', 'admin'})
+def rotate_vault():
+    verifier = str(request.form.get('vault_verifier') or '')
+    try:
+        replacements = json.loads(request.form.get('credentials') or '{}')
+    except json.JSONDecodeError:
+        return json_error('Invalid credential rotation payload.')
+    if not verifier.startswith('vault:v1:') or not isinstance(replacements, dict):
+        return json_error('Invalid vault rotation payload.')
+    username = current_app_user()['username']
+    profiles = owned_social_profiles()
+    expected = {item['id'] for profile in profiles for item in profile.get('credentials', []) if item.get('secret_ciphertext')}
+    if set(replacements) != expected or any(not str(value).startswith('vault:v1:') for value in replacements.values()):
+        return json_error('Every encrypted credential must be rotated together.')
+    with social_profiles_lock:
+        for profile in social_profiles.values():
+            if profile.get('owner') != username:
+                continue
+            for credential in profile.get('credentials', []):
+                if credential.get('id') in replacements:
+                    credential['secret_ciphertext'] = replacements[credential['id']]
+                    credential['rotated_at'] = time.time()
+    with social_users_lock:
+        social_users[username]['vault_verifier'] = verifier
+    record_social_audit('vault.rotate')
+    save_runtime_state('vault-rotate')
+    return json_success()
+
+
+@app.route('/social-engineering/profiles/<profile_id>/relationships', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def add_social_profile_relationship(profile_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    try:
+        social_profile_service.add_relationship(profile_id, request.form, social_profiles, social_profiles_lock)
+    except (KeyError, ValueError) as exc:
+        return json_error(str(exc))
+    record_social_audit('relationship.create', profile_id)
+    save_runtime_state('relationship-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/relationships/<relationship_id>/delete', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def delete_social_profile_relationship(profile_id, relationship_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    social_profile_service.delete_relationship(profile_id, relationship_id, social_profiles, social_profiles_lock)
+    record_social_audit('relationship.delete', profile_id)
+    save_runtime_state('relationship-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/merge', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def merge_social_profiles():
+    primary_id, duplicate_id = request.form.get('primary_id'), request.form.get('duplicate_id')
+    if not owned_social_profile(primary_id) or not owned_social_profile(duplicate_id):
+        return json_error('Profile not found', 404)
+    try:
+        social_profile_service.merge_profiles(primary_id, duplicate_id, social_profiles, social_profiles_lock)
+    except (KeyError, ValueError) as exc:
+        return json_error(str(exc))
+    record_social_audit('profile.merge', primary_id, duplicate_id)
+    save_runtime_state('profile-merge')
+    return redirect(url_for('social_profile_detail', profile_id=primary_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/attachments', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def add_social_profile_attachment(profile_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    upload = request.files.get('attachment')
+    if not upload or not upload.filename:
+        return json_error('Choose a file to attach.')
+    content = upload.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        return json_error('Attachments must be 10 MB or smaller.')
+    safe_name = secure_filename(upload.filename) or 'attachment'
+    filename = f'{profile_id}-{uuid.uuid4()}-{safe_name}'
+    os.makedirs(SOCIAL_PROFILE_ATTACHMENT_DIR, exist_ok=True)
+    with open(os.path.join(SOCIAL_PROFILE_ATTACHMENT_DIR, filename), 'wb') as handle:
+        handle.write(content)
+    social_profile_service.add_attachment(profile_id, {
+        'filename': filename, 'original_name': safe_name, 'description': request.form.get('description'),
+        'sha256': hashlib.sha256(content).hexdigest(), 'size': len(content),
+    }, social_profiles, social_profiles_lock)
+    record_social_audit('attachment.create', profile_id, safe_name)
+    save_runtime_state('attachment-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/attachments/<attachment_id>')
+@social_login_required()
+def download_social_profile_attachment(profile_id, attachment_id):
+    profile = owned_social_profile(profile_id)
+    item = next((entry for entry in (profile or {}).get('attachments', []) if entry.get('id') == attachment_id), None)
+    if not item:
+        return json_error('Attachment not found', 404)
+    record_social_audit('attachment.download', profile_id, item['original_name'])
+    return send_from_directory(SOCIAL_PROFILE_ATTACHMENT_DIR, item['filename'], as_attachment=True, download_name=item['original_name'])
+
+
+@app.route('/social-engineering/profiles/<profile_id>/attachments/<attachment_id>/delete', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def delete_social_profile_attachment(profile_id, attachment_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    item = social_profile_service.delete_attachment(profile_id, attachment_id, social_profiles, social_profiles_lock)
+    if not item:
+        return json_error('Attachment not found', 404)
+    path = os.path.join(SOCIAL_PROFILE_ATTACHMENT_DIR, item['filename'])
+    if os.path.isfile(path):
+        os.unlink(path)
+    record_social_audit('attachment.delete', profile_id, item['original_name'])
+    save_runtime_state('attachment-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/export')
+@social_login_required()
+def export_social_profiles():
+    profiles = owned_social_profiles()
+    if request.args.get('format') == 'csv':
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=['full_name', 'organization', 'job_title', 'phone', 'emails', 'tags', 'status'])
+        writer.writeheader()
+        for item in profiles:
+            writer.writerow({'full_name': item['full_name'], 'organization': item.get('organization'), 'job_title': item.get('job_title'),
+                             'phone': item.get('phone'), 'emails': ', '.join(email['value'] for email in item.get('emails', [])),
+                             'tags': ', '.join(item.get('tags', [])), 'status': item.get('profile_status')})
+        return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=contacts.csv'})
+    safe_profiles = [{key: value for key, value in item.items() if key != 'credentials'} for item in profiles]
+    return Response(json.dumps({'profiles': safe_profiles}, indent=2), mimetype='application/json', headers={'Content-Disposition': 'attachment; filename=contacts.json'})
+
+
+@app.route('/social-engineering/import', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def import_social_profiles():
+    upload = request.files.get('contacts_file')
+    if not upload:
+        return json_error('Choose a JSON contacts export.')
+    try:
+        payload = json.loads(upload.read(2 * 1024 * 1024).decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return json_error('The contacts file is not valid JSON.')
+    records = payload.get('profiles', []) if isinstance(payload, dict) else []
+    if not isinstance(records, list) or len(records) > 1000:
+        return json_error('The contacts export is invalid or too large.')
+    created = 0
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        values = {'full_name': record.get('full_name'), 'organization': record.get('organization'),
+                  'job_title': record.get('job_title'), 'phone': record.get('phone'), 'notes': record.get('notes'),
+                  'phone_status': record.get('phone_status'), 'phone_source': record.get('phone_source'),
+                  'phone_confidence': record.get('phone_confidence'), 'phone_verified_date': record.get('phone_verified_date'),
+                  'tags': ','.join(record.get('tags', [])), 'profile_status': record.get('profile_status'),
+                  'authorization_basis': record.get('authorization_basis'), 'review_date': record.get('review_date'),
+                  'retention_until': record.get('retention_until'),
+                  'email_id': [item.get('id') for item in record.get('emails', [])],
+                  'email_label': [item.get('label') for item in record.get('emails', [])],
+                  'email_value': [item.get('value') for item in record.get('emails', [])],
+                  'email_status': [item.get('status') for item in record.get('emails', [])],
+                  'email_source': [item.get('source') for item in record.get('emails', [])],
+                  'email_confidence': [item.get('confidence') for item in record.get('emails', [])],
+                  'email_verified_date': [item.get('verified_date') for item in record.get('emails', [])],
+                  'custom_field_name': [item.get('name') for item in record.get('custom_fields', [])],
+                  'custom_field_value': [item.get('value') for item in record.get('custom_fields', [])],
+                  'custom_field_type': [item.get('type') for item in record.get('custom_fields', [])]}
+        try:
+            profile = social_profile_service.create_profile(values, social_profiles, social_profiles_lock)
+        except ValueError:
+            continue
+        with social_profiles_lock:
+            social_profiles[profile['id']]['owner'] = current_app_user()['username']
+        created += 1
+    record_social_audit('profiles.import', detail=str(created))
+    save_runtime_state('profiles-import')
+    return redirect(url_for('social_engineering_page'))
 
 
 @app.route('/social-engineering/profiles/<profile_id>/audit', methods=['POST'])

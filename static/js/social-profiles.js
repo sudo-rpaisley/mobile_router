@@ -116,6 +116,49 @@
 
   document.getElementById('vault-unlock')?.addEventListener('click', function () { unlockVault(); });
   document.getElementById('vault-lock')?.addEventListener('click', lockVault);
+  document.getElementById('vault-rotate')?.addEventListener('click', async function () {
+    if (!vaultPassword && !(await unlockVault())) return;
+    var oldPassword = vaultPassword;
+    var newPassword = window.prompt('Enter a new vault master password (12 characters minimum):');
+    if (!newPassword || newPassword.length < 12) { window.alert('Use at least 12 characters.'); return; }
+    if (window.prompt('Confirm the new vault master password:') !== newPassword) { window.alert('The new passwords did not match.'); return; }
+    var replacements = {};
+    try {
+      var encryptedSecrets = window.socialProfileSecurity.vaultCredentials || [];
+      for (var index = 0; index < encryptedSecrets.length; index += 1) {
+        var item = encryptedSecrets[index];
+        var plaintext = await decryptSecret(item.ciphertext, oldPassword);
+        replacements[item.id] = await encryptSecret(plaintext, newPassword);
+      }
+      var verifier = await encryptSecret('mobile-router-vault-verifier-v1', newPassword);
+      var backup = { version: 1, createdAt: new Date().toISOString(), verifier: window.socialProfileSecurity.vaultVerifier,
+        credentials: Object.fromEntries(encryptedSecrets.map(function (item) { return [item.id, item.ciphertext]; })) };
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+      link.download = 'mobile-router-vault-recovery-' + new Date().toISOString().slice(0, 10) + '.json';
+      link.click(); URL.revokeObjectURL(link.href);
+      var response = await fetch('/vault-rotate', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf_token: window.socialProfileSecurity.csrfToken, vault_verifier: verifier, credentials: JSON.stringify(replacements) }) });
+      if (!response.ok) throw new Error((await response.json()).message || 'Unable to rotate vault.');
+      document.querySelectorAll('.credential-secret[data-credential-id]').forEach(function (item) { if (replacements[item.dataset.credentialId]) item.dataset.ciphertext = replacements[item.dataset.credentialId]; });
+      window.socialProfileSecurity.vaultCredentials = encryptedSecrets.map(function (item) { return { id: item.id, ciphertext: replacements[item.id] }; });
+      window.socialProfileSecurity.vaultVerifier = verifier; vaultPassword = newPassword;
+      window.alert('Vault master password changed. An encrypted recovery backup was downloaded.');
+    } catch (error) { window.alert('Vault rotation failed: ' + error.message); }
+  });
+  document.getElementById('vault-restore')?.addEventListener('click', function () { document.getElementById('vault-backup-file').click(); });
+  document.getElementById('vault-backup-file')?.addEventListener('change', async function (event) {
+    var file = event.target.files[0];
+    if (!file || !window.confirm('Restore this encrypted vault backup? Current encrypted secrets will be replaced.')) return;
+    try {
+      var backup = JSON.parse(await file.text());
+      if (backup.version !== 1 || !backup.verifier || !backup.credentials) throw new Error('Unsupported backup file.');
+      var response = await fetch('/vault-rotate', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf_token: window.socialProfileSecurity.csrfToken, vault_verifier: backup.verifier, credentials: JSON.stringify(backup.credentials) }) });
+      if (!response.ok) throw new Error((await response.json()).message || 'Unable to restore backup.');
+      window.alert('Encrypted vault backup restored. Reloading now.'); window.location.reload();
+    } catch (error) { window.alert('Vault restore failed: ' + error.message); }
+  });
   document.querySelectorAll('[data-add-device-password]').forEach(function (button) {
     button.addEventListener('click', function () {
       document.getElementById('credential_kind').value = 'device';

@@ -641,3 +641,4 @@ html[data-theme="dark"] .evidence-output {
 .social-profile-details small { display: block; color: var(--theme-muted, #6c757d); margin-top: .2rem; }
 .recovery-ref-picker { min-height: 6rem; }
 @media (max-width: 768px) { .social-search-grid { grid-template-columns: 1fr; } }
+.social-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1rem}.social-summary-grid .card-body{display:flex;flex-direction:column;gap:.25rem}.social-summary-grid strong{font-size:1.8rem;color:var(--primary,#007bff)}.duplicate-card{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 0;border-bottom:1px solid rgba(127,127,127,.2)}.duplicate-card span,.duplicate-card small{display:block}.social-account-card code{word-break:break-all}

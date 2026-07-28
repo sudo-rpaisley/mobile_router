@@ -3,6 +3,7 @@
 import re
 import time
 import uuid
+from datetime import date
 from copy import deepcopy
 from urllib.parse import urlparse
 
@@ -122,6 +123,20 @@ def validate_profile(values):
     profile['tags'] = sorted({tag.strip()[:40] for tag in str(values.get('tags') or '').split(',') if tag.strip()}, key=str.casefold)
     status = str(values.get('profile_status') or 'active').casefold()
     profile['profile_status'] = status if status in PROFILE_STATUSES else 'active'
+    profile['retention_until'] = str(values.get('retention_until') or '').strip()[:10]
+    profile['review_date'] = str(values.get('review_date') or '').strip()[:10]
+    if any(value and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value) for value in (profile['retention_until'], profile['review_date'])):
+        raise ValueError('Review and retention dates must use YYYY-MM-DD.')
+    profile['authorization_basis'] = str(values.get('authorization_basis') or '').strip()[:500]
+    custom_names = getlist('custom_field_name')
+    custom_values = getlist('custom_field_value')
+    custom_types = getlist('custom_field_type')
+    profile['custom_fields'] = [
+        {'id': str(uuid.uuid4()), 'name': str(name).strip()[:80],
+         'value': str(custom_values[index] if index < len(custom_values) else '').strip()[:2000],
+         'type': str(custom_types[index] if index < len(custom_types) else 'text').strip()[:20]}
+        for index, name in enumerate(custom_names) if str(name or '').strip()
+    ]
     profile['facebook_url'] = next((link['url'] for link in social_links if link['platform'] == 'Facebook'), '')
     profile['linkedin_url'] = next((link['url'] for link in social_links if link['platform'] == 'LinkedIn'), '')
     if len(profile['notes']) > 10000:
@@ -146,6 +161,7 @@ def list_profiles(store, lock):
         profile.setdefault('phone_verified_date', '')
         profile.setdefault('tags', [])
         profile.setdefault('profile_status', 'active')
+        _profile_defaults(profile)
         for email in profile['emails']:
             email.setdefault('id', str(uuid.uuid4()))
             email.setdefault('status', 'complete')
@@ -195,6 +211,7 @@ def get_profile(profile_id, store, lock):
         result.setdefault('phone_verified_date', '')
         result.setdefault('tags', [])
         result.setdefault('profile_status', 'active')
+        _profile_defaults(result)
         for email in result['emails']:
             email.setdefault('id', str(uuid.uuid4()))
             email.setdefault('status', 'complete')
@@ -236,6 +253,113 @@ def create_profile(values, store, lock, now=None):
     return dict(profile)
 
 
+def _profile_defaults(profile):
+    profile.setdefault('relationships', [])
+    profile.setdefault('attachments', [])
+    profile.setdefault('custom_fields', [])
+    profile.setdefault('retention_until', '')
+    profile.setdefault('review_date', '')
+    profile.setdefault('authorization_basis', '')
+
+
+def add_relationship(profile_id, values, store, lock, now=None):
+    target_id = str(values.get('target_profile_id') or '')
+    relationship = str(values.get('relationship') or '').strip()[:80]
+    if not relationship or target_id == profile_id:
+        raise ValueError('Choose another individual and enter a relationship.')
+    with lock:
+        if profile_id not in store or target_id not in store:
+            raise KeyError(target_id)
+        if store[profile_id].get('owner') != store[target_id].get('owner'):
+            raise ValueError('Relationships can only link your own profiles.')
+        item = {'id': str(uuid.uuid4()), 'target_profile_id': target_id,
+                'relationship': relationship, 'notes': str(values.get('notes') or '').strip()[:500],
+                'created_at': now if now is not None else time.time()}
+        store[profile_id].setdefault('relationships', []).append(item)
+        store[profile_id]['updated_at'] = item['created_at']
+        return deepcopy(item)
+
+
+def delete_relationship(profile_id, relationship_id, store, lock):
+    with lock:
+        if profile_id not in store:
+            raise KeyError(profile_id)
+        items = store[profile_id].setdefault('relationships', [])
+        store[profile_id]['relationships'] = [item for item in items if item.get('id') != relationship_id]
+        return len(items) != len(store[profile_id]['relationships'])
+
+
+def duplicate_candidates(profiles):
+    """Return likely duplicate pairs based on normalized identity values."""
+    candidates = []
+    for index, left in enumerate(profiles):
+        left_values = {str(left.get('full_name') or '').casefold().strip()}
+        left_values.update(str(item.get('value') or '').casefold() for item in left.get('emails', []))
+        left_values.update(str(item.get('mac') or '').casefold() for item in left.get('devices', []))
+        left_values.discard('')
+        for right in profiles[index + 1:]:
+            right_values = {str(right.get('full_name') or '').casefold().strip()}
+            right_values.update(str(item.get('value') or '').casefold() for item in right.get('emails', []))
+            right_values.update(str(item.get('mac') or '').casefold() for item in right.get('devices', []))
+            matches = sorted(left_values & (right_values - {''}))
+            if matches:
+                candidates.append({'primary': left, 'duplicate': right, 'matches': matches})
+    return candidates
+
+
+def merge_profiles(primary_id, duplicate_id, store, lock, now=None):
+    if primary_id == duplicate_id:
+        raise ValueError('Choose two different profiles.')
+    with lock:
+        primary, duplicate = store.get(primary_id), store.get(duplicate_id)
+        if not primary or not duplicate:
+            raise KeyError(duplicate_id)
+        if primary.get('owner') != duplicate.get('owner'):
+            raise ValueError('Profiles must have the same owner.')
+        for field in ('emails', 'social_links', 'devices', 'credentials', 'relationships', 'attachments', 'custom_fields'):
+            existing = {item.get('id') for item in primary.setdefault(field, [])}
+            primary[field].extend(deepcopy(item) for item in duplicate.get(field, []) if item.get('id') not in existing)
+        primary['tags'] = sorted(set(primary.get('tags', [])) | set(duplicate.get('tags', [])), key=str.casefold)
+        primary['notes'] = '\n\n'.join(filter(None, [primary.get('notes'), duplicate.get('notes')]))[:10000]
+        primary['updated_at'] = now if now is not None else time.time()
+        del store[duplicate_id]
+        for profile in store.values():
+            for relation in profile.get('relationships', []):
+                if relation.get('target_profile_id') == duplicate_id:
+                    relation['target_profile_id'] = primary_id
+        return deepcopy(primary)
+
+
+def add_attachment(profile_id, metadata, store, lock, now=None):
+    item = {'id': str(uuid.uuid4()), 'filename': metadata['filename'],
+            'original_name': metadata['original_name'][:255], 'description': str(metadata.get('description') or '')[:500],
+            'sha256': metadata['sha256'], 'size': metadata['size'], 'created_at': now if now is not None else time.time()}
+    with lock:
+        if profile_id not in store:
+            raise KeyError(profile_id)
+        store[profile_id].setdefault('attachments', []).append(item)
+        return deepcopy(item)
+
+
+def credential_health(profiles):
+    credentials = [item for profile in profiles for item in profile.get('credentials', [])]
+    return {
+        'total': len(credentials),
+        'unknown_purpose': sum(item.get('credential_kind') == 'unassigned' for item in credentials),
+        'missing_username': sum(not item.get('username') for item in credentials),
+        'never_rotated': sum(not item.get('rotated_at') for item in credentials),
+    }
+
+
+def dashboard_summary(profiles):
+    today = date.today().isoformat()
+    health = credential_health(profiles)
+    return {**health, 'profiles': len(profiles),
+            'needs_review': sum(item.get('profile_status') == 'needs_review' for item in profiles),
+            'retention_due': sum(bool(item.get('retention_until')) and item['retention_until'] <= today for item in profiles),
+            'unmatched_devices': sum(not device.get('mac') for item in profiles for device in item.get('devices', []))}
+
+
 def update_profile(profile_id, values, store, lock, now=None):
     updates = validate_profile(values)
     with lock:
@@ -248,7 +372,22 @@ def update_profile(profile_id, values, store, lock, now=None):
 
 def delete_profile(profile_id, store, lock):
     with lock:
-        return store.pop(profile_id, None) is not None
+        removed = store.pop(profile_id, None)
+        if removed:
+            for profile in store.values():
+                profile['relationships'] = [item for item in profile.get('relationships', []) if item.get('target_profile_id') != profile_id]
+        return removed is not None
+
+
+def delete_attachment(profile_id, attachment_id, store, lock):
+    with lock:
+        if profile_id not in store:
+            raise KeyError(profile_id)
+        items = store[profile_id].setdefault('attachments', [])
+        item = next((entry for entry in items if entry.get('id') == attachment_id), None)
+        if item:
+            store[profile_id]['attachments'] = [entry for entry in items if entry.get('id') != attachment_id]
+        return deepcopy(item) if item else None
 
 
 def add_credential(profile_id, values, store, lock, now=None):
@@ -421,6 +560,9 @@ def search_profiles(profiles, query='', status='', tag=''):
             continue
         searchable = [profile.get('full_name'), profile.get('organization'), profile.get('job_title'), profile.get('phone'), profile.get('notes')]
         searchable.extend(profile.get('tags', []))
+        searchable.extend([profile.get('authorization_basis'), profile.get('review_date'), profile.get('retention_until')])
+        for field in profile.get('custom_fields', []):
+            searchable.extend([field.get('name'), field.get('value')])
         searchable.extend(item.get('value') for item in profile.get('emails', []))
         for item in profile.get('social_links', []):
             searchable.extend([item.get('platform'), item.get('account'), item.get('url'), item.get('source')])

@@ -2743,5 +2743,70 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.get_json()['result']['state'], 'on')
 
 
+    def test_social_profile_relationship_merge_attachment_import_and_dashboard(self):
+        first = app_module.social_profile_service.create_profile({
+            'full_name': 'Alex Duplicate', 'email_value': ['alex@example.com'],
+            'authorization_basis': 'Authorized assessment', 'review_date': '2026-08-15',
+            'retention_until': '2027-01-01', 'custom_field_name': ['Badge ID'],
+            'custom_field_value': ['A-101'], 'custom_field_type': ['text'],
+        }, app_module.social_profiles, app_module.social_profiles_lock)
+        second = app_module.social_profile_service.create_profile({'full_name': 'Alex Duplicate', 'email_value': ['alex@example.com']}, app_module.social_profiles, app_module.social_profiles_lock)
+        with app_module.social_profiles_lock:
+            app_module.social_profiles[first['id']]['owner'] = 'test-admin'
+            app_module.social_profiles[second['id']]['owner'] = 'test-admin'
+
+        page = self.client.get('/social-engineering')
+        self.assertIn(b'Possible duplicates', page.data)
+        self.assertIn(b'Unknown passwords', page.data)
+        detail = self.client.get(f"/social-engineering/profiles/{first['id']}")
+        self.assertIn(b'Authorized assessment', detail.data)
+        self.assertIn(b'Badge ID', detail.data)
+        relation = self.client.post(f"/social-engineering/profiles/{first['id']}/relationships", data={
+            'csrf_token': self.csrf_token, 'target_profile_id': second['id'], 'relationship': 'Coworker',
+        })
+        self.assertEqual(relation.status_code, 302)
+        self.assertEqual(app_module.social_profiles[first['id']]['relationships'][0]['relationship'], 'Coworker')
+
+        with tempfile.TemporaryDirectory() as attachment_dir, patch.object(app_module, 'SOCIAL_PROFILE_ATTACHMENT_DIR', attachment_dir):
+            response = self.client.post(f"/social-engineering/profiles/{first['id']}/attachments", data={
+                'csrf_token': self.csrf_token, 'description': 'Authorization evidence',
+                'attachment': (io.BytesIO(b'evidence'), 'approval.txt'),
+            }, content_type='multipart/form-data')
+            self.assertEqual(response.status_code, 302)
+            attachment = app_module.social_profiles[first['id']]['attachments'][0]
+            self.assertEqual(attachment['sha256'], 'ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e')
+            download = self.client.get(f"/social-engineering/profiles/{first['id']}/attachments/{attachment['id']}")
+            self.assertEqual(download.data, b'evidence')
+
+        export = self.client.get('/social-engineering/export')
+        self.assertEqual(export.status_code, 200)
+        self.assertNotIn(b'secret_ciphertext', export.data)
+        imported = self.client.post('/social-engineering/import', data={
+            'csrf_token': self.csrf_token,
+            'contacts_file': (io.BytesIO(json.dumps({'profiles': [{'full_name': 'Imported Contact', 'tags': ['imported']}]}).encode()), 'contacts.json'),
+        }, content_type='multipart/form-data')
+        self.assertEqual(imported.status_code, 302)
+        self.assertTrue(any(item['full_name'] == 'Imported Contact' for item in app_module.social_profiles.values()))
+
+        merged = self.client.post('/social-engineering/profiles/merge', data={
+            'csrf_token': self.csrf_token, 'primary_id': first['id'], 'duplicate_id': second['id'],
+        })
+        self.assertEqual(merged.status_code, 302)
+        self.assertNotIn(second['id'], app_module.social_profiles)
+
+    def test_vault_master_password_rotation_requires_all_credentials(self):
+        profile = app_module.social_profile_service.create_profile({'full_name': 'Vault User'}, app_module.social_profiles, app_module.social_profiles_lock)
+        with app_module.social_profiles_lock:
+            app_module.social_profiles[profile['id']]['owner'] = 'test-admin'
+            app_module.social_profiles[profile['id']]['credentials'] = [{'id': 'cred-1', 'secret_ciphertext': 'vault:v1:old:salt:value'}]
+        response = self.client.post('/vault-rotate', data={
+            'csrf_token': self.csrf_token, 'vault_verifier': 'vault:v1:new:verifier:value',
+            'credentials': json.dumps({'cred-1': 'vault:v1:new:salt:value'}),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(app_module.social_profiles[profile['id']]['credentials'][0]['secret_ciphertext'], 'vault:v1:new:salt:value')
+        self.assertEqual(app_module.social_users['test-admin']['vault_verifier'], 'vault:v1:new:verifier:value')
+
+
 if __name__ == '__main__':
     unittest.main()

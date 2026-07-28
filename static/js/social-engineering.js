@@ -11,6 +11,7 @@
   document.addEventListener('click', function (event) {
     if (event.target.closest('[data-add-email]')) addRow('emails');
     if (event.target.closest('[data-add-social]')) addRow('social');
+    if (event.target.closest('[data-add-custom]')) addRow('custom');
     var remove = event.target.closest('[data-remove-row]');
     if (remove) {
       var row = remove.closest('.social-repeat-row');
