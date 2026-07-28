@@ -14,6 +14,9 @@ larger automotive milestones.
   DTCs, freeze-frame data, readiness, PID samples, warnings, and timestamps.
 - Add a diagnostics workspace for connection state, scans, saved sessions, and
   report creation.
+
+Initial manual/simulator-ready immutable session persistence and viewing are now
+implemented. Transport connectors and the live diagnostics workspace remain.
 - Extend the saved vehicle identity inventory with canonical VIN, chassis/frame,
   body, engine and transmission serials, registration/fleet identifiers, and
   per-ECU part, serial, hardware, software, calibration, CVN, and reported-VIN
@@ -38,6 +41,8 @@ larger automotive milestones.
   and user translations.
 - Retain uploaded PDF originals and page-level extraction provenance, add a
   correction/review workflow, and optionally stage OCR results for scanned PDFs.
+- A first conflict-review workflow now allows administrators to supersede a
+  definition or adjust its priority without treating conflicts as duplicates.
 
 ## 4. Workshop records
 

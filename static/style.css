@@ -733,6 +733,7 @@ html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1;
 .dtc-definition-card h3, .dtc-definition-card header p, .dtc-definition-text { margin: 0; }
 .dtc-definition-card header p, .dtc-definition-card small { color: var(--theme-muted); }
 .dtc-brand-icon { display: inline-flex; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; align-items: center; justify-content: center; border: 1px solid rgba(96, 165, 250, .45); border-radius: 50%; background: var(--theme-primary-soft, rgba(59, 130, 246, .14)); color: var(--theme-primary, #3b82f6); font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+.dtc-brand-icon img { width: 1.8rem; height: 1.8rem; object-fit: contain; }
 .dtc-code-link { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 800; }
 .dtc-definition-text { flex: 1; font-size: 1.05rem; }
 .dtc-applicability { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 0; }

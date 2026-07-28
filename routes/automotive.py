@@ -10,11 +10,12 @@ import ipaddress
 import importlib
 import zipfile
 import math
+import secrets
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.error import HTTPError, URLError
 
-from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, session, url_for
 
 from services.automotive import AutomotiveStore, simple_pdf
 
@@ -150,6 +151,31 @@ def _dtc_records_from_file(database, content, filename, default_make=''):
 def create_automotive_blueprint(context_provider):
     blueprint = Blueprint('automotive', __name__)
 
+    admin_endpoints = {'automotive.import_vin', 'automotive.import_dtc', 'automotive.deduplicate_dtc',
+                       'automotive.save_import_selection', 'automotive.apply_import', 'automotive.discard_import',
+                       'automotive.resolve_conflict'}
+    write_endpoints = {'automotive.save_vehicle', 'automotive.save_report', 'automotive.vehicle_detail',
+                       'automotive.archive_vehicle', 'automotive.add_vehicle_identifier',
+                       'automotive.delete_vehicle_identifier', 'automotive.add_vehicle_module',
+                       'automotive.delete_vehicle_module', 'automotive.add_vehicle_person',
+                       'automotive.delete_vehicle_person', 'automotive.save_diagnostic_session'}
+
+    @blueprint.before_request
+    def protect_automotive_writes():
+        if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+            return None
+        user = session.get('social_user') or {}
+        role = user.get('role')
+        if request.endpoint in admin_endpoints and role != 'admin':
+            return Response('Administrator access is required.', status=403)
+        if request.endpoint in write_endpoints and role not in {'editor', 'admin'}:
+            return Response('Editor access is required.', status=403)
+        supplied = str(request.form.get('csrf_token') or request.headers.get('X-CSRF-Token') or '')
+        expected = str(session.get('social_csrf_token') or '')
+        if not expected or not secrets.compare_digest(supplied, expected):
+            return Response('Invalid or expired form token.', status=400)
+        return None
+
     def store():
         return AutomotiveStore()
 
@@ -160,7 +186,9 @@ def create_automotive_blueprint(context_provider):
     @blueprint.route('/automotive')
     def index():
         database = store()
-        return render_template('automotive.html', title='Automotive', vehicles=database.vehicles(), reports=database.reports(), imports=database.imports(), pending_imports=database.pending_imports(), **context_provider())
+        return render_template('automotive.html', title='Automotive', vehicles=database.vehicles(), reports=database.reports(),
+                               diagnostic_sessions=database.diagnostic_sessions(), imports=database.imports(),
+                               pending_imports=database.pending_imports(), **context_provider())
 
     @blueprint.route('/automotive/vin', methods=['GET', 'POST'])
     def vin_lookup():
@@ -290,6 +318,50 @@ def create_automotive_blueprint(context_provider):
             selected_make=make, selected_model=model, selected_category=category, browse_query=query,
             page=page, page_count=page_count, per_page=per_page, **context_provider(),
         )
+
+    @blueprint.get('/automotive/codes/<code>')
+    def code_detail(code):
+        database = store()
+        matches = _collapse_dtc_matches(database.lookup_code(code, request.args.get('make', '')))
+        if not matches:
+            abort(404)
+        return render_template('automotive_code.html', title=code.upper(), code=code.upper(), matches=matches,
+                               **context_provider())
+
+    @blueprint.get('/automotive/databases/dtc/conflicts')
+    def conflict_review():
+        return render_template('automotive_conflicts.html', title='DTC Conflict Review',
+                               conflicts=store().dtc_conflicts(), **context_provider())
+
+    @blueprint.post('/automotive/databases/dtc/conflicts/<int:definition_id>')
+    def resolve_conflict(definition_id):
+        try:
+            store().resolve_dtc_conflict(definition_id, request.form.get('action'), request.form.get('priority'))
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.conflict_review'))
+
+    @blueprint.get('/automotive/sessions')
+    def diagnostic_sessions():
+        database = store()
+        return render_template('automotive_sessions.html', title='Diagnostic Sessions',
+                               sessions=database.diagnostic_sessions(), vehicles=database.vehicles(), **context_provider())
+
+    @blueprint.post('/automotive/sessions')
+    def save_diagnostic_session():
+        try:
+            session_id = store().save_diagnostic_session(request.form, (session.get('social_user') or {}).get('username', ''))
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.diagnostic_session_detail', session_id=session_id))
+
+    @blueprint.get('/automotive/sessions/<int:session_id>')
+    def diagnostic_session_detail(session_id):
+        diagnostic_session = store().diagnostic_session(session_id)
+        if not diagnostic_session:
+            abort(404)
+        return render_template('automotive_session.html', title=diagnostic_session['title'],
+                               diagnostic_session=diagnostic_session, **context_provider())
 
     @blueprint.post('/automotive/reports')
     def save_report():

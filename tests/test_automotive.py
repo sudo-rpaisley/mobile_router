@@ -246,6 +246,30 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.store.delete_vehicle_person(vehicle_id, link_id)
         self.assertEqual(self.store.vehicle_people(vehicle_id), [])
 
+    def test_diagnostic_sessions_are_immutable_snapshots(self):
+        self.store.import_dtc_text('P0300 - Original misfire definition', 'Saab')
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788', 'make': 'Saab'})
+        session_id = self.store.save_diagnostic_session({
+            'vehicle_id': str(vehicle_id), 'title': 'Pre-repair scan', 'transport': 'simulator',
+            'protocol': 'ISO 15765-4', 'codes': 'P0300', 'raw_responses': '["43 01 03 00"]',
+            'freeze_frame': '{"rpm": 850}', 'readiness': '{"misfire": false}',
+            'pid_samples': '[{"rpm": 850}]', 'warnings': '["test data"]',
+        }, 'technician')
+        saved = self.store.diagnostic_session(session_id)
+        self.assertEqual(saved['codes'], ['P0300'])
+        self.assertEqual(saved['freeze_frame']['rpm'], 850)
+        self.assertEqual(saved['code_snapshot']['P0300'][0]['description'], 'Original misfire definition')
+        report_id = self.store.save_report({'vehicle_id': str(vehicle_id), 'diagnostic_session_id': str(session_id)})
+        self.assertEqual(self.store.report(report_id)['codes'], ['P0300'])
+
+    def test_conflicts_can_be_reviewed_and_resolved(self):
+        self.store.import_dtc_csv(b'code,description,make,model,scope,lookup_priority\nP0300,First,Saab,9-5,model,50\n')
+        self.store.import_dtc_csv(b'code,description,make,model,scope,lookup_priority\nP0300,Second,Saab,9-5,model,40\n')
+        conflicts = self.store.dtc_conflicts()
+        self.assertEqual(len(conflicts), 1)
+        self.store.resolve_dtc_conflict(conflicts[0][1]['id'], 'disable')
+        self.assertEqual(self.store.dtc_conflicts(), [])
+
     def test_zip_uncompressed_limit_is_larger_than_upload_limit(self):
         self.assertEqual(MAX_ARCHIVE_UNCOMPRESSED_BYTES, 250 * 1024 * 1024)
 

@@ -229,6 +229,15 @@ identifiers. Control modules can be recorded with address, manufacturer, part,
 hardware, software, serial, calibration ID, CVN, notes, and the VIN reported by
 that module. Module VINs are compared with the canonical VIN and mismatches are
 flagged without replacing the saved vehicle identity.
+
+Diagnostic sessions store immutable adapter/transport/protocol metadata,
+raw responses, DTC translation snapshots, freeze-frame data, readiness state,
+PID samples, and warnings; reports can be linked to a saved session. The DTC
+browser links every card to a full provenance/applicability page and includes an
+administrator conflict-review workflow. Automotive writes require CSRF validation;
+database imports and conflict resolution require an administrator, while vehicle,
+session, and report changes require an editor or administrator. Recognized vehicle
+brands use Simple Icons manufacturer marks with a text fallback for other makes.
 Saved vehicles can also be connected to owned person records with owner, primary
 driver, driver, registered keeper, technician, previous-owner, or general
 association roles. Automotive links retain a display-name snapshot while the

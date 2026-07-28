@@ -1,14 +1,16 @@
 {% extends 'base.html' %}
 {% block title %}Code Lookup{% endblock %}
 {% macro brand_icon(make) -%}
-  <span class="dtc-brand-icon" aria-hidden="true">{{ (make[:2] if make else 'OBD')|upper }}</span>
+  {% set icons = {'saab':'saab','volkswagen':'volkswagen','toyota':'toyota','suzuki':'suzuki','subaru':'subaru','nissan':'nissan','mitsubishi':'mitsubishi','mercedes-benz':'mercedesbenz','mazda':'mazda','lexus':'lexus','kia':'kia','jeep':'jeep','jaguar':'jaguar','infiniti':'infiniti','honda':'honda','ford':'ford','dodge':'dodge','chrysler':'chrysler','chevrolet':'chevrolet','cadillac':'cadillac','buick':'buick','bmw':'bmw','audi':'audi','acura':'acura','volvo':'volvo','porsche':'porsche','hyundai':'hyundai'} %}
+  {% set slug = icons.get((make or '')|lower) %}
+  <span class="dtc-brand-icon" aria-hidden="true">{% if slug %}<img src="https://cdn.simpleicons.org/{{ slug }}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>{{ make[:2]|upper }}</b>{% else %}<b>{{ (make[:2] if make else 'OBD')|upper }}</b>{% endif %}</span>
 {%- endmacro %}
 {% macro definition_card(match, show_code=false) -%}
   <article class="dtc-definition-card">
     <header>
       {{ brand_icon(match.make) }}
       <div>
-        {% if show_code %}<a class="dtc-code-link" href="{{ url_for('automotive.code_lookup', code=match.code, make=match.make) }}">{{ match.code }}</a>{% endif %}
+        {% if show_code %}<a class="dtc-code-link" href="{{ url_for('automotive.code_detail', code=match.code, make=match.make) }}">{{ match.code }}</a>{% endif %}
         <h3>{{ match.make or 'Generic OBD-II' }}</h3>
         {% if match.model %}<p>{{ match.model }}</p>{% endif %}
       </div>
@@ -24,6 +26,7 @@
     {% endif %}
     {% if match.applicability_notes %}<small>{{ match.applicability_notes }}</small>{% endif %}
     {% if match.duplicate_count > 1 %}<small>{{ match.duplicate_count }} identical imported records combined.</small>{% endif %}
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('automotive.code_detail', code=match.code or code, make=match.make) }}">View full code details</a>
   </article>
 {%- endmacro %}
 {% block content %}

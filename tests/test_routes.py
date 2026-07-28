@@ -526,6 +526,46 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(cleaned.status_code, 200)
         self.assertIn(b'Removed 1 identical DTC definition', cleaned.data)
 
+    def test_automotive_writes_require_role_and_csrf(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            app_module.social_users['automotive-viewer'] = {
+                'id': 'automotive-viewer', 'username': 'automotive-viewer', 'role': 'viewer', 'password_hash': 'unused',
+            }
+            with self.client.session_transaction() as flask_session:
+                flask_session['social_user'] = {'username': 'automotive-viewer', 'role': 'viewer'}
+            forbidden = self.client.post('/automotive/databases/dtc/deduplicate', data={'csrf_token': self.csrf_token})
+            app_module.social_users.pop('automotive-viewer')
+            with self.client.session_transaction() as flask_session:
+                flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            bad_csrf = self.client.post('/automotive/databases/dtc/deduplicate', data={'csrf_token': 'wrong'})
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(bad_csrf.status_code, 400)
+
+    def test_code_detail_conflicts_and_immutable_session_pages(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,First definition,Saab,9-5,model\n')
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,Second definition,Saab,9-5,model\n')
+            browser = self.client.get('/automotive/codes?code=P0300&make=Saab')
+            code_page = self.client.get('/automotive/codes/P0300?make=Saab')
+            conflict_page = self.client.get('/automotive/databases/dtc/conflicts')
+            saved = self.client.post('/automotive/sessions', data={
+                'csrf_token': self.csrf_token, 'title': 'Immutable scan', 'transport': 'simulator',
+                'codes': 'P0300', 'raw_responses': '[]', 'freeze_frame': '{}', 'readiness': '{}',
+                'pid_samples': '[]', 'warnings': '[]',
+            }, follow_redirects=True)
+        self.assertEqual(browser.status_code, 200)
+        self.assertIn(b'View full code details', browser.data)
+        self.assertIn(b'Every active local definition', code_page.data)
+        self.assertIn(b'First definition', code_page.data)
+        self.assertIn(b'DTC conflict review', conflict_page.data)
+        self.assertIn(b'Immutable scan', saved.data)
+        self.assertIn(b'Immutable diagnostic session', saved.data)
+
     def test_dtc_zip_stages_multiple_supported_files(self):
         archive_bytes = io.BytesIO()
         with zipfile.ZipFile(archive_bytes, 'w', zipfile.ZIP_DEFLATED) as archive:

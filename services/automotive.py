@@ -83,6 +83,15 @@ class AutomotiveStore:
                     notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
                     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
                     UNIQUE(vehicle_id,person_id,relationship));
+                CREATE TABLE IF NOT EXISTS diagnostic_sessions (id INTEGER PRIMARY KEY, vehicle_id INTEGER,
+                    title TEXT NOT NULL, adapter_name TEXT NOT NULL DEFAULT '', transport TEXT NOT NULL DEFAULT 'manual',
+                    protocol TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL, ended_at TEXT NOT NULL DEFAULT '',
+                    codes TEXT NOT NULL DEFAULT '[]', raw_responses TEXT NOT NULL DEFAULT '[]',
+                    freeze_frame TEXT NOT NULL DEFAULT '{}', readiness TEXT NOT NULL DEFAULT '{}',
+                    pid_samples TEXT NOT NULL DEFAULT '[]', warnings TEXT NOT NULL DEFAULT '[]',
+                    code_snapshot TEXT NOT NULL DEFAULT '{}', created_by TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id));
+                CREATE INDEX IF NOT EXISTS idx_diagnostic_sessions_vehicle ON diagnostic_sessions(vehicle_id, created_at);
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -92,6 +101,8 @@ class AutomotiveStore:
                 db.execute("ALTER TABLE workshop_reports ADD COLUMN code_snapshot TEXT NOT NULL DEFAULT '{}'")
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
+            if 'diagnostic_session_id' not in report_columns:
+                db.execute('ALTER TABLE workshop_reports ADD COLUMN diagnostic_session_id INTEGER')
             pending_columns = {row['name'] for row in db.execute('PRAGMA table_info(pending_imports)')}
             if 'excluded' not in pending_columns:
                 db.execute("ALTER TABLE pending_imports ADD COLUMN excluded TEXT NOT NULL DEFAULT '[]'")
@@ -108,10 +119,10 @@ class AutomotiveStore:
             if 'definition_key' not in dtc_columns:
                 db.execute("ALTER TABLE dtc_definitions ADD COLUMN definition_key TEXT NOT NULL DEFAULT ''")
             schema_row = db.execute("SELECT value FROM automotive_meta WHERE key='schema_version'").fetchone()
-            if not schema_row or schema_row['value'] != '10':
+            if not schema_row or schema_row['value'] not in {'10', '11'}:
                 self._deduplicate_dtc_definitions(db)
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dtc_definition_key ON dtc_definitions(definition_key) WHERE definition_key<>''")
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '10')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '11')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -448,6 +459,40 @@ class AutomotiveStore:
                     WHEN 'user_translation' THEN 3 ELSE 4 END, lookup_priority DESC, id DESC""", (code, make)).fetchall()
         return [dict(row) for row in rows]
 
+    def code_definition(self, definition_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM dtc_definitions WHERE id=?', (definition_id,)).fetchone()
+        return dict(row) if row else None
+
+    def dtc_conflicts(self):
+        """Return active definitions sharing applicability but disagreeing in content."""
+        with self.connect() as db:
+            rows = [dict(row) for row in db.execute("""SELECT * FROM dtc_definitions WHERE status='active'
+                ORDER BY code, make COLLATE NOCASE, model COLLATE NOCASE, lookup_priority DESC, id""")]
+        groups = {}
+        fields = ('code', 'make', 'model', 'year_start', 'year_end', 'module', 'engine', 'language')
+        for row in rows:
+            key = tuple(str(row.get(field) or '').strip().casefold() for field in fields)
+            groups.setdefault(key, []).append(row)
+        return [items for items in groups.values() if len({(item['description'].casefold(), item['scope'], item['lookup_priority']) for item in items}) > 1]
+
+    def resolve_dtc_conflict(self, definition_id, action, priority=None):
+        with self.connect() as db:
+            if action == 'disable':
+                cursor = db.execute("UPDATE dtc_definitions SET status='superseded' WHERE id=? AND status='active'", (definition_id,))
+            elif action == 'priority':
+                try:
+                    priority = int(priority)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError('Priority must be a number.') from exc
+                cursor = db.execute('UPDATE dtc_definitions SET lookup_priority=? WHERE id=?', (max(0, min(priority, 1000)), definition_id))
+            else:
+                raise ValueError('Unsupported conflict action.')
+            if cursor.rowcount:
+                self._deduplicate_dtc_definitions(db)
+        if not cursor.rowcount:
+            raise ValueError('Definition not found.')
+
     def dtc_browse_facets(self, make=''):
         """Return locally available manufacturers and models for the code browser."""
         with self.connect() as db:
@@ -523,6 +568,62 @@ class AutomotiveStore:
         with self.connect() as db:
             row = db.execute('SELECT * FROM vehicles WHERE vin=?', (normalized,)).fetchone()
         return dict(row) if row else None
+
+    @staticmethod
+    def _json_field(value, expected, label):
+        if not value:
+            return expected()
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise ValueError(f'{label} must be valid JSON.') from exc
+        if not isinstance(parsed, expected):
+            raise ValueError(f'{label} has the wrong JSON type.')
+        return parsed
+
+    def save_diagnostic_session(self, values, created_by=''):
+        vehicle_id = values.get('vehicle_id') or None
+        vehicle = self.vehicle(vehicle_id) if vehicle_id else None
+        if vehicle_id and not vehicle:
+            raise ValueError('Vehicle not found.')
+        codes = [code.strip().upper() for code in re.split(r'[,\s]+', values.get('codes', '')) if code.strip()]
+        if any(not DTC_RE.fullmatch(code) for code in codes):
+            raise ValueError('One or more diagnostic codes are invalid.')
+        make = vehicle.get('make', '') if vehicle else ''
+        payloads = (
+            self._json_field(values.get('raw_responses'), list, 'Raw responses'),
+            self._json_field(values.get('freeze_frame'), dict, 'Freeze frame'),
+            self._json_field(values.get('readiness'), dict, 'Readiness'),
+            self._json_field(values.get('pid_samples'), list, 'PID samples'),
+            self._json_field(values.get('warnings'), list, 'Warnings'),
+        )
+        with self.connect() as db:
+            cursor = db.execute("""INSERT INTO diagnostic_sessions(vehicle_id,title,adapter_name,transport,protocol,
+                started_at,ended_at,codes,raw_responses,freeze_frame,readiness,pid_samples,warnings,code_snapshot,created_by,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                vehicle_id, str(values.get('title') or 'Diagnostic session').strip()[:200],
+                str(values.get('adapter_name') or '').strip()[:200], str(values.get('transport') or 'manual').strip()[:50],
+                str(values.get('protocol') or '').strip()[:100], str(values.get('started_at') or datetime.now().isoformat()),
+                str(values.get('ended_at') or ''), json.dumps(codes), *(json.dumps(item) for item in payloads),
+                json.dumps({code: self.lookup_code(code, make) for code in codes}), str(created_by or '')[:200], time.time(),
+            ))
+        return cursor.lastrowid
+
+    def diagnostic_sessions(self, vehicle_id=None):
+        with self.connect() as db:
+            query = """SELECT s.*,v.vin,v.nickname,v.make,v.model FROM diagnostic_sessions s
+                LEFT JOIN vehicles v ON v.id=s.vehicle_id"""
+            params = []
+            if vehicle_id is not None:
+                query += ' WHERE s.vehicle_id=?'; params.append(vehicle_id)
+            rows = [dict(row) for row in db.execute(query + ' ORDER BY s.created_at DESC', params)]
+        for row in rows:
+            for field in ('codes', 'raw_responses', 'freeze_frame', 'readiness', 'pid_samples', 'warnings', 'code_snapshot'):
+                row[field] = json.loads(row[field])
+        return rows
+
+    def diagnostic_session(self, session_id):
+        return next((row for row in self.diagnostic_sessions() if str(row['id']) == str(session_id)), None)
 
     def update_vehicle(self, vehicle_id, values):
         decoded = self.lookup_vin(values.get('vin'))
@@ -644,16 +745,22 @@ class AutomotiveStore:
         if invalid:
             raise ValueError(f"Invalid diagnostic code: {invalid[0]}")
         vehicle_id = values.get('vehicle_id') or None
+        session_id = values.get('diagnostic_session_id') or None
+        diagnostic_session = self.diagnostic_session(session_id) if session_id else None
+        if session_id and not diagnostic_session:
+            raise ValueError('Diagnostic session not found.')
+        if diagnostic_session and not codes:
+            codes = diagnostic_session['codes']
         vehicle = self.vehicle(vehicle_id) if vehicle_id else None
         if vehicle_id and not vehicle:
             raise ValueError('Vehicle not found.')
         make = vehicle.get('make', '') if vehicle else ''
         snapshot = {code: self.lookup_code(code, make) for code in codes}
         with self.connect() as db:
-            cursor = db.execute('INSERT INTO workshop_reports(vehicle_id,title,odometer,codes,work_done,technician,notes,created_at,updated_at,code_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            cursor = db.execute('INSERT INTO workshop_reports(vehicle_id,title,odometer,codes,work_done,technician,notes,created_at,updated_at,code_snapshot,diagnostic_session_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                 (vehicle_id, values.get('title', '').strip()[:200] or 'Diagnostic report', values.get('odometer', '').strip()[:50],
                  json.dumps(codes), values.get('work_done', '').strip(), values.get('technician', '').strip()[:200],
-                 values.get('notes', '').strip(), time.time(), time.time(), json.dumps(snapshot)))
+                 values.get('notes', '').strip(), time.time(), time.time(), json.dumps(snapshot), session_id))
         return cursor.lastrowid
 
     def reports(self):
