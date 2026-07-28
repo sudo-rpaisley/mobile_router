@@ -18,6 +18,9 @@ TRANSLITERATION = {**{str(i): i for i in range(10)}, **dict(zip("ABCDEFGH", rang
 WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
 MODEL_YEAR_CODES = 'ABCDEFGHJKLMNPRSTVWXY123456789'
 BUNDLED_WMI_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'automotive', 'wmi_db.csv')
+DTC_IDENTITY_FIELDS = ('code', 'category', 'description', 'scope', 'make', 'model', 'year_start', 'year_end', 'module',
+                       'engine', 'transmission', 'market', 'protocol', 'language', 'lookup_priority', 'is_override',
+                       'confidence', 'status', 'applicability_notes', 'notes')
 
 
 class AutomotiveStore:
@@ -101,8 +104,41 @@ class AutomotiveStore:
                     SELECT code,SUBSTR(code,1,1),description,CASE WHEN make='' THEN 'generic' ELSE 'manufacturer' END,
                     make,source,'active',? FROM dtc""", (time.time(),))
                 db.execute('DROP TABLE dtc')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '9')")
+            dtc_columns = {row['name'] for row in db.execute('PRAGMA table_info(dtc_definitions)')}
+            if 'definition_key' not in dtc_columns:
+                db.execute("ALTER TABLE dtc_definitions ADD COLUMN definition_key TEXT NOT NULL DEFAULT ''")
+            schema_row = db.execute("SELECT value FROM automotive_meta WHERE key='schema_version'").fetchone()
+            if not schema_row or schema_row['value'] != '10':
+                self._deduplicate_dtc_definitions(db)
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dtc_definition_key ON dtc_definitions(definition_key) WHERE definition_key<>''")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '10')")
             self._seed_bundled_wmi(db)
+
+    @staticmethod
+    def _definition_key(record):
+        """Fingerprint definition content while deliberately ignoring import provenance."""
+        empty_defaults = {'language': 'en', 'confidence': 'unverified', 'status': 'active'}
+        normalized = []
+        for field in DTC_IDENTITY_FIELDS:
+            value = record.get(field)
+            if value is None or value == '':
+                value = empty_defaults.get(field, '')
+            if isinstance(value, str):
+                value = ' '.join(value.split()).casefold()
+            normalized.append(value)
+        return hashlib.sha256(json.dumps(normalized, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+
+    @classmethod
+    def _deduplicate_dtc_definitions(cls, db):
+        """Remove existing semantic duplicates, retaining the oldest record and its provenance."""
+        seen = set()
+        for row in db.execute('SELECT * FROM dtc_definitions ORDER BY id'):
+            key = cls._definition_key(dict(row))
+            if key in seen:
+                db.execute('DELETE FROM dtc_definitions WHERE id=?', (row['id'],))
+            else:
+                seen.add(key)
+                db.execute('UPDATE dtc_definitions SET definition_key=? WHERE id=?', (key, row['id']))
 
     @staticmethod
     def _seed_bundled_wmi(db):
@@ -152,6 +188,8 @@ class AutomotiveStore:
     def stage_import(self, kind, source, content, records):
         if kind not in {'vin', 'dtc'}:
             raise ValueError('Unsupported automotive import type.')
+        if kind == 'dtc':
+            records = self._unique_dtc_records(records)
         if not records:
             raise ValueError('No valid records were found in this file.')
         checksum = self.digest(content)
@@ -201,13 +239,15 @@ class AutomotiveStore:
                 db.executemany('INSERT OR REPLACE INTO vin_data VALUES (?,?,?,?)', [
                     (row['wmi'], row.get('manufacturer', ''), row.get('country', ''), json.dumps(row.get('details', {}))) for row in records
                 ])
+                imported_count = len(records)
             else:
+                imported_count = 0
                 for row in records:
-                    self._insert_dtc_definition(db, row, pending['source'], pending['sha256'])
+                    imported_count += self._insert_dtc_definition(db, row, pending['source'], pending['sha256'])
             cursor = db.execute('INSERT INTO import_batches(kind,source,sha256,record_count,imported_at) VALUES(?,?,?,?,?)',
-                                (pending['kind'], pending['source'], pending['sha256'], len(records), time.time()))
+                                (pending['kind'], pending['source'], pending['sha256'], imported_count, time.time()))
             db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
-        return cursor.lastrowid, len(records)
+        return cursor.lastrowid, imported_count
 
     def update_pending_selection(self, pending_id, page_indices, selected_indices):
         pending = self.pending_import(pending_id)
@@ -297,10 +337,11 @@ class AutomotiveStore:
 
     def import_dtc_text(self, text, make='', source='upload'):
         records = self.parse_dtc_text(text, make)
+        inserted = 0
         with self.connect() as db:
             for record in records:
-                self._insert_dtc_definition(db, record, source)
-        return len(records)
+                inserted += self._insert_dtc_definition(db, record, source)
+        return inserted
 
     @staticmethod
     def _optional_int(value, minimum=None, maximum=None):
@@ -354,7 +395,16 @@ class AutomotiveStore:
 
     def parse_dtc_csv(self, content, make=''):
         reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig', errors='replace')))
-        return [record for raw in reader if (record := self._normalize_dtc_row(raw, make))]
+        records = [record for raw in reader if (record := self._normalize_dtc_row(raw, make))]
+        return self._unique_dtc_records(records)
+
+    @classmethod
+    def _unique_dtc_records(cls, records):
+        """Keep the first copy of each identical definition in an incoming collection."""
+        unique = {}
+        for record in records:
+            unique.setdefault(cls._definition_key(record), record)
+        return list(unique.values())
 
     @staticmethod
     def _insert_dtc_definition(db, record, fallback_source='upload', source_sha256=''):
@@ -366,15 +416,21 @@ class AutomotiveStore:
         values[15] = 1 if values[15] else 0
         values[16] = values[16] or fallback_source
         values[21] = values[21] or source_sha256
+        definition_key = AutomotiveStore._definition_key(dict(zip(fields, values)))
         placeholders = ','.join('?' for _ in fields)
-        db.execute(f"INSERT INTO dtc_definitions({','.join(fields)},created_at) VALUES({placeholders},?)", values + [time.time()])
+        cursor = db.execute(
+            f"INSERT OR IGNORE INTO dtc_definitions({','.join(fields)},definition_key,created_at) VALUES({placeholders},?,?)",
+            values + [definition_key, time.time()],
+        )
+        return cursor.rowcount
 
     def import_dtc_csv(self, content, make='', source='upload'):
         records = self.parse_dtc_csv(content, make)
+        inserted = 0
         with self.connect() as db:
             for record in records:
-                self._insert_dtc_definition(db, record, source, self.digest(content))
-        return len(records)
+                inserted += self._insert_dtc_definition(db, record, source, self.digest(content))
+        return inserted
 
     def lookup_code(self, code, make=''):
         code = str(code or '').strip().upper()

@@ -52,7 +52,7 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.assertEqual([row['model'] for row in facets['models']], ['9-3', '9-5'])
         rows, total = self.store.browse_codes(make='Saab', model='9-5')
         self.assertEqual(total, 1)
-        self.assertEqual(rows[0]['duplicate_count'], 2)
+        self.assertEqual(rows[0]['duplicate_count'], 1)
 
     def test_lookup_cards_collapse_only_identical_definitions(self):
         matches = [
@@ -63,6 +63,34 @@ class AutomotiveStoreTest(unittest.TestCase):
         collapsed = _collapse_dtc_matches(matches)
         self.assertEqual(len(collapsed), 2)
         self.assertEqual(collapsed[0]['duplicate_count'], 2)
+
+    def test_identical_dtc_rows_are_not_inserted_twice(self):
+        content = (b'code,description,make,model,module\n'
+                   b'P0300,Random misfire,Saab,9-5,ECM\n'
+                   b'P0300,Random misfire,Saab,9-5,ECM\n')
+        self.assertEqual(self.store.import_dtc_csv(content), 1)
+        self.assertEqual(len(self.store.lookup_code('P0300')), 1)
+        # A different model is meaningful applicability, not an identical duplicate.
+        other = b'code,description,make,model,module\nP0300,Random misfire,Saab,9-3,ECM\n'
+        self.assertEqual(self.store.import_dtc_csv(other), 1)
+        self.assertEqual(len(self.store.lookup_code('P0300')), 2)
+
+    def test_staged_review_omits_identical_dtc_rows(self):
+        record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'scope': 'generic',
+                  'make': '', 'language': 'en', 'lookup_priority': 20, 'status': 'active'}
+        pending_id = self.store.stage_import('dtc', 'duplicates.csv', b'two duplicate rows', [record, dict(record)])
+        self.assertEqual(len(self.store.pending_import(pending_id)['records']), 1)
+
+    def test_initialization_removes_duplicates_already_in_database(self):
+        record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'scope': 'manufacturer',
+                  'make': 'Saab', 'lookup_priority': 50, 'status': 'active'}
+        with self.store.connect() as db:
+            self.store._insert_dtc_definition(db, record)
+            db.execute('INSERT INTO dtc_definitions(code,category,description,scope,make,lookup_priority,status,definition_key,created_at) '
+                       "VALUES('P0300','P','Random misfire','manufacturer','SAAB',50,'active','',0)")
+            db.execute("UPDATE automotive_meta SET value='9' WHERE key='schema_version'")
+        AutomotiveStore(self.path)
+        self.assertEqual(len(self.store.lookup_code('P0300')), 1)
 
     def test_text_parser_and_reports(self):
         self.assertEqual(self.store.import_dtc_text('P0171 - System too lean\nP0300: Random misfire', 'Saab'), 2)
