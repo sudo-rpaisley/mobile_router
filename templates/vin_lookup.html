@@ -32,6 +32,20 @@
       <div><dt>Serial number</dt><dd>{{ result.serial_number }}</dd></div>
       {% if result.manufacturer_type %}<div><dt>Manufacturer type</dt><dd>{{ result.manufacturer_type }}</dd></div>{% endif %}
     </dl>
+    <section class="automotive-save-result" aria-labelledby="save-vehicle-title">
+      <h3 id="save-vehicle-title">Save this vehicle</h3>
+      <p class="text-muted">Create a vehicle record from this offline VIN result, then add chassis, engine, transmission, ECU, service, and report details.</p>
+      <form method="post" action="{{ url_for('automotive.save_vehicle') }}" class="automotive-save-form">
+        <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+        <input type="hidden" name="vin" value="{{ result.vin }}">
+        <input type="hidden" name="year" value="{{ result.model_year or '' }}">
+        <input type="hidden" name="make" value="{{ result.manufacturer or '' }}">
+        <label for="save-nickname">Nickname</label><input id="save-nickname" class="form-control" name="nickname" placeholder="My Saab, daily driver…">
+        <label for="save-model">Model</label><input id="save-model" class="form-control" name="model" placeholder="9-3, 9-5…">
+        <label for="save-notes">Notes</label><textarea id="save-notes" class="form-control" name="notes" placeholder="Optional initial notes"></textarea>
+        <button class="btn btn-primary" type="submit">Save vehicle</button>
+      </form>
+    </section>
   {% endif %}
 </div></section>
 {% endblock %}

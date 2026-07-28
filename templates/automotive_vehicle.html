@@ -8,6 +8,7 @@
     <p class="page-subtitle"><code>{{ vehicle.vin }}</code></p>
   </div>
 </section>
+{% if request.args.get('saved') %}<div class="alert alert-success">Vehicle saved. You can now add identifiers, modules, and reports.</div>{% elif request.args.get('already_saved') %}<div class="alert alert-info">This VIN was already saved; its existing vehicle record is shown.</div>{% endif %}
 <section class="theme-card card"><div class="card-body">
   <h2 class="theme-section-title">Edit vehicle</h2>
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}

@@ -376,6 +376,29 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Sweden', response.data)
         self.assertIn(b'2002', response.data)
         self.assertIn(b'Database match', response.data)
+        self.assertIn(b'Save this vehicle', response.data)
+        self.assertIn(b'value="YS3DH38KX22031788"', response.data)
+        self.assertIn(b'value="2002"', response.data)
+        self.assertIn(b'value="Saab Automobile AB"', response.data)
+
+    def test_vin_lookup_result_can_be_saved_as_vehicle(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'year': '2002', 'make': 'Saab Automobile AB',
+                'model': '9-3', 'nickname': 'My Saab', 'notes': 'Saved from lookup',
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+            duplicate = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Vehicle saved', response.data)
+        self.assertIn(b'My Saab', response.data)
+        self.assertIn(b'9-3', response.data)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertIn(b'already saved', duplicate.data)
 
     def test_detailed_dtc_import_uses_dtc_review_columns(self):
         content = (

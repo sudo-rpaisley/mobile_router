@@ -377,6 +377,12 @@ class AutomotiveStore:
             row = db.execute('SELECT * FROM vehicles WHERE id = ?', (vehicle_id,)).fetchone()
         return dict(row) if row else None
 
+    def vehicle_by_vin(self, vin):
+        normalized = self.normalize_vin(vin)
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM vehicles WHERE vin=?', (normalized,)).fetchone()
+        return dict(row) if row else None
+
     def update_vehicle(self, vehicle_id, values):
         decoded = self.lookup_vin(values.get('vin'))
         with self.connect() as db:

@@ -152,10 +152,14 @@ def create_automotive_blueprint(context_provider):
     @blueprint.post('/automotive/vehicles')
     def save_vehicle():
         try:
-            store().save_vehicle(request.form)
+            database = store()
+            vehicle_id = database.save_vehicle(request.form)
         except (ValueError, sqlite3.IntegrityError) as exc:
+            existing = store().vehicle_by_vin(request.form.get('vin'))
+            if isinstance(exc, sqlite3.IntegrityError) and existing:
+                return redirect(url_for('automotive.vehicle_detail', vehicle_id=existing['id'], already_saved=1))
             return Response(str(exc), status=400)
-        return redirect(url_for('automotive.index'))
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id, saved=1))
 
     @blueprint.post('/automotive/databases/vin')
     def import_vin():

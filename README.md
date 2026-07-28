@@ -198,6 +198,9 @@ copy. Imports are capped at 25 MB.
 A small bundled WMI baseline provides useful first-run offline results before a
 larger database is imported; it currently includes Saab passenger vehicles
 (`YS3`). Imported rows extend the baseline and take precedence for matching WMIs.
+After a VIN lookup, the result can be saved directly as a vehicle with the VIN,
+resolved model year, and manufacturer prefilled. Duplicate saves open the
+existing record rather than creating another vehicle with the same VIN.
 
 Reports can associate error codes and make-specific translations with a saved
 vehicle, record odometer, technician, work performed, and notes, and export as

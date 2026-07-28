@@ -711,6 +711,11 @@ html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1;
 .automotive-result-grid > div { padding: 1rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .75rem; background: rgba(128, 144, 168, .06); }
 .automotive-result-grid dt { margin-bottom: .35rem; }
 .automotive-result-grid dd { margin: 0; overflow-wrap: anywhere; }
+.automotive-save-result { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); }
+.automotive-save-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1rem; max-width: 58rem; }
+.automotive-save-form label { margin: .25rem 0 0; }
+.automotive-save-form textarea, .automotive-save-form #save-notes, .automotive-save-form .btn { grid-column: 1 / -1; }
+@media (max-width: 600px) { .automotive-save-form { grid-template-columns: 1fr; } .automotive-save-form > * { grid-column: 1 !important; } }
 @media (max-width: 600px) { .automotive-lookup-controls { flex-direction: column; } .automotive-result-heading { align-items: flex-start; flex-direction: column; } }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
