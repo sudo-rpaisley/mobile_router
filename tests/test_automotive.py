@@ -92,6 +92,17 @@ class AutomotiveStoreTest(unittest.TestCase):
         AutomotiveStore(self.path)
         self.assertEqual(len(self.store.lookup_code('P0300')), 1)
 
+    def test_on_demand_cleanup_reports_removed_duplicates(self):
+        record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'scope': 'manufacturer',
+                  'make': 'Saab', 'lookup_priority': 50, 'status': 'active'}
+        with self.store.connect() as db:
+            self.store._insert_dtc_definition(db, record)
+            db.execute('INSERT INTO dtc_definitions(code,category,description,scope,make,lookup_priority,status,definition_key,created_at) '
+                       "VALUES('P0300','P','Random misfire','manufacturer','SAAB',50,'active','',0)")
+        self.assertEqual(self.store.deduplicate_dtc_definitions(), 1)
+        self.assertEqual(self.store.deduplicate_dtc_definitions(), 0)
+        self.assertEqual(len(self.store.lookup_code('P0300')), 1)
+
     def test_text_parser_and_reports(self):
         self.assertEqual(self.store.import_dtc_text('P0171 - System too lean\nP0300: Random misfire', 'Saab'), 2)
         vehicle_id = self.store.save_vehicle({'vin': '1HGCM82633A004352', 'nickname': 'Daily', 'make': 'Saab'})

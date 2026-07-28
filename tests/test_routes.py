@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 import app as app_module
 from app import app
+from services.automotive import AutomotiveStore
 from services.oui import lookup_manufacturer, oui_database_status
 
 
@@ -505,6 +506,25 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'B0001', response.data)
         self.assertIn(b'SRS', response.data)
         self.assertIn(b'Example source', response.data)
+
+    def test_automotive_page_can_run_existing_dtc_duplicate_cleanup(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire',
+                      'scope': 'manufacturer', 'make': 'Saab', 'lookup_priority': 50, 'status': 'active'}
+            with database.connect() as db:
+                database._insert_dtc_definition(db, record)
+                db.execute('INSERT INTO dtc_definitions(code,category,description,scope,make,lookup_priority,status,definition_key,created_at) '
+                           "VALUES('P0300','P','Random misfire','manufacturer','SAAB',50,'active','',0)")
+            page = self.client.get('/automotive')
+            cleaned = self.client.post('/automotive/databases/dtc/deduplicate', data={
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertIn(b'Scan and remove identical DTC definitions', page.data)
+        self.assertEqual(cleaned.status_code, 200)
+        self.assertIn(b'Removed 1 identical DTC definition', cleaned.data)
 
     def test_dtc_zip_stages_multiple_supported_files(self):
         archive_bytes = io.BytesIO()

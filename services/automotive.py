@@ -131,14 +131,21 @@ class AutomotiveStore:
     @classmethod
     def _deduplicate_dtc_definitions(cls, db):
         """Remove existing semantic duplicates, retaining the oldest record and its provenance."""
-        seen = set()
+        groups = {}
         for row in db.execute('SELECT * FROM dtc_definitions ORDER BY id'):
-            key = cls._definition_key(dict(row))
-            if key in seen:
-                db.execute('DELETE FROM dtc_definitions WHERE id=?', (row['id'],))
-            else:
-                seen.add(key)
-                db.execute('UPDATE dtc_definitions SET definition_key=? WHERE id=?', (key, row['id']))
+            groups.setdefault(cls._definition_key(dict(row)), []).append(row['id'])
+        duplicate_ids = [row_id for ids in groups.values() for row_id in ids[1:]]
+        if duplicate_ids:
+            db.executemany('DELETE FROM dtc_definitions WHERE id=?', ((row_id,) for row_id in duplicate_ids))
+        db.execute("UPDATE dtc_definitions SET definition_key=''")
+        db.executemany('UPDATE dtc_definitions SET definition_key=? WHERE id=?',
+                       ((key, ids[0]) for key, ids in groups.items()))
+        return len(duplicate_ids)
+
+    def deduplicate_dtc_definitions(self):
+        """Run an on-demand duplicate cleanup and return the number removed."""
+        with self.connect() as db:
+            return self._deduplicate_dtc_definitions(db)
 
     @staticmethod
     def _seed_bundled_wmi(db):

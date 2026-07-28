@@ -209,6 +209,11 @@ def create_automotive_blueprint(context_provider):
             return Response(str(exc), status=400)
         return redirect(url_for('automotive.review_import', pending_id=pending_id))
 
+    @blueprint.post('/automotive/databases/dtc/deduplicate')
+    def deduplicate_dtc():
+        removed = store().deduplicate_dtc_definitions()
+        return redirect(url_for('automotive.index', duplicates_removed=removed))
+
     @blueprint.get('/automotive/imports/<int:pending_id>')
     def review_import(pending_id):
         pending = store().pending_import(pending_id)
