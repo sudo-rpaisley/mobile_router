@@ -319,6 +319,38 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
         self.assertEqual(response.status_code, 404)
 
+    def test_login_returns_to_requested_page_with_query_string(self):
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/automotive/codes?code=P0300&make=Saab')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login?next=', response.location)
+        login_page = self.client.get(response.location)
+        self.assertIn(b'name="next"', login_page.data)
+        self.assertIn(b'/automotive/codes?code=P0300&amp;make=Saab', login_page.data)
+
+        with patch('app.social_auth_service.authenticate', return_value={'username': 'test-admin', 'role': 'admin'}), \
+                patch('app.save_runtime_state'):
+            logged_in = self.client.post('/login', data={
+                'username': 'test-admin', 'password': 'correct-password', 'csrf_token': self.csrf_token,
+                'next': '/automotive/codes?code=P0300&make=Saab',
+            })
+        self.assertEqual(logged_in.status_code, 302)
+        self.assertEqual(logged_in.location, '/automotive/codes?code=P0300&make=Saab')
+
+    def test_login_uses_home_for_missing_or_external_destination(self):
+        for destination in ('', '/page-that-does-not-exist', 'https://example.com/elsewhere', '//example.com/elsewhere'):
+            with self.client.session_transaction() as flask_session:
+                flask_session.pop('social_user', None)
+            with patch('app.social_auth_service.authenticate', return_value={'username': 'test-admin', 'role': 'admin'}), \
+                    patch('app.save_runtime_state'):
+                response = self.client.post('/login', data={
+                    'username': 'test-admin', 'password': 'correct-password', 'csrf_token': self.csrf_token,
+                    'next': destination,
+                })
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.location, '/')
+
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)

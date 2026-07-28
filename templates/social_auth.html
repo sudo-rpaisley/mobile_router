@@ -6,6 +6,7 @@
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   <form class="theme-form" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next_url or '' }}">
     <div class="form-group"><label for="username">Username</label><input class="form-control" id="username" name="username" autocomplete="username" required></div>
     <div class="form-group"><label for="password">Password</label><input class="form-control" id="password" name="password" type="password" minlength="10" autocomplete="{% if mode == 'setup' %}new-password{% else %}current-password{% endif %}" required></div>
     <button class="btn btn-primary" type="submit">{% if mode == 'setup' %}Create administrator{% else %}Sign in{% endif %}</button>

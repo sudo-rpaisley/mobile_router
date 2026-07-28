@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for, session
+from flask import Flask, Response, current_app, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for, session
 from flask_socketio import SocketIO
 import os
 import json
@@ -15,10 +15,11 @@ import socket
 import secrets
 import hashlib
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 from routes import register_blueprints
 from services import device_intel
@@ -2446,7 +2447,7 @@ def social_login_required(roles=None):
                 return redirect(url_for('social_auth_setup'))
             user = session.get('social_user')
             if not user:
-                return redirect(url_for('social_auth_login', next=request.path))
+                return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
             if user.get('role') not in allowed_roles:
                 return json_error('You do not have permission for this action.', 403)
             if request.method == 'POST' and not secrets.compare_digest(
@@ -2563,6 +2564,31 @@ def identity_ocr_fields(text):
     }
 
 
+def login_destination(value):
+    """Return a safe, existing local GET destination or the application home page."""
+    candidate = str(value or '').strip()
+    parsed = urlsplit(candidate)
+    if (not candidate.startswith('/') or candidate.startswith('//') or '\\' in candidate
+            or parsed.scheme or parsed.netloc):
+        return url_for('index')
+    try:
+        endpoint, route_values = current_app.url_map.bind_to_environ(request.environ).match(parsed.path, method='GET')
+    except HTTPException:
+        return url_for('index')
+    if endpoint in {'social_auth_login', 'social_auth_setup', 'social_auth_logout'}:
+        return url_for('index')
+    if endpoint == 'interfaces_by_type' and not any(
+        iface.interface_type.casefold() == route_values['interface_type'].casefold() for iface in network_interfaces
+    ):
+        return url_for('index')
+    if endpoint == 'interface_detail' and not any(
+        iface.interface_type.casefold() == route_values['interface_type'].casefold()
+        and iface.name == route_values['interface_name'] for iface in network_interfaces
+    ):
+        return url_for('index')
+    return parsed.path + (f'?{parsed.query}' if parsed.query else '')
+
+
 @app.before_request
 def require_application_login():
     """Require a local account for every application page and API except auth/static assets."""
@@ -2573,15 +2599,15 @@ def require_application_login():
     if request.endpoint in public_endpoints:
         return None
     if not social_users:
-        return redirect(url_for('social_auth_setup', next=request.path))
+        return redirect(url_for('social_auth_setup', next=request.full_path.rstrip('?')))
     session_user = current_app_user()
     if not session_user:
-        return redirect(url_for('social_auth_login', next=request.path))
+        return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
     with social_users_lock:
         stored_user = social_users.get(session_user.get('username'))
     if not stored_user:
         session.pop('social_user', None)
-        return redirect(url_for('social_auth_login', next=request.path))
+        return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
     session['social_user'] = {'username': stored_user['username'], 'role': stored_user['role']}
     return None
 
@@ -2594,7 +2620,7 @@ def inject_application_auth():
 @app.route('/setup', methods=['GET', 'POST'])
 def social_auth_setup():
     if social_users:
-        return redirect(url_for('social_auth_login'))
+        return redirect(url_for('social_auth_login', next=request.form.get('next') or request.args.get('next', '')))
     if request.method == 'POST':
         if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
             return json_error('Invalid or expired form token.', 400)
@@ -2604,21 +2630,21 @@ def social_auth_setup():
                 social_users, social_users_lock,
             )
         except ValueError as exc:
-            return render_template('social_auth.html', title='Social Profile Setup', mode='setup', error=str(exc), csrf_token=social_csrf_token(), **current_context()), 400
+            return render_template('social_auth.html', title='Social Profile Setup', mode='setup', error=str(exc), next_url=request.form.get('next') or request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context()), 400
         session['social_user'] = {'username': user['username'], 'role': user['role']}
         with social_profiles_lock:
             for profile in social_profiles.values():
                 profile.setdefault('owner', user['username'])
         record_social_audit('auth.setup')
         save_runtime_state('social-auth-setup')
-        return redirect(url_for('social_engineering_page'))
-    return render_template('social_auth.html', title='Social Profile Setup', mode='setup', csrf_token=social_csrf_token(), **current_context())
+        return redirect(login_destination(request.form.get('next') or request.args.get('next')))
+    return render_template('social_auth.html', title='Social Profile Setup', mode='setup', next_url=request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context())
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def social_auth_login():
     if not social_users:
-        return redirect(url_for('social_auth_setup'))
+        return redirect(url_for('social_auth_setup', next=request.form.get('next') or request.args.get('next', '')))
     if request.method == 'POST':
         if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
             return json_error('Invalid or expired form token.', 400)
@@ -2626,12 +2652,12 @@ def social_auth_login():
             request.form.get('username'), request.form.get('password'), social_users, social_users_lock,
         )
         if not user:
-            return render_template('social_auth.html', title='Social Profile Login', mode='login', error='Invalid username or password.', csrf_token=social_csrf_token(), **current_context()), 401
+            return render_template('social_auth.html', title='Social Profile Login', mode='login', error='Invalid username or password.', next_url=request.form.get('next') or request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context()), 401
         session['social_user'] = {'username': user['username'], 'role': user['role']}
         record_social_audit('auth.login')
         save_runtime_state('social-auth-login')
-        return redirect(url_for('social_engineering_page'))
-    return render_template('social_auth.html', title='Social Profile Login', mode='login', csrf_token=social_csrf_token(), **current_context())
+        return redirect(login_destination(request.form.get('next') or request.args.get('next')))
+    return render_template('social_auth.html', title='Social Profile Login', mode='login', next_url=request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context())
 
 
 @app.route('/logout', methods=['POST'])
@@ -2645,12 +2671,12 @@ def social_auth_logout():
 
 @app.route('/social-engineering/setup')
 def legacy_social_auth_setup():
-    return redirect(url_for('social_auth_setup'))
+    return redirect(url_for('social_auth_setup', next=request.args.get('next', '')))
 
 
 @app.route('/social-engineering/login')
 def legacy_social_auth_login():
-    return redirect(url_for('social_auth_login'))
+    return redirect(url_for('social_auth_login', next=request.args.get('next', '')))
 
 
 @app.route('/users')
