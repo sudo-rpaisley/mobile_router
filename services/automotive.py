@@ -66,6 +66,10 @@ class AutomotiveStore:
                     software_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '', calibration_id TEXT NOT NULL DEFAULT '',
                     cvn TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
                     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS diagnostic_capabilities (id INTEGER PRIMARY KEY, model TEXT NOT NULL,
+                    year_start INTEGER, year_end INTEGER, system TEXT NOT NULL, subitem TEXT NOT NULL DEFAULT '',
+                    function TEXT NOT NULL, subfunction TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+                    UNIQUE(model,year_start,year_end,system,subitem,function,subfunction));
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -75,7 +79,7 @@ class AutomotiveStore:
                 db.execute("ALTER TABLE workshop_reports ADD COLUMN code_snapshot TEXT NOT NULL DEFAULT '{}'")
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '4')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '5')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -124,7 +128,7 @@ class AutomotiveStore:
             return [dict(row) for row in db.execute('SELECT * FROM import_batches ORDER BY imported_at DESC')]
 
     def stage_import(self, kind, source, content, records):
-        if kind not in {'vin', 'dtc'}:
+        if kind not in {'vin', 'dtc', 'capability'}:
             raise ValueError('Unsupported automotive import type.')
         if not records:
             raise ValueError('No valid records were found in this file.')
@@ -172,10 +176,16 @@ class AutomotiveStore:
                 db.executemany('INSERT OR REPLACE INTO vin_data VALUES (?,?,?,?)', [
                     (row['wmi'], row.get('manufacturer', ''), row.get('country', ''), json.dumps(row.get('details', {}))) for row in records
                 ])
-            else:
+            elif pending['kind'] == 'dtc':
                 db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [
                     (row['code'], row.get('make', ''), row['description'], pending['source']) for row in records
                 ])
+            else:
+                db.executemany(
+                    'INSERT OR REPLACE INTO diagnostic_capabilities(model,year_start,year_end,system,subitem,function,subfunction,source) VALUES(?,?,?,?,?,?,?,?)',
+                    [(row['model'], row.get('year_start'), row.get('year_end'), row['system'], row.get('subitem', ''),
+                      row['function'], row.get('subfunction', ''), pending['source']) for row in records],
+                )
             cursor = db.execute('INSERT INTO import_batches(kind,source,sha256,record_count,imported_at) VALUES(?,?,?,?,?)',
                                 (pending['kind'], pending['source'], pending['sha256'], len(records), time.time()))
             db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
@@ -272,6 +282,48 @@ class AutomotiveStore:
         with self.connect() as db:
             db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [(r['code'], r['make'], r['description'], source) for r in records])
         return len(records)
+
+    @staticmethod
+    def _year_range(value):
+        years = [int(item) for item in re.findall(r'\b(?:19|20)\d{2}\b', str(value or ''))]
+        return (min(years), max(years)) if years else (None, None)
+
+    def parse_capability_csv(self, content):
+        text = content.decode('utf-8-sig', errors='replace')
+        try:
+            dialect = csv.Sniffer().sniff(text[:4096], delimiters=',\t;')
+        except csv.Error:
+            dialect = csv.excel_tab if '\t' in text.partition('\n')[0] else csv.excel
+        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+        records = []
+        for raw in reader:
+            row = {str(key or '').strip().lower(): str(value or '').strip() for key, value in raw.items()}
+            model, system = row.get('model', ''), row.get('system', '')
+            if not model or not system:
+                continue
+            year_start, year_end = self._year_range(row.get('year'))
+            functions = [item.strip() for item in row.get('function', '').split(';') if item.strip()]
+            for function in functions:
+                records.append({'model': model, 'year_start': year_start, 'year_end': year_end, 'system': system,
+                                'subitem': row.get('subitem', ''), 'function': function,
+                                'subfunction': row.get('subfunction', '')})
+        return records
+
+    def diagnostic_capabilities(self, model='', year=None, system=''):
+        clauses, parameters = [], []
+        if model:
+            clauses.append('LOWER(model) LIKE ?'); parameters.append(f'%{model.lower()}%')
+        if year:
+            clauses.append('(year_start IS NULL OR year_start <= ?) AND (year_end IS NULL OR year_end >= ?)')
+            parameters.extend([int(year), int(year)])
+        if system:
+            clauses.append('LOWER(system) = ?'); parameters.append(system.lower())
+        query = 'SELECT * FROM diagnostic_capabilities'
+        if clauses:
+            query += ' WHERE ' + ' AND '.join(clauses)
+        query += ' ORDER BY model,year_start,system,subitem,function,subfunction'
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(query, parameters)]
 
     def lookup_code(self, code, make=''):
         code = str(code or '').strip().upper()

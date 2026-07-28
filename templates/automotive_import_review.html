@@ -7,7 +7,7 @@
   <form method="post" action="{{ url_for('automotive.apply_import', pending_id=pending.id) }}">
     <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
     <div class="table-responsive"><table class="table"><thead><tr><th>Import</th><th>Key</th><th>Make / manufacturer</th><th>Description / country</th></tr></thead><tbody>
-      {% for row in pending.records %}<tr><td><input type="checkbox" name="selected" value="{{ loop.index0 }}" checked aria-label="Import record {{ loop.index }}"></td><td><code>{{ row.code or row.wmi }}</code></td><td>{{ row.make or row.manufacturer }}</td><td>{{ row.description or row.country }}</td></tr>{% endfor %}
+      {% for row in pending.records %}<tr><td><input type="checkbox" name="selected" value="{{ loop.index0 }}" checked aria-label="Import record {{ loop.index }}"></td><td><code>{{ row.code or row.wmi or row.system }}</code></td><td>{{ row.make or row.manufacturer or row.model }}{% if row.subitem %}<br><small>{{ row.subitem }}</small>{% endif %}</td><td>{{ row.description or row.country or row.function }}{% if row.subfunction %}: {{ row.subfunction }}{% endif %}</td></tr>{% endfor %}
     </tbody></table></div><button class="btn btn-primary" type="submit">Import selected records</button>
   </form>
   <form method="post" action="{{ url_for('automotive.discard_import', pending_id=pending.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-outline-danger" type="submit">Discard staged import</button></form>
