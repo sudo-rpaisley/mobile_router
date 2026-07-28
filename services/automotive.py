@@ -50,6 +50,9 @@ class AutomotiveStore:
                 CREATE TABLE IF NOT EXISTS import_batches (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL,
                     sha256 TEXT NOT NULL, record_count INTEGER NOT NULL, imported_at REAL NOT NULL,
                     UNIQUE(kind, sha256));
+                CREATE TABLE IF NOT EXISTS pending_imports (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL,
+                    sha256 TEXT NOT NULL, records TEXT NOT NULL, created_at REAL NOT NULL,
+                    UNIQUE(kind, sha256));
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -59,7 +62,7 @@ class AutomotiveStore:
                 db.execute("ALTER TABLE workshop_reports ADD COLUMN code_snapshot TEXT NOT NULL DEFAULT '{}'")
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '2')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '3')")
 
     @staticmethod
     def digest(content):
@@ -80,6 +83,70 @@ class AutomotiveStore:
     def imports(self):
         with self.connect() as db:
             return [dict(row) for row in db.execute('SELECT * FROM import_batches ORDER BY imported_at DESC')]
+
+    def stage_import(self, kind, source, content, records):
+        if kind not in {'vin', 'dtc'}:
+            raise ValueError('Unsupported automotive import type.')
+        if not records:
+            raise ValueError('No valid records were found in this file.')
+        checksum = self.digest(content)
+        with self.connect() as db:
+            if db.execute('SELECT 1 FROM import_batches WHERE kind=? AND sha256=?', (kind, checksum)).fetchone():
+                raise ValueError('This exact database file has already been imported.')
+            try:
+                cursor = db.execute(
+                    'INSERT INTO pending_imports(kind,source,sha256,records,created_at) VALUES(?,?,?,?,?)',
+                    (kind, source or 'upload', checksum, json.dumps(records), time.time()),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError('This file is already waiting for review.') from exc
+        return cursor.lastrowid
+
+    def pending_import(self, pending_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM pending_imports WHERE id=?', (pending_id,)).fetchone()
+        if not row:
+            return None
+        result = dict(row); result['records'] = json.loads(result['records'])
+        return result
+
+    def pending_imports(self):
+        with self.connect() as db:
+            rows = db.execute('SELECT id,kind,source,sha256,created_at,records FROM pending_imports ORDER BY created_at DESC').fetchall()
+        result = []
+        for row in rows:
+            item = dict(row); item['record_count'] = len(json.loads(item.pop('records'))); result.append(item)
+        return result
+
+    def apply_pending_import(self, pending_id, selected=None):
+        pending = self.pending_import(pending_id)
+        if not pending:
+            raise ValueError('Pending import not found.')
+        selected = set(str(item) for item in selected) if selected is not None else None
+        records = [record for index, record in enumerate(pending['records']) if selected is None or str(index) in selected]
+        if not records:
+            raise ValueError('Select at least one record to import.')
+        with self.connect() as db:
+            if db.execute('SELECT 1 FROM import_batches WHERE kind=? AND sha256=?', (pending['kind'], pending['sha256'])).fetchone():
+                raise ValueError('This exact database file has already been imported.')
+            if pending['kind'] == 'vin':
+                db.executemany('INSERT OR REPLACE INTO vin_data VALUES (?,?,?,?)', [
+                    (row['wmi'], row.get('manufacturer', ''), row.get('country', ''), json.dumps(row.get('details', {}))) for row in records
+                ])
+            else:
+                db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [
+                    (row['code'], row.get('make', ''), row['description'], pending['source']) for row in records
+                ])
+            cursor = db.execute('INSERT INTO import_batches(kind,source,sha256,record_count,imported_at) VALUES(?,?,?,?,?)',
+                                (pending['kind'], pending['source'], pending['sha256'], len(records), time.time()))
+            db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
+        return cursor.lastrowid, len(records)
+
+    def discard_pending_import(self, pending_id):
+        with self.connect() as db:
+            cursor = db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
+        if not cursor.rowcount:
+            raise ValueError('Pending import not found.')
 
     @staticmethod
     def normalize_vin(value):
@@ -108,22 +175,26 @@ class AutomotiveStore:
         return decoded
 
     def import_vin_csv(self, content):
-        reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig', errors='replace')))
-        count = 0
+        records = self.parse_vin_csv(content)
         with self.connect() as db:
-            for raw in reader:
-                row = {str(k or '').strip().lower().replace(' ', '_'): str(v or '').strip() for k, v in raw.items()}
-                wmi = (row.get('wmi') or row.get('wmi_code') or row.get('prefix') or '')[:3].upper()
-                if not re.fullmatch(r'[A-HJ-NPR-Z0-9]{3}', wmi):
-                    continue
-                manufacturer = row.get('manufacturer') or row.get('make') or row.get('manufacturer_name') or ''
-                country = row.get('country') or row.get('country_name') or ''
-                extras = {k: v for k, v in row.items() if k not in {'wmi', 'wmi_code', 'prefix', 'manufacturer', 'make', 'manufacturer_name', 'country', 'country_name'} and v}
-                db.execute('INSERT OR REPLACE INTO vin_data VALUES (?, ?, ?, ?)', (wmi, manufacturer, country, json.dumps(extras)))
-                count += 1
-        return count
+            db.executemany('INSERT OR REPLACE INTO vin_data VALUES (?,?,?,?)', [(r['wmi'], r['manufacturer'], r['country'], json.dumps(r['details'])) for r in records])
+        return len(records)
 
-    def import_dtc_text(self, text, make='', source='upload'):
+    def parse_vin_csv(self, content):
+        reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig', errors='replace')))
+        records = []
+        for raw in reader:
+            row = {str(k or '').strip().lower().replace(' ', '_'): str(v or '').strip() for k, v in raw.items()}
+            wmi = (row.get('wmi') or row.get('wmi_code') or row.get('prefix') or '')[:3].upper()
+            if not re.fullmatch(r'[A-HJ-NPR-Z0-9]{3}', wmi):
+                continue
+            manufacturer = row.get('manufacturer') or row.get('make') or row.get('manufacturer_name') or ''
+            country = row.get('country') or row.get('country_name') or ''
+            extras = {k: v for k, v in row.items() if k not in {'wmi', 'wmi_code', 'prefix', 'manufacturer', 'make', 'manufacturer_name', 'country', 'country_name'} and v}
+            records.append({'wmi': wmi, 'manufacturer': manufacturer, 'country': country, 'details': extras})
+        return records
+
+    def parse_dtc_text(self, text, make=''):
         records = {}
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         for index, line in enumerate(lines):
@@ -135,24 +206,32 @@ class AutomotiveStore:
             if not description and index + 1 < len(lines) and not DTC_RE.search(lines[index + 1]):
                 description = lines[index + 1]
             if description:
-                records[code] = description
+                records[code] = {'code': code, 'make': make.strip(), 'description': description}
+        return list(records.values())
+
+    def import_dtc_text(self, text, make='', source='upload'):
+        records = self.parse_dtc_text(text, make)
         with self.connect() as db:
-            for code, description in records.items():
-                db.execute('INSERT OR REPLACE INTO dtc VALUES (?, ?, ?, ?)', (code, make.strip(), description, source))
+            for record in records:
+                db.execute('INSERT OR REPLACE INTO dtc VALUES (?, ?, ?, ?)', (record['code'], record['make'], record['description'], source))
         return len(records)
 
-    def import_dtc_csv(self, content, make='', source='upload'):
+    def parse_dtc_csv(self, content, make=''):
         reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig', errors='replace')))
-        count = 0
+        records = []
+        for raw in reader:
+            row = {str(k or '').strip().lower(): str(v or '').strip() for k, v in raw.items()}
+            code = (row.get('code') or row.get('dtc') or '').upper()
+            description = row.get('description') or row.get('meaning') or row.get('translation') or ''
+            if DTC_RE.fullmatch(code) and description:
+                records.append({'code': code, 'make': row.get('make') or make.strip(), 'description': description})
+        return records
+
+    def import_dtc_csv(self, content, make='', source='upload'):
+        records = self.parse_dtc_csv(content, make)
         with self.connect() as db:
-            for raw in reader:
-                row = {str(k or '').strip().lower(): str(v or '').strip() for k, v in raw.items()}
-                code = (row.get('code') or row.get('dtc') or '').upper()
-                description = row.get('description') or row.get('meaning') or row.get('translation') or ''
-                if DTC_RE.fullmatch(code) and description:
-                    db.execute('INSERT OR REPLACE INTO dtc VALUES (?, ?, ?, ?)', (code, row.get('make') or make.strip(), description, source))
-                    count += 1
-        return count
+            db.executemany('INSERT OR REPLACE INTO dtc VALUES (?,?,?,?)', [(r['code'], r['make'], r['description'], source) for r in records])
+        return len(records)
 
     def lookup_code(self, code, make=''):
         code = str(code or '').strip().upper()

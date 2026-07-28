@@ -75,6 +75,31 @@ class AutomotiveStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Invalid diagnostic code'):
             self.store.save_report({'codes': 'NOTACODE'})
 
+    def test_staged_import_does_not_change_live_lookup_until_approved(self):
+        content = b'wmi,manufacturer,country\nYS3,Saab,Sweden\n1HG,Honda,USA\n'
+        records = self.store.parse_vin_csv(content)
+        pending_id = self.store.stage_import('vin', 'vehicles.csv', content, records)
+        self.assertEqual(self.store.lookup_vin('YS3FD49Y681000001').get('manufacturer'), None)
+        _, count = self.store.apply_pending_import(pending_id, ['0'])
+        self.assertEqual(count, 1)
+        self.assertEqual(self.store.lookup_vin('YS3FD49Y681000001')['manufacturer'], 'Saab')
+        self.assertEqual(self.store.lookup_vin('1HGCM82633A004352').get('manufacturer'), None)
+        self.assertIsNone(self.store.pending_import(pending_id))
+
+    def test_staged_import_can_be_discarded(self):
+        content = b'code,description\nP0300,Random misfire\n'
+        pending_id = self.store.stage_import('dtc', 'codes.csv', content, self.store.parse_dtc_csv(content))
+        self.store.discard_pending_import(pending_id)
+        self.assertEqual(self.store.lookup_code('P0300'), [])
+
+    def test_duplicate_is_rejected_before_live_records_change(self):
+        content = b'wmi,manufacturer\n1HG,Honda\n'
+        first = self.store.stage_import('vin', 'first.csv', content, self.store.parse_vin_csv(content))
+        self.store.apply_pending_import(first)
+        with self.assertRaisesRegex(ValueError, 'already'):
+            self.store.stage_import('vin', 'duplicate.csv', content, [{'wmi': '1HG', 'manufacturer': 'Changed'}])
+        self.assertEqual(self.store.lookup_vin('1HGCM82633A004352')['manufacturer'], 'Honda')
+
 
 if __name__ == '__main__':
     unittest.main()

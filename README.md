@@ -207,3 +207,7 @@ link-local, and reserved destinations, including redirect targets. Saved reports
 snapshot the code translations used at creation time, so later database updates
 do not rewrite historical workshop records. Vehicles can be edited or archived
 from their detail page.
+
+Database uploads are staged before they affect live lookups. The review page
+shows every parsed record and lets an administrator exclude incorrect rows,
+approve the selected records in one transaction, or discard the staged import.

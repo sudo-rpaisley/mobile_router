@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Review Automotive Import{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Staged database</p><h1 class="page-title">Review {{ pending.kind|upper }} import</h1><p class="page-subtitle">Nothing is added to the live lookup database until you approve these records.</p></div></section>
+<section class="theme-card card"><div class="card-body">
+  <p><strong>Source:</strong> {{ pending.source }}</p><p><strong>SHA-256:</strong> <code>{{ pending.sha256 }}</code></p>
+  <form method="post" action="{{ url_for('automotive.apply_import', pending_id=pending.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <div class="table-responsive"><table class="table"><thead><tr><th>Import</th><th>Key</th><th>Make / manufacturer</th><th>Description / country</th></tr></thead><tbody>
+      {% for row in pending.records %}<tr><td><input type="checkbox" name="selected" value="{{ loop.index0 }}" checked aria-label="Import record {{ loop.index }}"></td><td><code>{{ row.code or row.wmi }}</code></td><td>{{ row.make or row.manufacturer }}</td><td>{{ row.description or row.country }}</td></tr>{% endfor %}
+    </tbody></table></div><button class="btn btn-primary" type="submit">Import selected records</button>
+  </form>
+  <form method="post" action="{{ url_for('automotive.discard_import', pending_id=pending.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-outline-danger" type="submit">Discard staged import</button></form>
+</div></section>
+{% endblock %}

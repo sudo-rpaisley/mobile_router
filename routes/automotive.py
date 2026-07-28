@@ -90,7 +90,7 @@ def create_automotive_blueprint(context_provider):
     @blueprint.route('/automotive')
     def index():
         database = store()
-        return render_template('automotive.html', title='Automotive', vehicles=database.vehicles(), reports=database.reports(), imports=database.imports(), **context_provider())
+        return render_template('automotive.html', title='Automotive', vehicles=database.vehicles(), reports=database.reports(), imports=database.imports(), pending_imports=database.pending_imports(), **context_provider())
 
     @blueprint.route('/automotive/vin', methods=['GET', 'POST'])
     def vin_lookup():
@@ -116,13 +116,11 @@ def create_automotive_blueprint(context_provider):
         upload = request.files.get('database')
         try:
             content = _uploaded_content(upload) if upload and upload.filename else _download(request.form.get('url', ''))
-            database = store(); count = database.import_vin_csv(content)
-            if not count:
-                raise ValueError('No valid WMI records were found in this file.')
-            database.record_import('vin', upload.filename if upload and upload.filename else request.form.get('url', ''), content, count)
+            database = store(); records = database.parse_vin_csv(content)
+            pending_id = database.stage_import('vin', upload.filename if upload and upload.filename else request.form.get('url', ''), content, records)
         except (ValueError, OSError) as exc:
             return Response(str(exc), status=400)
-        return redirect(url_for('automotive.index', imported=count, kind='VIN'))
+        return redirect(url_for('automotive.review_import', pending_id=pending_id))
 
     @blueprint.post('/automotive/databases/dtc')
     def import_dtc():
@@ -132,17 +130,38 @@ def create_automotive_blueprint(context_provider):
             content = _uploaded_content(upload) if upload and upload.filename else _download(request.form.get('url', ''))
             database = store()
             if filename.lower().endswith('.pdf') or content.startswith(b'%PDF'):
-                count = database.import_dtc_text(_pdf_text(content), request.form.get('make', ''), filename)
+                records = database.parse_dtc_text(_pdf_text(content), request.form.get('make', ''))
             elif filename.lower().endswith('.csv'):
-                count = database.import_dtc_csv(content, request.form.get('make', ''), filename)
+                records = database.parse_dtc_csv(content, request.form.get('make', ''))
             else:
-                count = database.import_dtc_text(content.decode('utf-8-sig', errors='replace'), request.form.get('make', ''), filename)
-            if not count:
-                raise ValueError('No valid diagnostic-code records were found in this file.')
-            database.record_import('dtc', filename, content, count)
+                records = database.parse_dtc_text(content.decode('utf-8-sig', errors='replace'), request.form.get('make', ''))
+            pending_id = database.stage_import('dtc', filename, content, records)
         except (ValueError, OSError) as exc:
             return Response(str(exc), status=400)
-        return redirect(url_for('automotive.index', imported=count, kind='DTC'))
+        return redirect(url_for('automotive.review_import', pending_id=pending_id))
+
+    @blueprint.get('/automotive/imports/<int:pending_id>')
+    def review_import(pending_id):
+        pending = store().pending_import(pending_id)
+        if not pending:
+            abort(404)
+        return render_template('automotive_import_review.html', title='Review Import', pending=pending, **context_provider())
+
+    @blueprint.post('/automotive/imports/<int:pending_id>/apply')
+    def apply_import(pending_id):
+        try:
+            _, count = store().apply_pending_import(pending_id, request.form.getlist('selected'))
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.index', imported=count, kind='database'))
+
+    @blueprint.post('/automotive/imports/<int:pending_id>/discard')
+    def discard_import(pending_id):
+        try:
+            store().discard_pending_import(pending_id)
+        except ValueError:
+            abort(404)
+        return redirect(url_for('automotive.index'))
 
     @blueprint.get('/automotive/codes')
     def code_lookup():
