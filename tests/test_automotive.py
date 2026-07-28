@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from services.automotive import AutomotiveStore, simple_pdf
-from routes.automotive import _validate_download_url
+from routes.automotive import MAX_ARCHIVE_UNCOMPRESSED_BYTES, _validate_download_url
 
 
 class AutomotiveStoreTest(unittest.TestCase):
@@ -172,6 +172,18 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.store.import_dtc_csv(b'code,description,make,lookup_priority\nP0300,Saab misfire,Saab,50\n')
         matches = self.store.lookup_code('P0300', 'Saab')
         self.assertEqual([item['description'] for item in matches], ['Saab misfire', 'Generic misfire'])
+
+    def test_vehicle_can_connect_to_people(self):
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788'})
+        link_id = self.store.add_vehicle_person(vehicle_id, 'person-1', 'Alex Owner', 'primary_driver', 'Daily driver')
+        link = self.store.vehicle_people(vehicle_id)[0]
+        self.assertEqual(link['person_name'], 'Alex Owner')
+        self.assertEqual(link['relationship'], 'primary_driver')
+        self.store.delete_vehicle_person(vehicle_id, link_id)
+        self.assertEqual(self.store.vehicle_people(vehicle_id), [])
+
+    def test_zip_uncompressed_limit_is_larger_than_upload_limit(self):
+        self.assertEqual(MAX_ARCHIVE_UNCOMPRESSED_BYTES, 250 * 1024 * 1024)
 
 
 if __name__ == '__main__':

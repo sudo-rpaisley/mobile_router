@@ -75,6 +75,11 @@ class AutomotiveStore:
                     software_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '', calibration_id TEXT NOT NULL DEFAULT '',
                     cvn TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
                     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS vehicle_people (id INTEGER PRIMARY KEY, vehicle_id INTEGER NOT NULL,
+                    person_id TEXT NOT NULL, person_name TEXT NOT NULL, relationship TEXT NOT NULL DEFAULT 'associated',
+                    notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
+                    UNIQUE(vehicle_id,person_id,relationship));
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -93,7 +98,7 @@ class AutomotiveStore:
                     SELECT code,SUBSTR(code,1,1),description,CASE WHEN make='' THEN 'generic' ELSE 'manufacturer' END,
                     make,source,'active',? FROM dtc""", (time.time(),))
                 db.execute('DROP TABLE dtc')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '7')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '8')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -467,6 +472,35 @@ class AutomotiveStore:
             cursor = db.execute('DELETE FROM vehicle_modules WHERE id=? AND vehicle_id=?', (module_id, vehicle_id))
         if not cursor.rowcount:
             raise ValueError('Vehicle module not found.')
+
+    def vehicle_people(self, vehicle_id):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                'SELECT * FROM vehicle_people WHERE vehicle_id=? ORDER BY relationship,person_name', (vehicle_id,),
+            )]
+
+    def add_vehicle_person(self, vehicle_id, person_id, person_name, relationship='associated', notes=''):
+        if not self.vehicle(vehicle_id):
+            raise ValueError('Vehicle not found.')
+        person_id, person_name = str(person_id or '').strip(), str(person_name or '').strip()
+        allowed = {'owner', 'primary_driver', 'driver', 'keeper', 'technician', 'previous_owner', 'associated'}
+        relationship = str(relationship or 'associated').strip().lower()
+        if not person_id or not person_name:
+            raise ValueError('Select a person to connect.')
+        if relationship not in allowed:
+            raise ValueError('Select a valid vehicle relationship.')
+        with self.connect() as db:
+            cursor = db.execute(
+                'INSERT INTO vehicle_people(vehicle_id,person_id,person_name,relationship,notes,created_at) VALUES(?,?,?,?,?,?)',
+                (vehicle_id, person_id, person_name[:200], relationship, str(notes or '').strip(), time.time()),
+            )
+        return cursor.lastrowid
+
+    def delete_vehicle_person(self, vehicle_id, link_id):
+        with self.connect() as db:
+            cursor = db.execute('DELETE FROM vehicle_people WHERE id=? AND vehicle_id=?', (link_id, vehicle_id))
+        if not cursor.rowcount:
+            raise ValueError('Vehicle-person connection not found.')
 
     def save_report(self, values):
         codes = [code.strip().upper() for code in re.split(r'[,\s]+', values.get('codes', '')) if code.strip()]

@@ -28,6 +28,20 @@
   </form>
 </div></section>
 <section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Connected people</h2>
+  <p class="text-muted">Connect this vehicle to people saved under Records → Social Engineering, such as an owner, driver, keeper, technician, or previous owner.</p>
+  <div class="table-responsive"><table class="table"><thead><tr><th>Person</th><th>Relationship</th><th>Notes</th><th></th></tr></thead><tbody>
+    {% for link in vehicle_people %}<tr><td><a href="{{ url_for('social_profile_detail', profile_id=link.person_id) }}">{{ link.person_name }}</a></td><td>{{ link.relationship|replace('_',' ')|title }}</td><td>{{ link.notes or '—' }}</td><td><form method="post" action="{{ url_for('automotive.delete_vehicle_person', vehicle_id=vehicle.id, link_id=link.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></td></tr>{% else %}<tr><td colspan="4">No people connected yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if people %}<form method="post" action="{{ url_for('automotive.add_vehicle_person', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="vehicle-person">Person</label><select id="vehicle-person" class="form-control" name="person_id" required><option value="">Select a person</option>{% for person in people %}<option value="{{ person.id }}">{{ person.full_name }}</option>{% endfor %}</select>
+    <label for="vehicle-person-relationship">Relationship</label><select id="vehicle-person-relationship" class="form-control" name="relationship"><option value="owner">Owner</option><option value="primary_driver">Primary driver</option><option value="driver">Driver</option><option value="keeper">Registered keeper</option><option value="technician">Technician</option><option value="previous_owner">Previous owner</option><option value="associated">Associated person</option></select>
+    <label for="vehicle-person-notes">Notes</label><input id="vehicle-person-notes" class="form-control" name="notes">
+    <button class="btn btn-primary" type="submit">Connect person</button>
+  </form>{% else %}<p><a href="{{ url_for('social_engineering_page') }}">Create a person record</a> before connecting someone to this vehicle.</p>{% endif %}
+</div></section>
+<section class="theme-card card"><div class="card-body">
   <h2 class="theme-section-title">Vehicle identifiers</h2>
   <p class="text-muted">Keep the canonical VIN above. Add chassis, frame, body, engine, transmission, registration, fleet, and legacy identifiers here.</p>
   <div class="table-responsive"><table class="table"><thead><tr><th>Type</th><th>Value</th><th>Source</th><th>Verified</th><th></th></tr></thead><tbody>

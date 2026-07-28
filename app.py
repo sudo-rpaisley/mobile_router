@@ -3138,6 +3138,10 @@ def roadmap_page():
 
 
 app.config['TRAIN_CONTROLLER_EVIDENCE_RECORDER'] = create_evidence_record
+app.config['AUTOMOTIVE_PEOPLE_PROVIDER'] = lambda: [
+    {'id': profile.get('id'), 'full_name': profile.get('full_name') or 'Unnamed person'}
+    for profile in owned_social_profiles()
+]
 register_blueprints(app, current_context)
 
 

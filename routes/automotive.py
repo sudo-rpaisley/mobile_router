@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import os
 import sqlite3
 import socket
 import ipaddress
@@ -12,13 +13,14 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.error import HTTPError, URLError
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, url_for
 
 from services.automotive import AutomotiveStore, simple_pdf
 
 
 MAX_DATABASE_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_FILES = 250
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = int(os.environ.get('MOBILE_ROUTER_AUTOMOTIVE_ZIP_LIMIT_MB', '250')) * 1024 * 1024
 
 
 def _validate_download_url(url):
@@ -99,9 +101,10 @@ def _dtc_records_from_file(database, content, filename, default_make=''):
                 if member.flag_bits & 0x1:
                     raise ValueError(f'Encrypted ZIP entry is not supported: {member.filename}')
                 total_size += member.file_size
-                if total_size > MAX_DATABASE_BYTES:
-                    raise ValueError('The uncompressed ZIP contents exceed the 25 MB import limit.')
-                if member.compress_size and member.file_size > member.compress_size * 100:
+                if total_size > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
+                    limit_mb = MAX_ARCHIVE_UNCOMPRESSED_BYTES // (1024 * 1024)
+                    raise ValueError(f'The uncompressed ZIP contents exceed the {limit_mb} MB import limit.')
+                if member.compress_size and member.file_size > member.compress_size * 500:
                     raise ValueError(f'ZIP entry has an unsafe compression ratio: {member.filename}')
                 suffix = member.filename.lower()
                 if not suffix.endswith(('.csv', '.txt', '.pdf')):
@@ -132,6 +135,10 @@ def create_automotive_blueprint(context_provider):
 
     def store():
         return AutomotiveStore()
+
+    def people():
+        provider = current_app.config.get('AUTOMOTIVE_PEOPLE_PROVIDER')
+        return provider() if provider else []
 
     @blueprint.route('/automotive')
     def index():
@@ -236,6 +243,7 @@ def create_automotive_blueprint(context_provider):
                 error = str(exc)
         return render_template('automotive_vehicle.html', title='Vehicle', vehicle=database.vehicle(vehicle_id),
                                identifiers=database.vehicle_identifiers(vehicle_id), modules=database.vehicle_modules(vehicle_id),
+                               people=people(), vehicle_people=database.vehicle_people(vehicle_id),
                                reports=database.reports(), error=error, **context_provider())
 
     @blueprint.post('/automotive/vehicles/<int:vehicle_id>/archive')
@@ -274,6 +282,27 @@ def create_automotive_blueprint(context_provider):
     def delete_vehicle_module(vehicle_id, module_id):
         try:
             store().delete_vehicle_module(vehicle_id, module_id)
+        except ValueError:
+            abort(404)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/people')
+    def add_vehicle_person(vehicle_id):
+        available = {str(person['id']): person for person in people()}
+        person = available.get(str(request.form.get('person_id') or ''))
+        if not person:
+            return Response('Select an available person.', status=400)
+        try:
+            store().add_vehicle_person(vehicle_id, person['id'], person['full_name'],
+                                       request.form.get('relationship'), request.form.get('notes'))
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/people/<int:link_id>/delete')
+    def delete_vehicle_person(vehicle_id, link_id):
+        try:
+            store().delete_vehicle_person(vehicle_id, link_id)
         except ValueError:
             abort(404)
         return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))

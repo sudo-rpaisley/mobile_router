@@ -221,6 +221,10 @@ identifiers. Control modules can be recorded with address, manufacturer, part,
 hardware, software, serial, calibration ID, CVN, notes, and the VIN reported by
 that module. Module VINs are compared with the canonical VIN and mismatches are
 flagged without replacing the saved vehicle identity.
+Saved vehicles can also be connected to owned person records with owner, primary
+driver, driver, registered keeper, technician, previous-owner, or general
+association roles. Automotive links retain a display-name snapshot while the
+person detail remains protected by the existing profile ownership rules.
 
 Database uploads are staged before they affect live lookups. The review page
 shows every parsed record and lets an administrator exclude incorrect rows,
@@ -238,5 +242,7 @@ rank ahead of generic definitions during lookup.
 The same DTC upload accepts ZIP archives containing multiple `.csv`, `.txt`, and
 searchable `.pdf` sources. Unsupported entries are ignored, each supported entry
 is retained as its source name, and all parsed definitions appear together in
-one staged review. ZIPs are limited to 250 entries and 25 MB uncompressed, and
-encrypted entries or unsafe compression ratios are rejected.
+one staged review. ZIPs are limited to 250 entries and 250 MB uncompressed by
+default, while the uploaded compressed file remains limited to 25 MB. Set
+`MOBILE_ROUTER_AUTOMOTIVE_ZIP_LIMIT_MB` to change the uncompressed ceiling.
+Encrypted entries or unsafe compression ratios are rejected.

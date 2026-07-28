@@ -400,6 +400,27 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(duplicate.status_code, 200)
         self.assertIn(b'already saved', duplicate.data)
 
+    def test_saved_vehicle_can_connect_to_owned_person(self):
+        app_module.social_profiles['person-vehicle-owner'] = {
+            'id': 'person-vehicle-owner', 'full_name': 'Alex Owner', 'owner': 'test-admin',
+        }
+        self.addCleanup(app_module.social_profiles.pop, 'person-vehicle-owner', None)
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'csrf_token': self.csrf_token,
+            }, follow_redirects=False)
+            vehicle_url = response.headers['Location'].split('?')[0]
+            connected = self.client.post(f'{vehicle_url}/people', data={
+                'person_id': 'person-vehicle-owner', 'relationship': 'owner', 'notes': 'Registered owner',
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertEqual(connected.status_code, 200)
+        self.assertIn(b'Alex Owner', connected.data)
+        self.assertIn(b'>Owner<', connected.data)
+        self.assertIn(b'Registered owner', connected.data)
+
     def test_detailed_dtc_import_uses_dtc_review_columns(self):
         content = (
             b'code,definition,definition_scope,manufacturer,module,lookup_priority,source_name\n'
