@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import time
 import unittest
+import zipfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -393,6 +394,26 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'B0001', response.data)
         self.assertIn(b'SRS', response.data)
         self.assertIn(b'Example source', response.data)
+
+    def test_dtc_zip_stages_multiple_supported_files(self):
+        archive_bytes = io.BytesIO()
+        with zipfile.ZipFile(archive_bytes, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('generic.csv', 'code,description,make\nP0300,Random misfire,\n')
+            archive.writestr('saab/body.txt', 'B0001 - Driver frontal stage 1 deployment control\n')
+            archive.writestr('README.md', 'This unsupported file should be ignored.')
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(archive_bytes.getvalue()), 'saab-codes.zip'),
+                'make': 'Saab', 'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'P0300', response.data)
+        self.assertIn(b'B0001', response.data)
+        self.assertIn(b'generic.csv', response.data)
+        self.assertIn(b'saab/body.txt', response.data)
+        self.assertNotIn(b'README.md', response.data)
 
 
 

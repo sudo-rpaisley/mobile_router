@@ -231,3 +231,9 @@ lookup priority, override state, source name/URL/version/hash/line, retrieval
 date, license, confidence, status, applicability notes, and general notes.
 Multiple definitions for one code are retained and make-specific active matches
 rank ahead of generic definitions during lookup.
+
+The same DTC upload accepts ZIP archives containing multiple `.csv`, `.txt`, and
+searchable `.pdf` sources. Unsupported entries are ignored, each supported entry
+is retained as its source name, and all parsed definitions appear together in
+one staged review. ZIPs are limited to 250 entries and 25 MB uncompressed, and
+encrypted entries or unsafe compression ratios are rejected.

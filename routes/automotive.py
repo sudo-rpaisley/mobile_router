@@ -7,6 +7,7 @@ import sqlite3
 import socket
 import ipaddress
 import importlib
+import zipfile
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.error import HTTPError, URLError
@@ -17,6 +18,7 @@ from services.automotive import AutomotiveStore, simple_pdf
 
 
 MAX_DATABASE_BYTES = 25 * 1024 * 1024
+MAX_ARCHIVE_FILES = 250
 
 
 def _validate_download_url(url):
@@ -81,6 +83,50 @@ def _uploaded_content(upload):
     return content
 
 
+def _dtc_records_from_file(database, content, filename, default_make=''):
+    """Parse one DTC source or a bounded ZIP containing CSV, text, and PDFs."""
+    lower_name = filename.lower()
+    if lower_name.endswith('.zip') or content.startswith(b'PK\x03\x04'):
+        records, total_size, file_count = [], 0, 0
+        try:
+            archive = zipfile.ZipFile(io.BytesIO(content))
+            for member in archive.infolist():
+                if member.is_dir() or member.filename.startswith('__MACOSX/'):
+                    continue
+                file_count += 1
+                if file_count > MAX_ARCHIVE_FILES:
+                    raise ValueError(f'ZIP archives may contain at most {MAX_ARCHIVE_FILES} files.')
+                if member.flag_bits & 0x1:
+                    raise ValueError(f'Encrypted ZIP entry is not supported: {member.filename}')
+                total_size += member.file_size
+                if total_size > MAX_DATABASE_BYTES:
+                    raise ValueError('The uncompressed ZIP contents exceed the 25 MB import limit.')
+                if member.compress_size and member.file_size > member.compress_size * 100:
+                    raise ValueError(f'ZIP entry has an unsafe compression ratio: {member.filename}')
+                suffix = member.filename.lower()
+                if not suffix.endswith(('.csv', '.txt', '.pdf')):
+                    continue
+                child = archive.read(member)
+                child_records = _dtc_records_from_file(database, child, member.filename, default_make)
+                for record in child_records:
+                    record['source_name'] = record.get('source_name') or member.filename
+                records.extend(child_records)
+        except zipfile.BadZipFile as exc:
+            raise ValueError('The ZIP file is damaged or invalid.') from exc
+        if not records:
+            raise ValueError('The ZIP contains no valid DTC records in CSV, text, or searchable PDF files.')
+        return records
+    if lower_name.endswith('.pdf') or content.startswith(b'%PDF'):
+        records = database.parse_dtc_text(_pdf_text(content), default_make)
+    elif lower_name.endswith('.csv'):
+        records = database.parse_dtc_csv(content, default_make)
+    else:
+        records = database.parse_dtc_text(content.decode('utf-8-sig', errors='replace'), default_make)
+    for record in records:
+        record['source_name'] = record.get('source_name') or filename
+    return records
+
+
 def create_automotive_blueprint(context_provider):
     blueprint = Blueprint('automotive', __name__)
 
@@ -129,12 +175,7 @@ def create_automotive_blueprint(context_provider):
         try:
             content = _uploaded_content(upload) if upload and upload.filename else _download(request.form.get('url', ''))
             database = store()
-            if filename.lower().endswith('.pdf') or content.startswith(b'%PDF'):
-                records = database.parse_dtc_text(_pdf_text(content), request.form.get('make', ''))
-            elif filename.lower().endswith('.csv'):
-                records = database.parse_dtc_csv(content, request.form.get('make', ''))
-            else:
-                records = database.parse_dtc_text(content.decode('utf-8-sig', errors='replace'), request.form.get('make', ''))
+            records = _dtc_records_from_file(database, content, filename, request.form.get('make', ''))
             pending_id = database.stage_import('dtc', filename, content, records)
         except (ValueError, OSError) as exc:
             return Response(str(exc), status=400)
