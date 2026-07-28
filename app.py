@@ -289,6 +289,28 @@ ROADMAP_SECTIONS = [
         ],
     },
     {
+        'title': 'Automotive diagnostics',
+        'items': [
+            {'title': 'Offline VIN, DTC, vehicle, and workshop records', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Automotive pages now provide local WMI/VIN and DTC lookups, saved vehicles, translation snapshots, report exports, and SQLite persistence.', 'description': 'Provide the local automotive data and reporting foundation without online lookups.'},
+            {'title': 'Staged automotive database imports', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'VIN and DTC uploads are checksum-tracked, staged for row review, selectively approved in one transaction, or discarded.', 'description': 'Review parsed VIN and DTC records before they affect live lookup results.'},
+            {'title': 'Simulated OBD-II reader', 'priority': 'High', 'priority_class': 'danger', 'description': 'Build an ELM327-style simulator for connection, VIN, current/pending/permanent DTC, freeze-frame, readiness, live-PID, timeout, malformed-response, and clear-code scenarios before hardware arrives.'},
+            {'title': 'Transport-neutral OBD architecture', 'priority': 'High', 'priority_class': 'danger', 'description': 'Define shared discovery, connect, command, timeout, cancellation, and disconnect contracts for simulated, USB serial, Bluetooth Classic, BLE, and Wi-Fi readers.'},
+            {'title': 'Immutable diagnostic sessions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Persist adapter identity, protocol, vehicle VIN, raw responses, categorized DTCs, freeze-frame values, readiness monitors, PID samples, warnings, and before/after state.'},
+            {'title': 'Automotive diagnostics workspace', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add reader and vehicle selection, connection state, quick/full scans, readiness, freeze-frame, live data, saved sessions, and create-report actions.'},
+            {'title': 'USB serial ELM327 and STN support', 'priority': 'High', 'priority_class': 'danger', 'description': 'Discover ports, probe baud rates, initialize supported adapters, detect protocols, enforce bounded commands, cancel work, and retain raw exchanges.'},
+            {'title': 'Bluetooth Classic and Wi-Fi OBD transports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Support paired RFCOMM/SPP readers and configured TCP readers through the same diagnostic-session service.'},
+            {'title': 'Adapter-specific Bluetooth LE plugins', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add BLE GATT transports as explicit adapter plugins rather than treating every BLE reader as a generic serial device.'},
+            {'title': 'Safe DTC clearing workflow', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require a saved pre-clear scan and explicit warning, record the action, explain readiness reset, and automatically capture a post-clear scan.'},
+            {'title': 'Full downloadable VIN decoder dataset', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add a versioned authoritative dataset adapter for make, model, year, body, engine, plant, restraint, and manufacturer-specific VDS decoding while keeping runtime lookup offline.'},
+            {'title': 'Versioned DTC definition library', 'priority': 'High', 'priority_class': 'danger', 'description': 'Preserve multiple sourced definitions and translations by make, model, year, engine, module, language, source page, confidence, and superseded state instead of replacing code/make pairs.'},
+            {'title': 'PDF provenance and OCR review', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Retain original documents, page numbers, extracted context, confidence, and corrections, with optional OCR staging for image-only diagnostic manuals.'},
+            {'title': 'Professional workshop PDF reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add Unicode, wrapping, pagination, DTC tables, branding, dates, diagnostic sessions, before/after results, parts, labor, recommendations, attachments, and signatures.'},
+            {'title': 'Report revisions and finalization', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Support draft, final, amended, and void states with revision history, finalized-by identity, and immutable finalized records.'},
+            {'title': 'Automotive backup and restore', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export, validate, and restore the complete automotive database, source documents, vehicle histories, sessions, reports, and import provenance.'},
+            {'title': 'Automotive route, browser, and hardware tests', 'priority': 'High', 'priority_class': 'danger', 'description': 'Cover authentication, CSRF, uploads, redirects, corrupt PDFs, migrations, rollback, reader simulation, diagnostic sessions, report downloads, accessibility, and mobile layouts.'},
+        ],
+    },
+    {
         'title': 'Train Controller integration',
         'source_url': 'https://github.com/sudo-rpaisley/Train-Controller',
         'items': [
