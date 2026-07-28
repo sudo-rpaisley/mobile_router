@@ -136,30 +136,12 @@ class AutomotiveStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'module-reported VIN'):
             self.store.add_vehicle_module(vehicle_id, {'module_name': 'ECU', 'reported_vin': 'short'})
 
-    def test_capability_matrix_tsv_parsing_and_filtering(self):
-        content = (
-            'model\tyear\tsystem\tsubitem\tfunction\tsubfunction\n'
-            'SAAB 9-5\t2011 - 2012\tECM\t1.6L(LLU)\tRead DTC;Clear DTC\t\n'
-            'SAAB 9-5\t2012\tECM\t2.0L(LBY)\tSpecial Function\tDPF Regeneration\n'
-        ).encode()
-        records = self.store.parse_capability_csv(content)
-        self.assertEqual(len(records), 3)
-        self.assertEqual(records[0]['year_start'], 2011)
-        self.assertEqual(records[0]['year_end'], 2012)
-        self.assertEqual([records[0]['function'], records[1]['function']], ['Read DTC', 'Clear DTC'])
-        pending_id = self.store.stage_import('capability', 'saab.tsv', content, records)
-        self.store.apply_pending_import(pending_id)
-        matches = self.store.diagnostic_capabilities('SAAB 9-5', 2012, 'ECM')
-        self.assertEqual(len(matches), 3)
-        regeneration = next(item for item in matches if item['subfunction'] == 'DPF Regeneration')
-        self.assertEqual(regeneration['subitem'], '2.0L(LBY)')
-
-    def test_capability_year_filter_excludes_out_of_range_rows(self):
-        content = b'model,year,system,subitem,function,subfunction\nSAAB 9-5,2011 - 2012,ECM,1.6L(LLU),Data Stream,\n'
-        records = self.store.parse_capability_csv(content)
-        pending_id = self.store.stage_import('capability', 'saab.csv', content, records)
-        self.store.apply_pending_import(pending_id)
-        self.assertEqual(self.store.diagnostic_capabilities('SAAB 9-5', 2010), [])
+    def test_removed_capability_import_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Unsupported'):
+            self.store.stage_import('capability', 'wrong-document.csv', b'wrong', [{'model': 'SAAB 9-5'}])
+        with self.store.connect() as db:
+            table = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='diagnostic_capabilities'").fetchone()
+        self.assertIsNone(table)
 
 
 if __name__ == '__main__':

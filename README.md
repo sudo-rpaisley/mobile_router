@@ -222,9 +222,3 @@ flagged without replacing the saved vehicle identity.
 Database uploads are staged before they affect live lookups. The review page
 shows every parsed record and lets an administrator exclude incorrect rows,
 approve the selected records in one transaction, or discard the staged import.
-
-Vehicle diagnostic-function matrices can also be imported as CSV or TSV using
-the columns `model`, `year`, `system`, `subitem`, `function`, and `subfunction`.
-Year values may be a single year or a range such as `2011 - 2012`; semicolon-
-separated functions such as `Read DTC;Clear DTC` are indexed separately. The
-Vehicle Functions page filters these offline records by model, year, and system.

@@ -140,18 +140,6 @@ def create_automotive_blueprint(context_provider):
             return Response(str(exc), status=400)
         return redirect(url_for('automotive.review_import', pending_id=pending_id))
 
-    @blueprint.post('/automotive/databases/capabilities')
-    def import_capabilities():
-        upload = request.files.get('database')
-        filename = upload.filename if upload and upload.filename else request.form.get('url', '')
-        try:
-            content = _uploaded_content(upload) if upload and upload.filename else _download(request.form.get('url', ''))
-            database = store(); records = database.parse_capability_csv(content)
-            pending_id = database.stage_import('capability', filename, content, records)
-        except (ValueError, OSError) as exc:
-            return Response(str(exc), status=400)
-        return redirect(url_for('automotive.review_import', pending_id=pending_id))
-
     @blueprint.get('/automotive/imports/<int:pending_id>')
     def review_import(pending_id):
         pending = store().pending_import(pending_id)
@@ -180,16 +168,6 @@ def create_automotive_blueprint(context_provider):
         code = request.args.get('code', '')
         matches = store().lookup_code(code, request.args.get('make', '')) if code else []
         return render_template('dtc_lookup.html', title='Code Lookup', code=code, matches=matches, **context_provider())
-
-    @blueprint.get('/automotive/capabilities')
-    def capability_lookup():
-        model = request.args.get('model', '').strip(); year = request.args.get('year', '').strip(); system = request.args.get('system', '').strip()
-        try:
-            matches = store().diagnostic_capabilities(model, int(year) if year else None, system)
-        except ValueError:
-            matches = []
-        return render_template('automotive_capabilities.html', title='Vehicle Functions', matches=matches,
-                               model=model, year=year, system=system, **context_provider())
 
     @blueprint.post('/automotive/reports')
     def save_report():
