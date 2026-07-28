@@ -212,6 +212,13 @@ snapshot the code translations used at creation time, so later database updates
 do not rewrite historical workshop records. Vehicles can be edited or archived
 from their detail page.
 
+Each saved vehicle keeps one canonical VIN and can also retain typed chassis,
+frame, body, engine, transmission, registration, fleet, manufacturer, and legacy
+identifiers. Control modules can be recorded with address, manufacturer, part,
+hardware, software, serial, calibration ID, CVN, notes, and the VIN reported by
+that module. Module VINs are compared with the canonical VIN and mismatches are
+flagged without replacing the saved vehicle identity.
+
 Database uploads are staged before they affect live lookups. The review page
 shows every parsed record and lets an administrator exclude incorrect rows,
 approve the selected records in one transaction, or discard the staged import.

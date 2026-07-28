@@ -56,6 +56,16 @@ class AutomotiveStore:
                 CREATE TABLE IF NOT EXISTS pending_imports (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL,
                     sha256 TEXT NOT NULL, records TEXT NOT NULL, created_at REAL NOT NULL,
                     UNIQUE(kind, sha256));
+                CREATE TABLE IF NOT EXISTS vehicle_identifiers (id INTEGER PRIMARY KEY, vehicle_id INTEGER NOT NULL,
+                    identifier_type TEXT NOT NULL, value TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+                    verified INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL,
+                    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE);
+                CREATE TABLE IF NOT EXISTS vehicle_modules (id INTEGER PRIMARY KEY, vehicle_id INTEGER NOT NULL,
+                    module_name TEXT NOT NULL, module_address TEXT NOT NULL DEFAULT '', reported_vin TEXT NOT NULL DEFAULT '',
+                    manufacturer TEXT NOT NULL DEFAULT '', part_number TEXT NOT NULL DEFAULT '', hardware_number TEXT NOT NULL DEFAULT '',
+                    software_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '', calibration_id TEXT NOT NULL DEFAULT '',
+                    cvn TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE);
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -65,7 +75,7 @@ class AutomotiveStore:
                 db.execute("ALTER TABLE workshop_reports ADD COLUMN code_snapshot TEXT NOT NULL DEFAULT '{}'")
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '3')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '4')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -303,6 +313,74 @@ class AutomotiveStore:
             cursor = db.execute('UPDATE vehicles SET archived_at=? WHERE id=?', (time.time(), vehicle_id))
         if not cursor.rowcount:
             raise ValueError('Vehicle not found.')
+
+    def vehicle_identifiers(self, vehicle_id):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                'SELECT * FROM vehicle_identifiers WHERE vehicle_id=? ORDER BY created_at,id', (vehicle_id,),
+            )]
+
+    def add_vehicle_identifier(self, vehicle_id, values):
+        if not self.vehicle(vehicle_id):
+            raise ValueError('Vehicle not found.')
+        identifier_type = str(values.get('identifier_type') or '').strip().lower()
+        value = str(values.get('value') or '').strip().upper()
+        allowed = {'chassis_number', 'frame_number', 'body_number', 'engine_serial', 'transmission_serial',
+                   'registration', 'fleet_number', 'manufacturer_serial', 'legacy_vehicle_number', 'other'}
+        if identifier_type not in allowed:
+            raise ValueError('Select a valid identifier type.')
+        if not value:
+            raise ValueError('Identifier value is required.')
+        with self.connect() as db:
+            cursor = db.execute(
+                'INSERT INTO vehicle_identifiers(vehicle_id,identifier_type,value,source,notes,verified,created_at) VALUES(?,?,?,?,?,?,?)',
+                (vehicle_id, identifier_type, value, str(values.get('source') or '').strip()[:200],
+                 str(values.get('notes') or '').strip(), 1 if values.get('verified') else 0, time.time()),
+            )
+        return cursor.lastrowid
+
+    def delete_vehicle_identifier(self, vehicle_id, identifier_id):
+        with self.connect() as db:
+            cursor = db.execute('DELETE FROM vehicle_identifiers WHERE id=? AND vehicle_id=?', (identifier_id, vehicle_id))
+        if not cursor.rowcount:
+            raise ValueError('Vehicle identifier not found.')
+
+    def vehicle_modules(self, vehicle_id):
+        vehicle = self.vehicle(vehicle_id)
+        if not vehicle:
+            return []
+        with self.connect() as db:
+            rows = [dict(row) for row in db.execute('SELECT * FROM vehicle_modules WHERE vehicle_id=? ORDER BY module_name,id', (vehicle_id,))]
+        for row in rows:
+            reported = self.normalize_vin(row.get('reported_vin'))
+            row['vin_match'] = None if not reported else reported == vehicle['vin']
+        return rows
+
+    def add_vehicle_module(self, vehicle_id, values):
+        if not self.vehicle(vehicle_id):
+            raise ValueError('Vehicle not found.')
+        name = str(values.get('module_name') or '').strip()
+        if not name:
+            raise ValueError('Module name is required.')
+        reported_vin = self.normalize_vin(values.get('reported_vin'))
+        if reported_vin and not VIN_RE.fullmatch(reported_vin):
+            raise ValueError('A module-reported VIN must be a valid 17-character VIN.')
+        fields = ('module_address', 'manufacturer', 'part_number', 'hardware_number', 'software_number',
+                  'serial_number', 'calibration_id', 'cvn', 'notes')
+        cleaned = [str(values.get(field) or '').strip() for field in fields]
+        with self.connect() as db:
+            cursor = db.execute(
+                'INSERT INTO vehicle_modules(vehicle_id,module_name,module_address,reported_vin,manufacturer,part_number,hardware_number,software_number,serial_number,calibration_id,cvn,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (vehicle_id, name[:200], cleaned[0][:100], reported_vin, cleaned[1][:200], cleaned[2][:200], cleaned[3][:200],
+                 cleaned[4][:200], cleaned[5][:200], cleaned[6][:200], cleaned[7][:200], cleaned[8], time.time()),
+            )
+        return cursor.lastrowid
+
+    def delete_vehicle_module(self, vehicle_id, module_id):
+        with self.connect() as db:
+            cursor = db.execute('DELETE FROM vehicle_modules WHERE id=? AND vehicle_id=?', (module_id, vehicle_id))
+        if not cursor.rowcount:
+            raise ValueError('Vehicle module not found.')
 
     def save_report(self, values):
         codes = [code.strip().upper() for code in re.split(r'[,\s]+', values.get('codes', '')) if code.strip()]

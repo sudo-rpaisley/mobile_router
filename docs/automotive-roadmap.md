@@ -14,6 +14,10 @@ larger automotive milestones.
   DTCs, freeze-frame data, readiness, PID samples, warnings, and timestamps.
 - Add a diagnostics workspace for connection state, scans, saved sessions, and
   report creation.
+- Extend the saved vehicle identity inventory with canonical VIN, chassis/frame,
+  body, engine and transmission serials, registration/fleet identifiers, and
+  per-ECU part, serial, hardware, software, calibration, CVN, and reported-VIN
+  observations. A mismatching module VIN must be flagged, never auto-promoted.
 
 ## 2. Hardware transports
 

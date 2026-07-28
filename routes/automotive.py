@@ -189,7 +189,9 @@ def create_automotive_blueprint(context_provider):
                 return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
             except (ValueError, sqlite3.IntegrityError) as exc:
                 error = str(exc)
-        return render_template('automotive_vehicle.html', title='Vehicle', vehicle=database.vehicle(vehicle_id), reports=database.reports(), error=error, **context_provider())
+        return render_template('automotive_vehicle.html', title='Vehicle', vehicle=database.vehicle(vehicle_id),
+                               identifiers=database.vehicle_identifiers(vehicle_id), modules=database.vehicle_modules(vehicle_id),
+                               reports=database.reports(), error=error, **context_provider())
 
     @blueprint.post('/automotive/vehicles/<int:vehicle_id>/archive')
     def archive_vehicle(vehicle_id):
@@ -198,6 +200,38 @@ def create_automotive_blueprint(context_provider):
         except ValueError:
             abort(404)
         return redirect(url_for('automotive.index'))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/identifiers')
+    def add_vehicle_identifier(vehicle_id):
+        try:
+            store().add_vehicle_identifier(vehicle_id, request.form)
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/identifiers/<int:identifier_id>/delete')
+    def delete_vehicle_identifier(vehicle_id, identifier_id):
+        try:
+            store().delete_vehicle_identifier(vehicle_id, identifier_id)
+        except ValueError:
+            abort(404)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/modules')
+    def add_vehicle_module(vehicle_id):
+        try:
+            store().add_vehicle_module(vehicle_id, request.form)
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
+
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/modules/<int:module_id>/delete')
+    def delete_vehicle_module(vehicle_id, module_id):
+        try:
+            store().delete_vehicle_module(vehicle_id, module_id)
+        except ValueError:
+            abort(404)
+        return redirect(url_for('automotive.vehicle_detail', vehicle_id=vehicle_id))
 
     @blueprint.get('/automotive/reports/<int:report_id>')
     def report_view(report_id):

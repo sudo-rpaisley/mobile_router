@@ -107,6 +107,35 @@ class AutomotiveStoreTest(unittest.TestCase):
             self.store.stage_import('vin', 'duplicate.csv', content, [{'wmi': '1HG', 'manufacturer': 'Changed'}])
         self.assertEqual(self.store.lookup_vin('1HGCM82633A004352')['manufacturer'], 'Honda')
 
+    def test_vehicle_additional_identifiers(self):
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788', 'nickname': 'Saab'})
+        identifier_id = self.store.add_vehicle_identifier(vehicle_id, {
+            'identifier_type': 'engine_serial', 'value': 'b205e-12345', 'source': 'Engine stamp', 'verified': '1',
+        })
+        identifier = self.store.vehicle_identifiers(vehicle_id)[0]
+        self.assertEqual(identifier['value'], 'B205E-12345')
+        self.assertEqual(identifier['verified'], 1)
+        self.store.delete_vehicle_identifier(vehicle_id, identifier_id)
+        self.assertEqual(self.store.vehicle_identifiers(vehicle_id), [])
+
+    def test_vehicle_modules_compare_reported_vin(self):
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788'})
+        matching_id = self.store.add_vehicle_module(vehicle_id, {
+            'module_name': 'Engine ECU', 'module_address': '7E0', 'reported_vin': 'ys3dh38kx22031788',
+            'part_number': '55500000', 'serial_number': 'ECU-123', 'calibration_id': 'CAL-1', 'cvn': 'ABCD1234',
+        })
+        self.store.add_vehicle_module(vehicle_id, {'module_name': 'Used cluster', 'reported_vin': '1HGCM82633A004352'})
+        modules = self.store.vehicle_modules(vehicle_id)
+        self.assertTrue(next(item for item in modules if item['module_name'] == 'Engine ECU')['vin_match'])
+        self.assertFalse(next(item for item in modules if item['module_name'] == 'Used cluster')['vin_match'])
+        self.store.delete_vehicle_module(vehicle_id, matching_id)
+        self.assertEqual(len(self.store.vehicle_modules(vehicle_id)), 1)
+
+    def test_module_rejects_malformed_reported_vin(self):
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788'})
+        with self.assertRaisesRegex(ValueError, 'module-reported VIN'):
+            self.store.add_vehicle_module(vehicle_id, {'module_name': 'ECU', 'reported_vin': 'short'})
+
 
 if __name__ == '__main__':
     unittest.main()
