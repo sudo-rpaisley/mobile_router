@@ -19,8 +19,7 @@ WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
 MODEL_YEAR_CODES = 'ABCDEFGHJKLMNPRSTVWXY123456789'
 BUNDLED_WMI_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'automotive', 'wmi_db.csv')
 DTC_IDENTITY_FIELDS = ('code', 'category', 'description', 'scope', 'make', 'model', 'year_start', 'year_end', 'module',
-                       'engine', 'transmission', 'market', 'protocol', 'language', 'lookup_priority', 'is_override',
-                       'confidence', 'status', 'applicability_notes', 'notes')
+                       'engine', 'transmission', 'market', 'protocol', 'language', 'is_override', 'status')
 
 
 class AutomotiveStore:
@@ -131,10 +130,10 @@ class AutomotiveStore:
             if 'definition_key' not in dtc_columns:
                 db.execute("ALTER TABLE dtc_definitions ADD COLUMN definition_key TEXT NOT NULL DEFAULT ''")
             schema_row = db.execute("SELECT value FROM automotive_meta WHERE key='schema_version'").fetchone()
-            if not schema_row or schema_row['value'] not in {'10', '11', '12'}:
+            if not schema_row or schema_row['value'] != '13':
                 self._deduplicate_dtc_definitions(db)
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dtc_definition_key ON dtc_definitions(definition_key) WHERE definition_key<>''")
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '12')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '13')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -156,13 +155,28 @@ class AutomotiveStore:
         """Remove existing semantic duplicates, retaining the oldest record and its provenance."""
         groups = {}
         for row in db.execute('SELECT * FROM dtc_definitions ORDER BY id'):
-            groups.setdefault(cls._definition_key(dict(row)), []).append(row['id'])
-        duplicate_ids = [row_id for ids in groups.values() for row_id in ids[1:]]
+            groups.setdefault(cls._definition_key(dict(row)), []).append(dict(row))
+        duplicate_ids = [row['id'] for rows in groups.values() for row in rows[1:]]
+        for rows in groups.values():
+            keeper = rows[0]
+            merged = {}
+            for field in ('applicability_notes', 'notes'):
+                distinct = []
+                for row in rows:
+                    value = str(row.get(field) or '').strip()
+                    if value and value.casefold() not in {item.casefold() for item in distinct}:
+                        distinct.append(value)
+                merged[field] = '\n\n'.join(distinct)
+            priority = max(int(row.get('lookup_priority') or 0) for row in rows)
+            confidence = next((row['confidence'] for row in rows if row.get('confidence') not in {'', 'unverified'}),
+                              keeper.get('confidence') or 'unverified')
+            db.execute('UPDATE dtc_definitions SET applicability_notes=?,notes=?,lookup_priority=?,confidence=? WHERE id=?',
+                       (merged['applicability_notes'], merged['notes'], priority, confidence, keeper['id']))
         if duplicate_ids:
             db.executemany('DELETE FROM dtc_definitions WHERE id=?', ((row_id,) for row_id in duplicate_ids))
         db.execute("UPDATE dtc_definitions SET definition_key=''")
         db.executemany('UPDATE dtc_definitions SET definition_key=? WHERE id=?',
-                       ((key, ids[0]) for key, ids in groups.items()))
+                       ((key, rows[0]['id']) for key, rows in groups.items()))
         return len(duplicate_ids)
 
     def deduplicate_dtc_definitions(self):
@@ -433,7 +447,19 @@ class AutomotiveStore:
         """Keep the first copy of each identical definition in an incoming collection."""
         unique = {}
         for record in records:
-            unique.setdefault(cls._definition_key(record), record)
+            key = cls._definition_key(record)
+            if key not in unique:
+                unique[key] = record
+                continue
+            for field in ('applicability_notes', 'notes'):
+                existing = str(unique[key].get(field) or '').strip()
+                incoming = str(record.get(field) or '').strip()
+                if incoming and incoming.casefold() not in existing.casefold():
+                    unique[key][field] = '\n\n'.join(value for value in (existing, incoming) if value)
+            unique[key]['lookup_priority'] = max(int(unique[key].get('lookup_priority') or 0),
+                                                 int(record.get('lookup_priority') or 0))
+            if unique[key].get('confidence') in {'', 'unverified', None} and record.get('confidence'):
+                unique[key]['confidence'] = record['confidence']
         return list(unique.values())
 
     @staticmethod
@@ -452,6 +478,21 @@ class AutomotiveStore:
             f"INSERT OR IGNORE INTO dtc_definitions({','.join(fields)},definition_key,created_at) VALUES({placeholders},?,?)",
             values + [definition_key, time.time()],
         )
+        if not cursor.rowcount:
+            existing = db.execute('SELECT id,applicability_notes,notes,lookup_priority,confidence FROM dtc_definitions WHERE definition_key=?',
+                                  (definition_key,)).fetchone()
+            if existing:
+                updates = []
+                for old, new in ((existing['applicability_notes'], record.get('applicability_notes')),
+                                 (existing['notes'], record.get('notes'))):
+                    parts = [str(value).strip() for value in (old, new) if str(value or '').strip()]
+                    updates.append('\n\n'.join(dict.fromkeys(parts)))
+                priority = max(int(existing['lookup_priority'] or 0), int(record.get('lookup_priority') or 0))
+                confidence = existing['confidence']
+                if confidence in {'', 'unverified'} and record.get('confidence'):
+                    confidence = record['confidence']
+                db.execute('UPDATE dtc_definitions SET applicability_notes=?,notes=?,lookup_priority=?,confidence=? WHERE id=?',
+                           (updates[0], updates[1], priority, confidence, existing['id']))
         return cursor.rowcount
 
     def import_dtc_csv(self, content, make='', source='upload'):

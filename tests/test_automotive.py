@@ -68,7 +68,19 @@ class AutomotiveStoreTest(unittest.TestCase):
         rows, total = self.store.browse_codes(make='Saab')
         self.assertEqual(total, 1)
         self.assertEqual([row['code'] for row in rows], ['B0001'])
-        self.assertEqual(rows[0]['definition_count'], 2)
+        self.assertEqual(rows[0]['definition_count'], 1)
+        definitions = self.store.lookup_code('B0001', 'Saab')
+        self.assertEqual(len(definitions), 1)
+        self.assertIn('Confirm model and module support', definitions[0]['applicability_notes'])
+        self.assertIn('Generic OBD-II definition', definitions[0]['applicability_notes'])
+
+        # Priority and confidence select the preferred metadata; they do not create another definition row.
+        self.store.import_dtc_csv(
+            b'code,description,make,lookup_priority,confidence\nB0001,Deployment control,Saab,99,verified\n')
+        definitions = self.store.lookup_code('B0001', 'Saab')
+        self.assertEqual(len(definitions), 1)
+        self.assertEqual(definitions[0]['lookup_priority'], 99)
+        self.assertEqual(definitions[0]['confidence'], 'verified')
 
     def test_lookup_cards_collapse_only_identical_definitions(self):
         matches = [
@@ -107,6 +119,26 @@ class AutomotiveStoreTest(unittest.TestCase):
             db.execute("UPDATE automotive_meta SET value='9' WHERE key='schema_version'")
         AutomotiveStore(self.path)
         self.assertEqual(len(self.store.lookup_code('P0300')), 1)
+
+    def test_schema_upgrade_merges_existing_rows_that_only_differ_in_notes(self):
+        base = {'code': 'B0001', 'category': 'B', 'description': 'Deployment control', 'scope': 'generic',
+                'make': 'Saab', 'lookup_priority': 20, 'status': 'active'}
+        with self.store.connect() as db:
+            first = dict(base, applicability_notes='Confirm exact module support')
+            second = dict(base, applicability_notes='Generic OBD-II definition')
+            self.store._insert_dtc_definition(db, first)
+            # Simulate the older fingerprint where notes created a separate row.
+            fields = ('code', 'category', 'description', 'scope', 'make', 'lookup_priority', 'status',
+                      'applicability_notes', 'definition_key', 'created_at')
+            db.execute(f"INSERT INTO dtc_definitions({','.join(fields)}) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       ('B0001', 'B', 'Deployment control', 'generic', 'SAAB', 20, 'active',
+                        second['applicability_notes'], 'legacy-notes-fingerprint', 1))
+            db.execute("UPDATE automotive_meta SET value='12' WHERE key='schema_version'")
+        AutomotiveStore(self.path)
+        definitions = self.store.lookup_code('B0001', 'Saab')
+        self.assertEqual(len(definitions), 1)
+        self.assertIn('Confirm exact module support', definitions[0]['applicability_notes'])
+        self.assertIn('Generic OBD-II definition', definitions[0]['applicability_notes'])
 
     def test_on_demand_cleanup_reports_removed_duplicates(self):
         record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'scope': 'manufacturer',
