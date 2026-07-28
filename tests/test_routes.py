@@ -46,6 +46,9 @@ class RouteSmokeTest(unittest.TestCase):
                 'email_label': ['Personal', 'Work', 'Old account'],
                 'email_value': ['alex@example.com', 'alex@work.example', 'al***@old.example'],
                 'email_status': ['complete', 'complete', 'partial'],
+                'email_source': ['Provided directly', 'Business card', 'Old note'],
+                'email_confidence': ['confirmed', 'likely', 'possible'],
+                'email_verified_date': ['2026-07-28', '', ''],
                 'social_platform': ['Facebook', 'GitHub', 'Instagram'],
                 'social_url': ['facebook.com/alex.example', 'https://github.com/alex', 'https://instagram.com/alex'],
                 'social_status': ['complete', 'complete', 'complete'],
@@ -53,8 +56,14 @@ class RouteSmokeTest(unittest.TestCase):
                 'social_recovery_emails': ['', 'alex@example.com, alex@work.example', ''],
                 'social_recovery_phone': ['', '+1 555 0100', ''],
                 'social_recovery_notes': ['', 'Recovery codes held offline', ''],
+                'social_recovery_refs': ['', '', ''],
+                'social_source': ['Public profile', 'Provided directly', 'Public profile'],
+                'social_confidence': ['likely', 'confirmed', 'possible'],
+                'social_verified_date': ['', '2026-07-28', ''],
                 'organization': 'Example Company', 'job_title': 'Analyst',
                 'phone': '+1 555 01**', 'phone_status': 'partial',
+                'phone_source': 'Old directory', 'phone_confidence': 'possible',
+                'tags': 'priority, training', 'profile_status': 'needs_review',
                 'notes': 'Authorized awareness exercise participant.',
                 'csrf_token': self.csrf_token,
                 'profile_photo': (io.BytesIO(b'GIF89a-test-image'), 'alex.gif'),
@@ -69,6 +78,27 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(len(profile['social_links']), 3)
         self.assertEqual(profile['emails'][2]['status'], 'partial')
         self.assertEqual(profile['social_links'][1]['recovery_emails'], ['alex@example.com', 'alex@work.example'])
+        self.assertEqual(profile['tags'], ['priority', 'training'])
+        recovery_ref = f"email:{profile['emails'][0]['id']}"
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
+            'full_name': profile['full_name'], 'organization': profile['organization'],
+            'job_title': profile['job_title'], 'phone': profile['phone'], 'phone_status': 'partial',
+            'tags': 'priority, training', 'profile_status': 'needs_review',
+            'email_id': [item['id'] for item in profile['emails']],
+            'email_label': [item['label'] for item in profile['emails']],
+            'email_value': [item['value'] for item in profile['emails']],
+            'email_status': [item['status'] for item in profile['emails']],
+            'social_id': [item['id'] for item in profile['social_links']],
+            'social_platform': [item['platform'] for item in profile['social_links']],
+            'social_url': [item['url'] for item in profile['social_links']],
+            'social_status': [item['status'] for item in profile['social_links']],
+            'social_account': [item['account'] for item in profile['social_links']],
+            'social_recovery_emails': ['', '', ''], 'social_recovery_phone': ['', '', ''],
+            'social_recovery_notes': ['', 'Linked to saved personal email', ''],
+            'social_recovery_refs': ['', recovery_ref, ''],
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
         self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_PHOTO_DIR, True)
 
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
@@ -79,9 +109,16 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Instagram', response.data)
         self.assertIn(b'alex@work.example', response.data)
         self.assertIn(b'Profile picture for Alex Example', response.data)
-        self.assertIn(b'Recovery codes held offline', response.data)
+        self.assertIn(b'Linked to saved personal email', response.data)
+        self.assertIn(b'Personal email: alex@example.com', response.data)
         self.assertIn(b'al***@old.example', response.data)
         self.assertIn(b'Partial', response.data)
+
+        response = self.client.get('/social-engineering?q=github&tag=training&status=needs_review')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Alex Example', response.data)
+        response = self.client.get('/social-engineering?q=missing')
+        self.assertNotIn(b'Alex Example', response.data)
 
         app_module.device_inventory['mac:ac:16:2d:a2:71:9e'] = {
             'id': 'mac:ac:16:2d:a2:71:9e', 'mac': 'ac:16:2d:a2:71:9e',
@@ -99,6 +136,14 @@ class RouteSmokeTest(unittest.TestCase):
         device = app_module.social_profiles[profile_id]['devices'][0]
         self.assertEqual(device['mac'], 'ac:16:2d:a2:71:9e')
         self.assertEqual(device['icon'], 'fa-mobile-alt')
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/devices/{device["id"]}/update', data={
+            'name': 'iPhone 13 Pro', 'device_type': 'iphone', 'inventory_mac': 'ac:16:2d:a2:71:9e',
+            'manufacturer': 'Apple', 'model': 'iPhone 13 Pro', 'operating_system': 'iOS',
+            'hostname': 'alex-iphone', 'device_status': 'active', 'notes': 'Updated device',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['devices'][0]['model'], 'iPhone 13 Pro')
 
         with patch('app.save_runtime_state') as save_state:
             response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
@@ -119,14 +164,23 @@ class RouteSmokeTest(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(app_module.social_profiles[profile_id]['credentials'][1]['credential_kind'], 'unassigned')
+        unknown_credential = app_module.social_profiles[profile_id]['credentials'][1]
+        response = self.client.post(
+            f'/social-engineering/profiles/{profile_id}/credentials/{unknown_credential["id"]}/update',
+            data={'label': 'Recovered router password', 'credential_kind': 'device', 'device_id': device['id'],
+                  'username': 'admin', 'purpose': 'Router administration', 'credential_notes': 'Rotated',
+                  'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:cm90YXRlZA==', 'csrf_token': self.csrf_token},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('rotated_at', app_module.social_profiles[profile_id]['credentials'][1])
 
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
         self.assertIn(b'iPhone 13', response.data)
         self.assertIn(b'Discovered iPhone', response.data)
         self.assertIn(b'Apple ID', response.data)
         self.assertIn(b'credential-reveal', response.data)
-        self.assertIn(b'Purpose unknown', response.data)
-        self.assertIn(b'Used for something but unknown what for yet', response.data)
+        self.assertIn(b'Router administration', response.data)
+        self.assertIn(b'Edit / rotate', response.data)
         self.assertIn(b'Add password', response.data)
         self.assertIn(b'\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2', response.data)
         self.assertIn(b'social-profiles.js', response.data)
@@ -166,6 +220,17 @@ class RouteSmokeTest(unittest.TestCase):
 
     def test_social_profiles_require_login_csrf_and_role(self):
         self.login_social_admin()
+        response = self.client.post('/vault-verifier', data={
+            'vault_verifier': 'vault:v1:c2FsdA==:aXY=:dmVyaWZpZXI=',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(app_module.social_users['test-admin']['vault_verifier'].startswith('vault:v1:'))
+        response = self.client.post('/vault-verifier', data={
+            'vault_verifier': 'vault:v1:b3RoZXI=:aXY=:dmVyaWZpZXI=',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 409)
         with self.client.session_transaction() as flask_session:
             flask_session.pop('social_user', None)
         response = self.client.get('/social-engineering')

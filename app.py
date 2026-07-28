@@ -2690,6 +2690,13 @@ def recent_social_audit(limit=50):
         return [dict(item) for item in social_audit_log[:limit]]
 
 
+def current_user_record():
+    user = current_app_user() or {}
+    with social_users_lock:
+        record = social_users.get(user.get('username'))
+        return dict(record) if record else None
+
+
 def current_app_user():
     return session.get('social_user')
 
@@ -2848,10 +2855,17 @@ def create_application_user():
 @app.route('/social-engineering')
 @social_login_required()
 def social_engineering_page():
+    profiles = owned_social_profiles()
+    query = request.args.get('q', '')
+    status = request.args.get('status', '')
+    tag = request.args.get('tag', '')
+    filtered_profiles = social_profile_service.search_profiles(profiles, query, status, tag)
+    available_tags = sorted({item for profile in profiles for item in profile.get('tags', [])}, key=str.casefold)
     return render_template(
         'social_engineering.html',
         title='Social Engineering',
-        profiles=owned_social_profiles(),
+        profiles=filtered_profiles, total_profiles=len(profiles), available_tags=available_tags,
+        search_query=query, selected_status=status, selected_tag=tag,
         social_user=session.get('social_user'), csrf_token=social_csrf_token(),
         social_audit=recent_social_audit(),
         **current_context(),
@@ -2895,7 +2909,23 @@ def social_profile_detail(profile_id):
         return render_template('social_profile_detail.html', title='Profile not found', profile=None, **current_context()), 404
     for device in profile.get('devices', []):
         device['inventory_match'] = find_inventory_device(device.get('mac')) if device.get('mac') else None
-    return render_template('social_profile_detail.html', title=profile['full_name'], profile=profile, social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context())
+    contact_refs = {
+        **{f"email:{email['id']}": {'label': f"{email['label']} email", 'value': email['value'], 'status': email.get('status')} for email in profile.get('emails', [])},
+        **({'phone': {'label': 'Phone', 'value': profile['phone'], 'status': profile.get('phone_status')}} if profile.get('phone') else {}),
+    }
+    for link in profile.get('social_links', []):
+        link['recovery_contacts'] = [contact_refs[ref] for ref in link.get('recovery_refs', []) if ref in contact_refs]
+    inventory_choices = [
+        item for item in inventory_records()
+        if (item.get('mac') or item.get('address')) and not item.get('is_control_traffic')
+    ]
+    user_record = current_user_record() or {}
+    return render_template(
+        'social_profile_detail.html', title=profile['full_name'], profile=profile,
+        contact_refs=contact_refs, inventory_choices=inventory_choices,
+        vault_verifier=user_record.get('vault_verifier', ''),
+        social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context(),
+    )
 
 
 @app.route('/social-engineering/profiles/<profile_id>/photo')
@@ -2923,7 +2953,8 @@ def update_social_profile(profile_id):
         return render_template(
             'social_profile_detail.html', title=(current or {}).get('full_name', 'Profile'),
             profile={**(current or {}), **request.form}, error=str(exc), social_user=session.get('social_user'),
-            csrf_token=social_csrf_token(), **current_context(),
+            csrf_token=social_csrf_token(), contact_refs={}, inventory_choices=[],
+            vault_verifier=(current_user_record() or {}).get('vault_verifier', ''), **current_context(),
         ), 400
     try:
         save_social_profile_photo(profile_id, request.files.get('profile_photo'))
@@ -2983,6 +3014,24 @@ def delete_social_profile_credential(profile_id, credential_id):
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
+@app.route('/social-engineering/profiles/<profile_id>/credentials/<credential_id>/update', methods=['POST'])
+@social_login_required({'credential_manager', 'admin'})
+def update_social_profile_credential(profile_id, credential_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    try:
+        credential = social_profile_service.update_credential(
+            profile_id, credential_id, request.form, social_profiles, social_profiles_lock,
+        )
+    except KeyError:
+        return json_error('Credential not found', 404)
+    except ValueError as exc:
+        return json_error(str(exc))
+    record_social_audit('credential.rotate' if request.form.get('secret_ciphertext') else 'credential.update', profile_id)
+    save_runtime_state('social-profile-credential-update')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
 @app.route('/social-engineering/profiles/<profile_id>/devices', methods=['POST'])
 @social_login_required({'editor', 'credential_manager', 'admin'})
 def add_social_profile_device(profile_id):
@@ -3015,6 +3064,43 @@ def delete_social_profile_device(profile_id, device_id):
     record_social_audit('device.delete', profile_id)
     save_runtime_state('social-profile-device-delete')
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/devices/<device_id>/update', methods=['POST'])
+@social_login_required({'editor', 'credential_manager', 'admin'})
+def update_social_profile_device(profile_id, device_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    try:
+        social_profile_service.update_device(
+            profile_id, device_id, request.form, social_profiles, social_profiles_lock, normalize_mac,
+        )
+    except KeyError:
+        return json_error('Device not found', 404)
+    except ValueError as exc:
+        return json_error(str(exc))
+    record_social_audit('device.update', profile_id)
+    save_runtime_state('social-profile-device-update')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/vault-verifier', methods=['POST'])
+@social_login_required()
+def save_vault_verifier():
+    verifier = str(request.form.get('vault_verifier') or '')
+    if not verifier.startswith('vault:v1:') or len(verifier) > 20000:
+        return json_error('Invalid vault verifier.')
+    username = current_app_user()['username']
+    with social_users_lock:
+        user = social_users.get(username)
+        if not user:
+            return json_error('User not found.', 404)
+        if user.get('vault_verifier'):
+            return json_error('Vault verifier is already configured.', 409)
+        user['vault_verifier'] = verifier
+    record_social_audit('vault.initialize')
+    save_runtime_state('vault-verifier')
+    return json_success()
 
 
 @app.route('/social-engineering/profiles/<profile_id>/audit', methods=['POST'])

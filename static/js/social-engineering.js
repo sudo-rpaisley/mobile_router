@@ -19,4 +19,9 @@
       else row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
     }
   });
+  document.addEventListener('change', function (event) {
+    if (!event.target.matches('.recovery-ref-picker')) return;
+    var hidden = event.target.parentElement.nextElementSibling;
+    hidden.value = Array.from(event.target.selectedOptions).map(function (option) { return option.value; }).join(',');
+  });
 }());

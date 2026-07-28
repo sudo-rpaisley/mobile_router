@@ -70,13 +70,42 @@
     setVaultStatus(false);
   }
 
-  function unlockVault() {
+  async function unlockVault() {
     if (!window.crypto || !window.crypto.subtle) {
       window.alert('Credential encryption requires localhost or an HTTPS connection.');
       return false;
     }
     var password = window.prompt('Enter the credential vault master password:');
     if (!password) return false;
+    var config = window.socialProfileSecurity || {};
+    if (config.vaultVerifier) {
+      try {
+        var verified = await decryptSecret(config.vaultVerifier, password);
+        if (verified !== 'mobile-router-vault-verifier-v1') throw new Error('Verifier mismatch');
+      } catch (error) {
+        window.alert('Incorrect vault master password.');
+        return false;
+      }
+    } else {
+      var confirmation = window.prompt('Confirm the new vault master password:');
+      if (confirmation !== password) {
+        window.alert('The vault passwords did not match.');
+        return false;
+      }
+      try {
+        var verifier = await encryptSecret('mobile-router-vault-verifier-v1', password);
+        var response = await fetch('/vault-verifier', {
+          method: 'POST',
+          body: new URLSearchParams({ vault_verifier: verifier, csrf_token: config.csrfToken }),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        if (!response.ok) throw new Error('Unable to save vault verifier.');
+        config.vaultVerifier = verifier;
+      } catch (error) {
+        window.alert(error.message);
+        return false;
+      }
+    }
     vaultPassword = password;
     clearTimeout(lockTimer);
     lockTimer = setTimeout(lockVault, 5 * 60 * 1000);
@@ -85,7 +114,7 @@
     return true;
   }
 
-  document.getElementById('vault-unlock')?.addEventListener('click', unlockVault);
+  document.getElementById('vault-unlock')?.addEventListener('click', function () { unlockVault(); });
   document.getElementById('vault-lock')?.addEventListener('click', lockVault);
   document.querySelectorAll('[data-add-device-password]').forEach(function (button) {
     button.addEventListener('click', function () {
@@ -96,19 +125,58 @@
     });
   });
 
-  document.getElementById('credential-form')?.addEventListener('submit', async function (event) {
-    var secretInput = document.getElementById('credential_secret');
+  document.querySelectorAll('[data-edit-device]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var device = JSON.parse(button.dataset.editDevice);
+      var form = document.getElementById('edit-device-form');
+      form.action = '/social-engineering/profiles/' + encodeURIComponent(window.socialProfileSecurity.profileId) + '/devices/' + encodeURIComponent(device.id) + '/update';
+      document.getElementById('edit_device_name').value = device.name || '';
+      document.getElementById('edit_device_type').value = device.device_type || 'other';
+      document.getElementById('edit_device_inventory').value = device.mac || '';
+      document.getElementById('edit_device_mac').value = device.mac || '';
+      document.getElementById('edit_device_manufacturer').value = device.manufacturer || '';
+      document.getElementById('edit_device_model').value = device.model || '';
+      document.getElementById('edit_device_os').value = device.operating_system || '';
+      document.getElementById('edit_device_hostname').value = device.hostname || '';
+      document.getElementById('edit_device_status').value = device.status || 'active';
+      document.getElementById('edit_device_notes').value = device.notes || '';
+      window.jQuery('#edit-device-modal').modal('show');
+    });
+  });
+
+  document.querySelectorAll('[data-edit-credential]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var credential = JSON.parse(button.dataset.editCredential);
+      var form = document.getElementById('credential-edit-form');
+      form.action = '/social-engineering/profiles/' + encodeURIComponent(window.socialProfileSecurity.profileId) + '/credentials/' + encodeURIComponent(credential.id) + '/update';
+      document.getElementById('edit_credential_kind').value = credential.credential_kind || 'unassigned';
+      document.getElementById('edit_credential_label').value = credential.label || '';
+      document.getElementById('edit_credential_purpose').value = credential.purpose || '';
+      document.getElementById('edit_credential_url').value = credential.website_url || '';
+      document.getElementById('edit_credential_device').value = credential.device_id || '';
+      document.getElementById('edit_credential_username').value = credential.username || '';
+      document.getElementById('edit_credential_notes').value = credential.notes || '';
+      document.getElementById('edit_credential_secret').value = '';
+      document.getElementById('edit_secret_ciphertext').value = '';
+      window.jQuery('#edit-credential-modal').modal('show');
+    });
+  });
+
+  async function encryptCredentialForm(event, secretInputId, ciphertextInputId) {
+    var secretInput = document.getElementById(secretInputId);
     if (!secretInput.value) return;
     event.preventDefault();
-    if (!vaultPassword && !unlockVault()) return;
+    if (!vaultPassword && !(await unlockVault())) return;
     try {
-      document.getElementById('secret_ciphertext').value = await encryptSecret(secretInput.value, vaultPassword);
+      document.getElementById(ciphertextInputId).value = await encryptSecret(secretInput.value, vaultPassword);
       secretInput.value = '';
       event.target.submit();
     } catch (error) {
       window.alert('Unable to encrypt the secret: ' + error.message);
     }
-  });
+  }
+  document.getElementById('credential-form')?.addEventListener('submit', function (event) { encryptCredentialForm(event, 'credential_secret', 'secret_ciphertext'); });
+  document.getElementById('credential-edit-form')?.addEventListener('submit', function (event) { encryptCredentialForm(event, 'edit_credential_secret', 'edit_secret_ciphertext'); });
 
   document.addEventListener('click', async function (event) {
     var button = event.target.closest('.credential-reveal');
@@ -123,7 +191,7 @@
     if (secret.dataset.legacySecret) {
       secret.textContent = secret.dataset.legacySecret;
     } else {
-      if (!vaultPassword && !unlockVault()) return;
+      if (!vaultPassword && !(await unlockVault())) return;
       try { secret.textContent = await decryptSecret(secret.dataset.ciphertext, vaultPassword); }
       catch (error) { window.alert('Unable to decrypt this secret. Check the master password.'); return; }
     }
@@ -131,5 +199,12 @@
     button.setAttribute('aria-label', 'Hide secret');
     button.querySelector('i').className = 'fas fa-eye-slash';
     audit('credential.reveal');
+    window.setTimeout(function () {
+      secret.textContent = '••••••••';
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', 'Reveal secret');
+      button.querySelector('i').className = 'fas fa-eye';
+    }, 20000);
   });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) lockVault(); });
 }());

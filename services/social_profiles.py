@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 PROFILE_FIELDS = ('full_name', 'organization', 'job_title', 'phone', 'notes')
+PROFILE_STATUSES = {'active', 'needs_review', 'archived'}
+CONFIDENCE_LEVELS = {'confirmed', 'likely', 'possible', 'unverified'}
 DEVICE_ICONS = {
     'iphone': 'fa-mobile-alt',
     'android': 'fa-mobile-alt',
@@ -43,9 +45,13 @@ def validate_profile(values):
     if len(profile['full_name']) > 160:
         raise ValueError('Full name must be 160 characters or fewer.')
     getlist = values.getlist if hasattr(values, 'getlist') else lambda key: values.get(key, []) if isinstance(values.get(key, []), list) else [values.get(key, '')]
+    email_ids = getlist('email_id')
     email_labels = getlist('email_label')
     email_values = getlist('email_value')
     email_statuses = getlist('email_status')
+    email_sources = getlist('email_source')
+    email_confidences = getlist('email_confidence')
+    email_verified_dates = getlist('email_verified_date')
     emails = []
     for index, raw_email in enumerate(email_values):
         email = str(raw_email or '').strip()
@@ -54,12 +60,20 @@ def validate_profile(values):
         status = 'partial' if index < len(email_statuses) and email_statuses[index] == 'partial' else 'complete'
         if status == 'complete' and not EMAIL_RE.fullmatch(email):
             raise ValueError(f'Email #{index + 1} must be a valid address.')
-        emails.append({'label': str(email_labels[index] if index < len(email_labels) else 'Email').strip()[:40] or 'Email', 'value': email[:320], 'status': status})
+        confidence = str(email_confidences[index] if index < len(email_confidences) else 'unverified').casefold()
+        emails.append({
+            'id': str(email_ids[index] if index < len(email_ids) else '').strip() or str(uuid.uuid4()),
+            'label': str(email_labels[index] if index < len(email_labels) else 'Email').strip()[:40] or 'Email',
+            'value': email[:320], 'status': status,
+            'source': str(email_sources[index] if index < len(email_sources) else '').strip()[:160],
+            'confidence': confidence if confidence in CONFIDENCE_LEVELS else 'unverified',
+            'verified_date': str(email_verified_dates[index] if index < len(email_verified_dates) else '').strip()[:10],
+        })
     legacy_email = str(values.get('email') or '').strip()
     if legacy_email and not emails:
         if not EMAIL_RE.fullmatch(legacy_email):
             raise ValueError('Email must be a valid address.')
-        emails.append({'label': 'Email', 'value': legacy_email})
+        emails.append({'id': str(uuid.uuid4()), 'label': 'Email', 'value': legacy_email, 'status': 'complete', 'source': '', 'confidence': 'unverified', 'verified_date': ''})
     social_platforms = getlist('social_platform')
     social_urls = getlist('social_url')
     social_statuses = getlist('social_status')
@@ -67,6 +81,11 @@ def validate_profile(values):
     social_recovery_emails = getlist('social_recovery_emails')
     social_recovery_phones = getlist('social_recovery_phone')
     social_recovery_notes = getlist('social_recovery_notes')
+    social_recovery_refs = getlist('social_recovery_refs')
+    social_sources = getlist('social_source')
+    social_confidences = getlist('social_confidence')
+    social_verified_dates = getlist('social_verified_date')
+    social_ids = getlist('social_id')
     social_links = []
     for index, raw_url in enumerate(social_urls):
         if not str(raw_url or '').strip():
@@ -76,20 +95,33 @@ def validate_profile(values):
         url = str(raw_url).strip()[:1000] if status == 'partial' else _clean_url(raw_url, f'{platform} link')
         recovery_emails = [item.strip()[:320] for item in str(social_recovery_emails[index] if index < len(social_recovery_emails) else '').split(',') if item.strip()]
         social_links.append({
+            'id': str(social_ids[index] if index < len(social_ids) else '').strip() or str(uuid.uuid4()),
             'platform': platform, 'url': url, 'status': status,
             'account': str(social_accounts[index] if index < len(social_accounts) else '').strip()[:320],
             'recovery_emails': recovery_emails,
             'recovery_phone': str(social_recovery_phones[index] if index < len(social_recovery_phones) else '').strip()[:100],
             'recovery_notes': str(social_recovery_notes[index] if index < len(social_recovery_notes) else '').strip()[:1000],
+            'recovery_refs': [item.strip() for item in str(social_recovery_refs[index] if index < len(social_recovery_refs) else '').split(',') if item.strip()],
+            'source': str(social_sources[index] if index < len(social_sources) else '').strip()[:160],
+            'confidence': (str(social_confidences[index] if index < len(social_confidences) else 'unverified').casefold()
+                           if str(social_confidences[index] if index < len(social_confidences) else 'unverified').casefold() in CONFIDENCE_LEVELS else 'unverified'),
+            'verified_date': str(social_verified_dates[index] if index < len(social_verified_dates) else '').strip()[:10],
         })
     for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')):
         legacy_url = str(values.get(key) or '').strip()
         if legacy_url and not any(link['platform'] == platform for link in social_links):
-            social_links.append({'platform': platform, 'url': _clean_url(legacy_url, f'{platform} link')})
+            social_links.append({'id': str(uuid.uuid4()), 'platform': platform, 'url': _clean_url(legacy_url, f'{platform} link')})
     profile['emails'] = emails
     profile['email'] = emails[0]['value'] if emails else ''
     profile['social_links'] = social_links
     profile['phone_status'] = 'partial' if values.get('phone_status') == 'partial' else 'complete'
+    profile['phone_source'] = str(values.get('phone_source') or '').strip()[:160]
+    phone_confidence = str(values.get('phone_confidence') or 'unverified').casefold()
+    profile['phone_confidence'] = phone_confidence if phone_confidence in CONFIDENCE_LEVELS else 'unverified'
+    profile['phone_verified_date'] = str(values.get('phone_verified_date') or '').strip()[:10]
+    profile['tags'] = sorted({tag.strip()[:40] for tag in str(values.get('tags') or '').split(',') if tag.strip()}, key=str.casefold)
+    status = str(values.get('profile_status') or 'active').casefold()
+    profile['profile_status'] = status if status in PROFILE_STATUSES else 'active'
     profile['facebook_url'] = next((link['url'] for link in social_links if link['platform'] == 'Facebook'), '')
     profile['linkedin_url'] = next((link['url'] for link in social_links if link['platform'] == 'LinkedIn'), '')
     if len(profile['notes']) > 10000:
@@ -109,18 +141,38 @@ def list_profiles(store, lock):
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
         ])
         profile.setdefault('phone_status', 'complete')
+        profile.setdefault('phone_source', '')
+        profile.setdefault('phone_confidence', 'unverified')
+        profile.setdefault('phone_verified_date', '')
+        profile.setdefault('tags', [])
+        profile.setdefault('profile_status', 'active')
         for email in profile['emails']:
+            email.setdefault('id', str(uuid.uuid4()))
             email.setdefault('status', 'complete')
+            email.setdefault('source', '')
+            email.setdefault('confidence', 'unverified')
+            email.setdefault('verified_date', '')
         for link in profile['social_links']:
+            link.setdefault('id', str(uuid.uuid4()))
             link.setdefault('status', 'complete')
             link.setdefault('account', '')
             link.setdefault('recovery_emails', [])
             link.setdefault('recovery_phone', '')
             link.setdefault('recovery_notes', '')
+            link.setdefault('recovery_refs', [])
+            link.setdefault('source', '')
+            link.setdefault('confidence', 'unverified')
+            link.setdefault('verified_date', '')
         for credential in profile['credentials']:
             credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
             credential.setdefault('purpose', '')
             credential.setdefault('notes', '')
+        for device in profile['devices']:
+            device.setdefault('manufacturer', '')
+            device.setdefault('model', '')
+            device.setdefault('operating_system', '')
+            device.setdefault('hostname', '')
+            device.setdefault('status', 'active')
     return sorted(profiles, key=lambda profile: profile.get('updated_at', 0), reverse=True)
 
 
@@ -138,18 +190,37 @@ def get_profile(profile_id, store, lock):
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if result.get(key)
         ])
         result.setdefault('phone_status', 'complete')
+        result.setdefault('phone_source', '')
+        result.setdefault('phone_confidence', 'unverified')
+        result.setdefault('phone_verified_date', '')
+        result.setdefault('tags', [])
+        result.setdefault('profile_status', 'active')
         for email in result['emails']:
+            email.setdefault('id', str(uuid.uuid4()))
             email.setdefault('status', 'complete')
+            email.setdefault('source', '')
+            email.setdefault('confidence', 'unverified')
+            email.setdefault('verified_date', '')
         for link in result['social_links']:
             link.setdefault('status', 'complete')
             link.setdefault('account', '')
             link.setdefault('recovery_emails', [])
             link.setdefault('recovery_phone', '')
             link.setdefault('recovery_notes', '')
+            link.setdefault('recovery_refs', [])
+            link.setdefault('source', '')
+            link.setdefault('confidence', 'unverified')
+            link.setdefault('verified_date', '')
         for credential in result['credentials']:
             credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
             credential.setdefault('purpose', '')
             credential.setdefault('notes', '')
+        for device in result['devices']:
+            device.setdefault('manufacturer', '')
+            device.setdefault('model', '')
+            device.setdefault('operating_system', '')
+            device.setdefault('hostname', '')
+            device.setdefault('status', 'active')
         return result
 
 
@@ -229,11 +300,44 @@ def delete_credential(profile_id, credential_id, store, lock):
         return True
 
 
+def update_credential(profile_id, credential_id, values, store, lock, now=None):
+    """Update credential metadata and optionally rotate its encrypted secret."""
+    with lock:
+        if profile_id not in store:
+            raise KeyError(profile_id)
+        credential = next((item for item in store[profile_id].get('credentials', []) if item.get('id') == credential_id), None)
+        if not credential:
+            raise KeyError(credential_id)
+        device_id = str(values.get('device_id') or '').strip()
+        if device_id and not any(item.get('id') == device_id for item in store[profile_id].get('devices', [])):
+            raise ValueError('Selected device was not found on this profile.')
+        website_url = _clean_url(values.get('website_url'), 'Website link')
+        kind = str(values.get('credential_kind') or credential.get('credential_kind') or 'unassigned').casefold()
+        if kind not in {'unassigned', 'website', 'device'}:
+            kind = 'unassigned'
+        rotated_ciphertext = str(values.get('secret_ciphertext') or '')
+        if rotated_ciphertext and not rotated_ciphertext.startswith('vault:v1:'):
+            raise ValueError('Password/secret must be encrypted by the credential vault.')
+        credential.update({
+            'label': str(values.get('label') or '').strip()[:160] or credential.get('label'),
+            'username': str(values.get('username') or '').strip()[:320],
+            'website_url': website_url, 'device_id': device_id, 'credential_kind': kind,
+            'purpose': str(values.get('purpose') or '').strip()[:500],
+            'notes': str(values.get('credential_notes') or '').strip()[:2000],
+            'updated_at': now if now is not None else time.time(),
+        })
+        if rotated_ciphertext:
+            credential['secret_ciphertext'] = rotated_ciphertext
+            credential['rotated_at'] = credential['updated_at']
+        store[profile_id]['updated_at'] = credential['updated_at']
+        return deepcopy(credential)
+
+
 def add_device(profile_id, values, store, lock, normalize_mac, now=None):
     """Add a device card with an optional inventory-match MAC address."""
     name = str(values.get('name') or '').strip()
     device_type = str(values.get('device_type') or 'other').strip().casefold()
-    raw_mac = str(values.get('mac') or '').strip()
+    raw_mac = str(values.get('inventory_mac') or values.get('mac') or '').strip()
     mac = normalize_mac(raw_mac) if raw_mac else None
     if not name:
         raise ValueError('Device name is required.')
@@ -244,6 +348,11 @@ def add_device(profile_id, values, store, lock, normalize_mac, now=None):
     device = {
         'id': str(uuid.uuid4()), 'name': name[:160], 'device_type': device_type,
         'icon': DEVICE_ICONS[device_type], 'mac': mac,
+        'manufacturer': str(values.get('manufacturer') or '').strip()[:160],
+        'model': str(values.get('model') or '').strip()[:160],
+        'operating_system': str(values.get('operating_system') or '').strip()[:160],
+        'hostname': str(values.get('hostname') or '').strip()[:253],
+        'status': str(values.get('device_status') or 'active').strip().casefold()[:40],
         'notes': str(values.get('notes') or '').strip()[:2000],
         'created_at': now if now is not None else time.time(),
     }
@@ -269,3 +378,59 @@ def delete_device(profile_id, device_id, store, lock):
                 credential['device_id'] = ''
         store[profile_id]['updated_at'] = time.time()
         return True
+
+
+def update_device(profile_id, device_id, values, store, lock, normalize_mac, now=None):
+    with lock:
+        if profile_id not in store:
+            raise KeyError(profile_id)
+        device = next((item for item in store[profile_id].get('devices', []) if item.get('id') == device_id), None)
+        if not device:
+            raise KeyError(device_id)
+        raw_mac = str(values.get('inventory_mac') or values.get('mac') or '').strip()
+        mac = normalize_mac(raw_mac) if raw_mac else None
+        if raw_mac and not mac:
+            raise ValueError('MAC address must contain six hexadecimal octets.')
+        device_type = str(values.get('device_type') or device.get('device_type') or 'other').casefold()
+        if device_type not in DEVICE_ICONS:
+            device_type = 'other'
+        device.update({
+            'name': str(values.get('name') or '').strip()[:160] or device.get('name'),
+            'device_type': device_type, 'icon': DEVICE_ICONS[device_type], 'mac': mac,
+            'manufacturer': str(values.get('manufacturer') or '').strip()[:160],
+            'model': str(values.get('model') or '').strip()[:160],
+            'operating_system': str(values.get('operating_system') or '').strip()[:160],
+            'hostname': str(values.get('hostname') or '').strip()[:253],
+            'status': str(values.get('device_status') or 'active').strip().casefold()[:40],
+            'notes': str(values.get('notes') or '').strip()[:2000],
+            'updated_at': now if now is not None else time.time(),
+        })
+        store[profile_id]['updated_at'] = device['updated_at']
+        return deepcopy(device)
+
+
+def search_profiles(profiles, query='', status='', tag=''):
+    query = str(query or '').strip().casefold()
+    status = str(status or '').strip().casefold()
+    tag = str(tag or '').strip().casefold()
+    results = []
+    for profile in profiles:
+        if status and profile.get('profile_status') != status:
+            continue
+        if tag and tag not in {item.casefold() for item in profile.get('tags', [])}:
+            continue
+        searchable = [profile.get('full_name'), profile.get('organization'), profile.get('job_title'), profile.get('phone'), profile.get('notes')]
+        searchable.extend(profile.get('tags', []))
+        searchable.extend(item.get('value') for item in profile.get('emails', []))
+        for item in profile.get('social_links', []):
+            searchable.extend([item.get('platform'), item.get('account'), item.get('url'), item.get('source')])
+            searchable.extend(item.get('recovery_emails', []))
+            searchable.append(item.get('recovery_phone'))
+        for item in profile.get('devices', []):
+            searchable.extend([item.get('name'), item.get('mac'), item.get('manufacturer'), item.get('model'), item.get('hostname')])
+        for item in profile.get('credentials', []):
+            searchable.extend([item.get('label'), item.get('username'), item.get('purpose'), item.get('notes')])
+        if query and query not in ' '.join(str(value or '') for value in searchable).casefold():
+            continue
+        results.append(profile)
+    return results

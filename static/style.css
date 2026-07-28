@@ -636,3 +636,8 @@ html[data-theme="dark"] .evidence-output {
 .social-account-card small, .social-account-card a, .social-recovery-summary { display: block; margin-top: .3rem; overflow-wrap: anywhere; }
 .social-account-card a { padding: 0; border: 0; border-radius: 0; }
 .social-recovery-summary { padding-top: .6rem; border-top: 1px dashed var(--theme-border, #dee2e6); }
+.social-search-bar { margin-bottom: 1rem; }
+.social-search-grid { display: grid; grid-template-columns: minmax(14rem, 2fr) repeat(2, minmax(9rem, 1fr)) auto auto; gap: .6rem; }
+.social-profile-details small { display: block; color: var(--theme-muted, #6c757d); margin-top: .2rem; }
+.recovery-ref-picker { min-height: 6rem; }
+@media (max-width: 768px) { .social-search-grid { grid-template-columns: 1fr; } }
