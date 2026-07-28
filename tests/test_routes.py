@@ -494,6 +494,31 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'saab/body.txt', response.data)
         self.assertNotIn(b'README.md', response.data)
 
+    def test_import_review_paginates_and_preserves_page_selections(self):
+        rows = ['code,description'] + [f'B{index:04X},Definition {index}' for index in range(60)]
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            uploaded = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(('\n'.join(rows) + '\n').encode()), 'many.csv'),
+                'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data')
+            review_url = uploaded.headers['Location']
+            page_one = self.client.get(f'{review_url}?per_page=25&page=1')
+            saved = self.client.post(f'{review_url}/selection', data={
+                'page_index': [str(index) for index in range(25)],
+                'selected': [str(index) for index in range(1, 25)],
+                'page': '1', 'next_page': '2', 'per_page': '25', 'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+            applied = self.client.post(f'{review_url}/apply', data={'csrf_token': self.csrf_token}, follow_redirects=True)
+        self.assertEqual(page_one.status_code, 200)
+        self.assertEqual(page_one.data.count(b'class="import-record-checkbox"'), 25)
+        self.assertIn(b'Page 1 of 3', page_one.data)
+        self.assertIn(b'Entries per page', page_one.data)
+        self.assertIn(b'59</strong> of 60 records selected', saved.data)
+        self.assertIn(b'Page 2 of 3', saved.data)
+        self.assertIn(b'Imported 59 database records', applied.data)
+
 
 
     def test_scrollable_interface_lists_do_not_render_blue_focus_box(self):

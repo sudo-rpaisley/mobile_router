@@ -237,6 +237,10 @@ person detail remains protected by the existing profile ownership rules.
 Database uploads are staged before they affect live lookups. The review page
 shows every parsed record and lets an administrator exclude incorrect rows,
 approve the selected records in one transaction, or discard the staged import.
+Large staged imports are paginated to avoid rendering every definition in the
+browser at once. Users can display 25, 50, 100, or 250 entries per page; page
+selections are saved in SQLite while moving between pages, and the final import
+applies the combined selections from the entire staged dataset.
 
 The **DTC CSV, text, or searchable PDF** upload option accepts both simple CSV
 files (`code,description,make`) and detailed versioned definitions. Detailed

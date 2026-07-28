@@ -9,6 +9,7 @@ import socket
 import ipaddress
 import importlib
 import zipfile
+import math
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.error import HTTPError, URLError
@@ -197,12 +198,35 @@ def create_automotive_blueprint(context_provider):
         pending = store().pending_import(pending_id)
         if not pending:
             abort(404)
-        return render_template('automotive_import_review.html', title='Review Import', pending=pending, **context_provider())
+        choices = (25, 50, 100, 250)
+        try:
+            per_page = int(request.args.get('per_page', 50)); page = int(request.args.get('page', 1))
+        except ValueError:
+            per_page, page = 50, 1
+        per_page = per_page if per_page in choices else 50
+        page_count = max(1, math.ceil(len(pending['records']) / per_page)); page = min(max(page, 1), page_count)
+        start = (page - 1) * per_page
+        records = [{'index': start + offset, 'record': record} for offset, record in enumerate(pending['records'][start:start + per_page])]
+        return render_template('automotive_import_review.html', title='Review Import', pending=pending, records=records,
+                               page=page, page_count=page_count, per_page=per_page, per_page_choices=choices,
+                               selected_count=len(pending['records']) - len(pending.get('excluded', [])), **context_provider())
+
+    @blueprint.post('/automotive/imports/<int:pending_id>/selection')
+    def save_import_selection(pending_id):
+        try:
+            store().update_pending_selection(pending_id, request.form.getlist('page_index'), request.form.getlist('selected'))
+        except ValueError:
+            abort(404)
+        return redirect(url_for('automotive.review_import', pending_id=pending_id,
+                                page=request.form.get('next_page') or request.form.get('page') or 1,
+                                per_page=request.form.get('per_page') or 50, selection_saved=1))
 
     @blueprint.post('/automotive/imports/<int:pending_id>/apply')
     def apply_import(pending_id):
         try:
-            _, count = store().apply_pending_import(pending_id, request.form.getlist('selected'))
+            if request.form.getlist('page_index'):
+                store().update_pending_selection(pending_id, request.form.getlist('page_index'), request.form.getlist('selected'))
+            _, count = store().apply_pending_import(pending_id)
         except ValueError as exc:
             return Response(str(exc), status=400)
         return redirect(url_for('automotive.index', imported=count, kind='database'))

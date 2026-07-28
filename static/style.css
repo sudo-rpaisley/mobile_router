@@ -723,6 +723,9 @@ html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1;
 .identity-document-card small { display: block; color: var(--theme-muted); }
 .identity-document-large { width: 100%; max-height: 34rem; object-fit: contain; border-radius: .75rem; background: #0b1220; }
 .identity-ocr-text { max-height: 28rem; overflow: auto; white-space: pre-wrap; }
+.automotive-review-toolbar, .automotive-pagination { display: flex; justify-content: space-between; align-items: end; gap: .75rem; flex-wrap: wrap; }
+.automotive-review-toolbar .form-control { width: auto; min-width: 7rem; }
+.automotive-pagination { justify-content: center; margin: 1rem 0; }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
 html[data-theme="dark"] .form-control:focus,

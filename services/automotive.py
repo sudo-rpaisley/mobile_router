@@ -89,6 +89,9 @@ class AutomotiveStore:
                 db.execute("ALTER TABLE workshop_reports ADD COLUMN code_snapshot TEXT NOT NULL DEFAULT '{}'")
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
+            pending_columns = {row['name'] for row in db.execute('PRAGMA table_info(pending_imports)')}
+            if 'excluded' not in pending_columns:
+                db.execute("ALTER TABLE pending_imports ADD COLUMN excluded TEXT NOT NULL DEFAULT '[]'")
             db.execute('DROP TABLE IF EXISTS diagnostic_capabilities')
             db.execute("DELETE FROM pending_imports WHERE kind = 'capability'")
             db.execute("DELETE FROM import_batches WHERE kind = 'capability'")
@@ -98,7 +101,7 @@ class AutomotiveStore:
                     SELECT code,SUBSTR(code,1,1),description,CASE WHEN make='' THEN 'generic' ELSE 'manufacturer' END,
                     make,source,'active',? FROM dtc""", (time.time(),))
                 db.execute('DROP TABLE dtc')
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '8')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '9')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -170,6 +173,7 @@ class AutomotiveStore:
         if not row:
             return None
         result = dict(row); result['records'] = json.loads(result['records'])
+        result['excluded'] = [int(item) for item in json.loads(result.get('excluded') or '[]')]
         return result
 
     def pending_imports(self):
@@ -185,7 +189,9 @@ class AutomotiveStore:
         if not pending:
             raise ValueError('Pending import not found.')
         selected = set(str(item) for item in selected) if selected is not None else None
-        records = [record for index, record in enumerate(pending['records']) if selected is None or str(index) in selected]
+        excluded = set(str(item) for item in pending.get('excluded', []))
+        records = [record for index, record in enumerate(pending['records'])
+                   if (selected is None and str(index) not in excluded) or (selected is not None and str(index) in selected)]
         if not records:
             raise ValueError('Select at least one record to import.')
         with self.connect() as db:
@@ -202,6 +208,21 @@ class AutomotiveStore:
                                 (pending['kind'], pending['source'], pending['sha256'], len(records), time.time()))
             db.execute('DELETE FROM pending_imports WHERE id=?', (pending_id,))
         return cursor.lastrowid, len(records)
+
+    def update_pending_selection(self, pending_id, page_indices, selected_indices):
+        pending = self.pending_import(pending_id)
+        if not pending:
+            raise ValueError('Pending import not found.')
+        valid = {str(index) for index in range(len(pending['records']))}
+        page_indices = set(str(item) for item in page_indices) & valid
+        selected_indices = set(str(item) for item in selected_indices) & page_indices
+        excluded = set(str(item) for item in pending.get('excluded', []))
+        excluded.difference_update(page_indices)
+        excluded.update(page_indices - selected_indices)
+        with self.connect() as db:
+            db.execute('UPDATE pending_imports SET excluded=? WHERE id=?',
+                       (json.dumps(sorted(excluded, key=int)), pending_id))
+        return len(pending['records']) - len(excluded)
 
     def discard_pending_import(self, pending_id):
         with self.connect() as db:
