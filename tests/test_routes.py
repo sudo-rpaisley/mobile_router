@@ -566,6 +566,34 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Immutable scan', saved.data)
         self.assertIn(b'Immutable diagnostic session', saved.data)
 
+    def test_vehicle_module_stored_values_can_be_staged_and_simulated(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            vehicle_id = database.save_vehicle({'vin': 'YS3DH38KX22031788', 'make': 'Saab'})
+            module_id = database.add_vehicle_module(vehicle_id, {'module_name': 'BCM'})
+            saved = self.client.post(f'/automotive/vehicles/{vehicle_id}/parameters', data={
+                'csrf_token': self.csrf_token, 'module_id': module_id, 'title': 'BCM values',
+                'values_json': '{"indicator_flash_count": 3}',
+            }, follow_redirects=True)
+            snapshot_id = database.parameter_snapshots(vehicle_id)[0]['id']
+            staged = self.client.post(f'/automotive/parameters/{snapshot_id}/changes', data={
+                'csrf_token': self.csrf_token, 'parameter_key': 'indicator_flash_count', 'proposed_value': '5',
+            }, follow_redirects=True)
+            change_id = database.parameter_changes(snapshot_id)[0]['id']
+            refused = self.client.post(f'/automotive/parameters/{snapshot_id}/changes/{change_id}/apply', data={
+                'csrf_token': self.csrf_token, 'transport': 'usb',
+            })
+            simulated = self.client.post(f'/automotive/parameters/{snapshot_id}/changes/{change_id}/apply', data={
+                'csrf_token': self.csrf_token, 'transport': 'simulator',
+            }, follow_redirects=True)
+        self.assertIn(b'BCM values', saved.data)
+        self.assertIn(b'5', staged.data)
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn(b'Real-vehicle programming is not available', refused.data)
+        self.assertIn(b'No vehicle was modified', simulated.data)
+
     def test_dtc_zip_stages_multiple_supported_files(self):
         archive_bytes = io.BytesIO()
         with zipfile.ZipFile(archive_bytes, 'w', zipfile.ZIP_DEFLATED) as archive:

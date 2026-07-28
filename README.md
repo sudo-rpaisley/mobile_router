@@ -238,6 +238,11 @@ administrator conflict-review workflow. Automotive writes require CSRF validatio
 database imports and conflict resolution require an administrator, while vehicle,
 session, and report changes require an editor or administrator. Recognized vehicle
 brands use Simple Icons manufacturer marks with a text fallback for other makes.
+Vehicle modules can retain immutable JSON snapshots of all coding/configuration
+values, such as indicator flash count or lighting timers. Editors can stage a
+before/after change with units and notes. Applying is currently restricted to
+the simulator: real ECU programming is deliberately blocked until a verified
+reader transport can back up, write, read back, and verify the module safely.
 Saved vehicles can also be connected to owned person records with owner, primary
 driver, driver, registered keeper, technician, previous-owner, or general
 association roles. Automotive links retain a display-name snapshot while the

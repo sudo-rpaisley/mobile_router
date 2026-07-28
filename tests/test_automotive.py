@@ -270,6 +270,24 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.store.resolve_dtc_conflict(conflicts[0][1]['id'], 'disable')
         self.assertEqual(self.store.dtc_conflicts(), [])
 
+    def test_module_values_stage_changes_and_only_apply_to_simulator(self):
+        vehicle_id = self.store.save_vehicle({'vin': 'YS3DH38KX22031788', 'make': 'Saab'})
+        module_id = self.store.add_vehicle_module(vehicle_id, {'module_name': 'BCM', 'module_address': '0x245'})
+        snapshot_id = self.store.save_parameter_snapshot(vehicle_id, {
+            'module_id': str(module_id), 'title': 'Original BCM values',
+            'values_json': '{"indicator_flash_count": 3, "follow_me_home_seconds": 30}',
+        }, 'technician')
+        snapshot = self.store.parameter_snapshot(snapshot_id)
+        self.assertEqual(snapshot['values']['indicator_flash_count'], 3)
+        change_id = self.store.stage_parameter_change(snapshot_id, {
+            'parameter_key': 'indicator_flash_count', 'proposed_value': '5', 'units': 'flashes',
+        }, 'technician')
+        with self.assertRaisesRegex(ValueError, 'Real-vehicle programming is not available'):
+            self.store.apply_parameter_change(change_id, 'usb', 'admin')
+        self.store.apply_parameter_change(change_id, 'simulator', 'admin')
+        self.assertEqual(self.store.parameter_changes(snapshot_id)[0]['status'], 'simulated')
+        self.assertEqual(self.store.parameter_snapshot(snapshot_id)['values']['indicator_flash_count'], 3)
+
     def test_zip_uncompressed_limit_is_larger_than_upload_limit(self):
         self.assertEqual(MAX_ARCHIVE_UNCOMPRESSED_BYTES, 250 * 1024 * 1024)
 

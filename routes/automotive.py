@@ -153,12 +153,13 @@ def create_automotive_blueprint(context_provider):
 
     admin_endpoints = {'automotive.import_vin', 'automotive.import_dtc', 'automotive.deduplicate_dtc',
                        'automotive.save_import_selection', 'automotive.apply_import', 'automotive.discard_import',
-                       'automotive.resolve_conflict'}
+                       'automotive.resolve_conflict', 'automotive.apply_parameter_change'}
     write_endpoints = {'automotive.save_vehicle', 'automotive.save_report', 'automotive.vehicle_detail',
                        'automotive.archive_vehicle', 'automotive.add_vehicle_identifier',
                        'automotive.delete_vehicle_identifier', 'automotive.add_vehicle_module',
                        'automotive.delete_vehicle_module', 'automotive.add_vehicle_person',
                        'automotive.delete_vehicle_person', 'automotive.save_diagnostic_session'}
+    write_endpoints.update({'automotive.save_parameter_snapshot', 'automotive.stage_parameter_change'})
 
     @blueprint.before_request
     def protect_automotive_writes():
@@ -363,6 +364,41 @@ def create_automotive_blueprint(context_provider):
         return render_template('automotive_session.html', title=diagnostic_session['title'],
                                diagnostic_session=diagnostic_session, **context_provider())
 
+    @blueprint.post('/automotive/vehicles/<int:vehicle_id>/parameters')
+    def save_parameter_snapshot(vehicle_id):
+        try:
+            snapshot_id = store().save_parameter_snapshot(
+                vehicle_id, request.form, (session.get('social_user') or {}).get('username', ''))
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.parameter_snapshot_detail', snapshot_id=snapshot_id))
+
+    @blueprint.get('/automotive/parameters/<int:snapshot_id>')
+    def parameter_snapshot_detail(snapshot_id):
+        snapshot = store().parameter_snapshot(snapshot_id)
+        if not snapshot:
+            abort(404)
+        return render_template('automotive_parameters.html', title=snapshot['title'], snapshot=snapshot,
+                               **context_provider())
+
+    @blueprint.post('/automotive/parameters/<int:snapshot_id>/changes')
+    def stage_parameter_change(snapshot_id):
+        try:
+            store().stage_parameter_change(snapshot_id, request.form,
+                                           (session.get('social_user') or {}).get('username', ''))
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.parameter_snapshot_detail', snapshot_id=snapshot_id))
+
+    @blueprint.post('/automotive/parameters/<int:snapshot_id>/changes/<int:change_id>/apply')
+    def apply_parameter_change(snapshot_id, change_id):
+        try:
+            store().apply_parameter_change(change_id, request.form.get('transport'),
+                                           (session.get('social_user') or {}).get('username', ''), snapshot_id)
+        except ValueError as exc:
+            return Response(str(exc), status=400)
+        return redirect(url_for('automotive.parameter_snapshot_detail', snapshot_id=snapshot_id, simulated=1))
+
     @blueprint.post('/automotive/reports')
     def save_report():
         try:
@@ -385,6 +421,7 @@ def create_automotive_blueprint(context_provider):
                 error = str(exc)
         return render_template('automotive_vehicle.html', title='Vehicle', vehicle=database.vehicle(vehicle_id),
                                identifiers=database.vehicle_identifiers(vehicle_id), modules=database.vehicle_modules(vehicle_id),
+                               parameter_snapshots=database.parameter_snapshots(vehicle_id),
                                people=people(), vehicle_people=database.vehicle_people(vehicle_id),
                                reports=database.reports(), error=error, **context_provider())
 

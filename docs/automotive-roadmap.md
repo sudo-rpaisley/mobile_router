@@ -31,6 +31,10 @@ implemented. Transport connectors and the live diagnostics workspace remain.
   framing across BLE readers.
 - Gate DTC clearing behind a saved pre-clear scan, explicit confirmation,
   readiness-reset guidance, an audit event, and an automatic post-clear scan.
+- Stored module-value snapshots and staged parameter changes are now supported.
+  Applying a change is intentionally simulator-only until a hardware transport
+  implements compatibility checks, pre-write backup, verified write, read-back,
+  rollback guidance, and an immutable audit record.
 
 ## 3. Offline data quality
 

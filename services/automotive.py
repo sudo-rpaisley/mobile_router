@@ -92,6 +92,18 @@ class AutomotiveStore:
                     code_snapshot TEXT NOT NULL DEFAULT '{}', created_by TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
                     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id));
                 CREATE INDEX IF NOT EXISTS idx_diagnostic_sessions_vehicle ON diagnostic_sessions(vehicle_id, created_at);
+                CREATE TABLE IF NOT EXISTS module_parameter_snapshots (id INTEGER PRIMARY KEY, vehicle_id INTEGER NOT NULL,
+                    module_id INTEGER NOT NULL, diagnostic_session_id INTEGER, title TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual', values_json TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '',
+                    captured_at TEXT NOT NULL, created_at REAL NOT NULL,
+                    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id), FOREIGN KEY(module_id) REFERENCES vehicle_modules(id),
+                    FOREIGN KEY(diagnostic_session_id) REFERENCES diagnostic_sessions(id));
+                CREATE TABLE IF NOT EXISTS module_parameter_changes (id INTEGER PRIMARY KEY, snapshot_id INTEGER NOT NULL,
+                    parameter_key TEXT NOT NULL, original_value TEXT NOT NULL, proposed_value TEXT NOT NULL,
+                    units TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'draft', notes TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '', approved_by TEXT NOT NULL DEFAULT '', apply_transport TEXT NOT NULL DEFAULT '',
+                    applied_at REAL, created_at REAL NOT NULL, FOREIGN KEY(snapshot_id) REFERENCES module_parameter_snapshots(id));
+                CREATE INDEX IF NOT EXISTS idx_parameter_snapshots_vehicle ON module_parameter_snapshots(vehicle_id, created_at);
             """)
             columns = {row['name'] for row in db.execute('PRAGMA table_info(vehicles)')}
             if 'archived_at' not in columns:
@@ -119,10 +131,10 @@ class AutomotiveStore:
             if 'definition_key' not in dtc_columns:
                 db.execute("ALTER TABLE dtc_definitions ADD COLUMN definition_key TEXT NOT NULL DEFAULT ''")
             schema_row = db.execute("SELECT value FROM automotive_meta WHERE key='schema_version'").fetchone()
-            if not schema_row or schema_row['value'] not in {'10', '11'}:
+            if not schema_row or schema_row['value'] not in {'10', '11', '12'}:
                 self._deduplicate_dtc_definitions(db)
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dtc_definition_key ON dtc_definitions(definition_key) WHERE definition_key<>''")
-            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '11')")
+            db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '12')")
             self._seed_bundled_wmi(db)
 
     @staticmethod
@@ -709,6 +721,89 @@ class AutomotiveStore:
             cursor = db.execute('DELETE FROM vehicle_modules WHERE id=? AND vehicle_id=?', (module_id, vehicle_id))
         if not cursor.rowcount:
             raise ValueError('Vehicle module not found.')
+
+    def save_parameter_snapshot(self, vehicle_id, values, created_by=''):
+        vehicle = self.vehicle(vehicle_id)
+        if not vehicle:
+            raise ValueError('Vehicle not found.')
+        module_id = values.get('module_id')
+        module = next((item for item in self.vehicle_modules(vehicle_id) if str(item['id']) == str(module_id)), None)
+        if not module:
+            raise ValueError('Select a module belonging to this vehicle.')
+        parameters = self._json_field(values.get('values_json'), dict, 'Stored values')
+        if not parameters or len(parameters) > 2000:
+            raise ValueError('Stored values must contain between 1 and 2000 parameters.')
+        normalized = {}
+        for key, value in parameters.items():
+            key = str(key).strip()[:200]
+            if key:
+                normalized[key] = value
+        with self.connect() as db:
+            cursor = db.execute("""INSERT INTO module_parameter_snapshots(vehicle_id,module_id,diagnostic_session_id,
+                title,source,values_json,created_by,captured_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)""", (
+                vehicle_id, module_id, values.get('diagnostic_session_id') or None,
+                str(values.get('title') or f"{module['module_name']} stored values").strip()[:200],
+                str(values.get('source') or 'manual').strip()[:100], json.dumps(normalized), str(created_by or '')[:200],
+                str(values.get('captured_at') or datetime.now().isoformat()), time.time(),
+            ))
+        return cursor.lastrowid
+
+    def parameter_snapshots(self, vehicle_id=None):
+        query = """SELECT s.*,m.module_name,m.module_address,v.vin,v.nickname FROM module_parameter_snapshots s
+            JOIN vehicle_modules m ON m.id=s.module_id JOIN vehicles v ON v.id=s.vehicle_id"""
+        params = []
+        if vehicle_id is not None:
+            query += ' WHERE s.vehicle_id=?'; params.append(vehicle_id)
+        with self.connect() as db:
+            rows = [dict(row) for row in db.execute(query + ' ORDER BY s.created_at DESC', params)]
+        for row in rows:
+            row['values'] = json.loads(row.pop('values_json'))
+        return rows
+
+    def parameter_snapshot(self, snapshot_id):
+        snapshot = next((item for item in self.parameter_snapshots() if str(item['id']) == str(snapshot_id)), None)
+        if snapshot:
+            snapshot['changes'] = self.parameter_changes(snapshot_id)
+        return snapshot
+
+    def stage_parameter_change(self, snapshot_id, values, created_by=''):
+        snapshot = self.parameter_snapshot(snapshot_id)
+        if not snapshot:
+            raise ValueError('Stored-value snapshot not found.')
+        key = str(values.get('parameter_key') or '').strip()
+        if key not in snapshot['values']:
+            raise ValueError('Select a parameter from this snapshot.')
+        proposed = str(values.get('proposed_value') or '').strip()
+        if not proposed:
+            raise ValueError('Enter a proposed value.')
+        with self.connect() as db:
+            cursor = db.execute("""INSERT INTO module_parameter_changes(snapshot_id,parameter_key,original_value,
+                proposed_value,units,status,notes,created_by,created_at) VALUES(?,?,?,?,?,'draft',?,?,?)""", (
+                snapshot_id, key, json.dumps(snapshot['values'][key]), proposed[:1000],
+                str(values.get('units') or '').strip()[:50], str(values.get('notes') or '').strip(),
+                str(created_by or '')[:200], time.time(),
+            ))
+        return cursor.lastrowid
+
+    def parameter_changes(self, snapshot_id):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                'SELECT * FROM module_parameter_changes WHERE snapshot_id=? ORDER BY created_at,id', (snapshot_id,))]
+
+    def apply_parameter_change(self, change_id, transport, approved_by='', snapshot_id=None):
+        """Apply only through the simulator until a verified hardware transport implements this contract."""
+        transport = str(transport or '').strip().casefold()
+        if transport != 'simulator':
+            raise ValueError('Real-vehicle programming is not available yet. Use the simulator to verify this change safely.')
+        with self.connect() as db:
+            query = """UPDATE module_parameter_changes SET status='simulated',approved_by=?,
+                apply_transport='simulator',applied_at=? WHERE id=? AND status='draft'"""
+            params = [str(approved_by or '')[:200], time.time(), change_id]
+            if snapshot_id is not None:
+                query += ' AND snapshot_id=?'; params.append(snapshot_id)
+            cursor = db.execute(query, params)
+        if not cursor.rowcount:
+            raise ValueError('Draft parameter change not found.')
 
     def vehicle_people(self, vehicle_id):
         with self.connect() as db:
