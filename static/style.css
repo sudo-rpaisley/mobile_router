@@ -700,6 +700,18 @@ html[data-theme="dark"] .close {
 html[data-theme="dark"] .close:hover,
 html[data-theme="dark"] .close:focus { color: #fff; opacity: 1; }
 html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1; }
+
+.automotive-lookup-form { max-width: 58rem; margin-bottom: 1.5rem; }
+.automotive-lookup-controls { display: flex; gap: .75rem; align-items: stretch; }
+.automotive-lookup-controls .form-control { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.automotive-lookup-controls .btn { flex: 0 0 auto; }
+.automotive-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 1.25rem; border-top: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); }
+.automotive-result-heading h2 { margin-bottom: 0; }
+.automotive-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin: 1.5rem 0 0; }
+.automotive-result-grid > div { padding: 1rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .75rem; background: rgba(128, 144, 168, .06); }
+.automotive-result-grid dt { margin-bottom: .35rem; }
+.automotive-result-grid dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .automotive-lookup-controls { flex-direction: column; } .automotive-result-heading { align-items: flex-start; flex-direction: column; } }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
 html[data-theme="dark"] .form-control:focus,

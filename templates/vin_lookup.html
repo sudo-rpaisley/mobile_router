@@ -1,3 +1,37 @@
-{% extends 'base.html' %}{% block title %}VIN Lookup{% endblock %}{% block content %}
-<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Offline automotive data</p><h1 class="page-title">VIN lookup</h1><p class="page-subtitle">VIN decoding uses only the WMI database imported on this device.</p></div></section>
-<section class="theme-card card"><div class="card-body"><form method="get"><label for="vin">VIN</label><input id="vin" class="form-control" name="vin" value="{{ vin }}" maxlength="17" required><button class="btn btn-primary" type="submit">Look up VIN</button></form>{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}{% if result %}<h2>{{ result.manufacturer or 'Unknown manufacturer' }}</h2><dl><dt>VIN</dt><dd><code>{{ result.vin }}</code></dd><dt>WMI</dt><dd>{{ result.wmi }}</dd><dt>Country</dt><dd>{{ result.country or 'Not in local database' }}</dd><dt>Check digit</dt><dd>{{ 'Valid' if result.checksum_valid else 'Does not match (some markets do not require it)' }}</dd><dt>Model-year code</dt><dd>{{ result.model_year_code }}</dd><dt>Plant code</dt><dd>{{ result.plant_code }}</dd><dt>Serial</dt><dd>{{ result.serial_number }}</dd></dl>{% endif %}</div></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}VIN Lookup{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Offline automotive data</p>
+    <h1 class="page-title">VIN lookup</h1>
+    <p class="page-subtitle">VIN decoding uses the bundled WMI baseline and databases imported on this device. It never performs an online lookup.</p>
+  </div>
+</section>
+<section class="theme-card card automotive-lookup-card"><div class="card-body">
+  <form method="get" class="automotive-lookup-form">
+    <label for="vin">VIN</label>
+    <div class="automotive-lookup-controls">
+      <input id="vin" class="form-control" name="vin" value="{{ vin }}" minlength="17" maxlength="17" autocomplete="off" spellcheck="false" required>
+      <button class="btn btn-primary" type="submit">Look up VIN</button>
+    </div>
+  </form>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  {% if result %}
+    <div class="automotive-result-heading">
+      <div><p class="page-kicker">Local match</p><h2>{{ result.manufacturer or 'Manufacturer not found' }}</h2></div>
+      <span class="badge badge-{{ 'success' if result.database_match else 'warning' }}">{{ 'Database match' if result.database_match else 'No local WMI match' }}</span>
+    </div>
+    <dl class="automotive-result-grid">
+      <div><dt>VIN</dt><dd><code>{{ result.vin }}</code></dd></div>
+      <div><dt>WMI</dt><dd>{{ result.wmi }}</dd></div>
+      <div><dt>Country</dt><dd>{{ result.country or 'Not in local database' }}</dd></div>
+      <div><dt>Check digit</dt><dd>{{ 'Valid' if result.checksum_valid else 'Does not match or is not required in this market' }}</dd></div>
+      <div><dt>Model year</dt><dd>{{ result.model_year or 'Unknown' }} <small class="text-muted">(code {{ result.model_year_code }})</small></dd></div>
+      <div><dt>Plant code</dt><dd>{{ result.plant_code }}</dd></div>
+      <div><dt>Serial number</dt><dd>{{ result.serial_number }}</dd></div>
+      {% if result.manufacturer_type %}<div><dt>Manufacturer type</dt><dd>{{ result.manufacturer_type }}</dd></div>{% endif %}
+    </dl>
+  {% endif %}
+</div></section>
+{% endblock %}

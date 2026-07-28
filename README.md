@@ -195,6 +195,10 @@ PDF. Image-only/scanned PDFs must be OCRed first. A direct HTTP(S) link can be
 supplied as an explicit import action, but all later lookups use the saved local
 copy. Imports are capped at 25 MB.
 
+A small bundled WMI baseline provides useful first-run offline results before a
+larger database is imported; it currently includes Saab passenger vehicles
+(`YS3`). Imported rows extend the baseline and take precedence for matching WMIs.
+
 Reports can associate error codes and make-specific translations with a saved
 vehicle, record odometer, technician, work performed, and notes, and export as
 JSON, CSV, or PDF. The reader panel documents the intended future OBD-II adapter

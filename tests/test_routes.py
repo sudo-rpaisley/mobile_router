@@ -317,6 +317,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Remote cracking orchestration', response.data)
         self.assertIn(b'PineAP-style recon and campaign engine', response.data)
         self.assertIn(b'Hak5-inspired lab features', response.data)
+
         self.assertIn(b'Payload profile switchboard', response.data)
         self.assertIn(b'Inline network tap mode', response.data)
         self.assertIn(b'Central capability registry', response.data)
@@ -363,6 +364,17 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Done', response.data)
         self.assertIn(b'completed', response.data)
         self.assertIn(b'remaining', response.data)
+
+    def test_bundled_saab_vin_lookup(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.get('/automotive/vin?vin=ys3dh38kx22031788')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Saab Automobile AB', response.data)
+        self.assertIn(b'Sweden', response.data)
+        self.assertIn(b'2002', response.data)
+        self.assertIn(b'Database match', response.data)
 
 
 

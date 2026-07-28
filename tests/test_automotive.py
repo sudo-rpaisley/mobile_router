@@ -22,6 +22,13 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.assertEqual(result['vehicle_type'], 'Passenger car')
         self.assertTrue(result['checksum_valid'])
 
+    def test_bundled_saab_wmi_and_model_year(self):
+        result = self.store.lookup_vin('YS3DH38KX22031788')
+        self.assertEqual(result['manufacturer'], 'Saab Automobile AB')
+        self.assertEqual(result['country'], 'Sweden')
+        self.assertEqual(result['model_year'], 2002)
+        self.assertTrue(result['database_match'])
+
     def test_vin_validation(self):
         with self.assertRaisesRegex(ValueError, '17'):
             self.store.lookup_vin('NOT-A-VIN')
@@ -76,13 +83,13 @@ class AutomotiveStoreTest(unittest.TestCase):
             self.store.save_report({'codes': 'NOTACODE'})
 
     def test_staged_import_does_not_change_live_lookup_until_approved(self):
-        content = b'wmi,manufacturer,country\nYS3,Saab,Sweden\n1HG,Honda,USA\n'
+        content = b'wmi,manufacturer,country\nWVW,Volkswagen,Germany\n1HG,Honda,USA\n'
         records = self.store.parse_vin_csv(content)
         pending_id = self.store.stage_import('vin', 'vehicles.csv', content, records)
-        self.assertEqual(self.store.lookup_vin('YS3FD49Y681000001').get('manufacturer'), None)
+        self.assertEqual(self.store.lookup_vin('WVWZZZ1JZXW000001').get('manufacturer'), None)
         _, count = self.store.apply_pending_import(pending_id, ['0'])
         self.assertEqual(count, 1)
-        self.assertEqual(self.store.lookup_vin('YS3FD49Y681000001')['manufacturer'], 'Saab')
+        self.assertEqual(self.store.lookup_vin('WVWZZZ1JZXW000001')['manufacturer'], 'Volkswagen')
         self.assertEqual(self.store.lookup_vin('1HGCM82633A004352').get('manufacturer'), None)
         self.assertIsNone(self.store.pending_import(pending_id))
 

@@ -8,6 +8,7 @@ import re
 import sqlite3
 import time
 import hashlib
+from datetime import datetime
 
 
 VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
@@ -15,6 +16,8 @@ DTC_RE = re.compile(r"\b([PBCU][0-9A-F]{4})\b", re.I)
 TRANSLITERATION = {**{str(i): i for i in range(10)}, **dict(zip("ABCDEFGH", range(1, 9))),
                    **dict(zip("JKLMNPR", (1, 2, 3, 4, 5, 7, 9))), **dict(zip("STUVWXYZ", (2, 3, 4, 5, 6, 7, 8, 9)))}
 WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+MODEL_YEAR_CODES = 'ABCDEFGHJKLMNPRSTVWXY123456789'
+BUNDLED_WMI_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'automotive', 'wmi_db.csv')
 
 
 class AutomotiveStore:
@@ -63,6 +66,32 @@ class AutomotiveStore:
             if 'updated_at' not in report_columns:
                 db.execute('ALTER TABLE workshop_reports ADD COLUMN updated_at REAL')
             db.execute("INSERT OR REPLACE INTO automotive_meta VALUES ('schema_version', '3')")
+            self._seed_bundled_wmi(db)
+
+    @staticmethod
+    def _seed_bundled_wmi(db):
+        """Add the small shipped WMI baseline without replacing user imports."""
+        if not os.path.isfile(BUNDLED_WMI_PATH):
+            return
+        with open(BUNDLED_WMI_PATH, encoding='utf-8-sig', newline='') as handle:
+            for row in csv.DictReader(handle):
+                wmi = str(row.get('wmi') or '').strip().upper()
+                if re.fullmatch(r'[A-HJ-NPR-Z0-9]{3}', wmi):
+                    details = {key: value for key, value in row.items() if key not in {'wmi', 'manufacturer', 'country'} and value}
+                    db.execute('INSERT OR IGNORE INTO vin_data VALUES (?,?,?,?)',
+                               (wmi, row.get('manufacturer', '').strip(), row.get('country', '').strip(), json.dumps(details)))
+
+    @staticmethod
+    def model_year(code, reference_year=None):
+        """Resolve the repeating VIN year code to the most plausible past year."""
+        code = str(code or '').upper()
+        if code not in MODEL_YEAR_CODES:
+            return None
+        reference_year = reference_year or datetime.now().year
+        base = 1980 + MODEL_YEAR_CODES.index(code)
+        candidates = [base + (30 * cycle) for cycle in range(4)]
+        eligible = [year for year in candidates if year <= reference_year + 1]
+        return max(eligible) if eligible else base
 
     @staticmethod
     def digest(content):
@@ -171,7 +200,8 @@ class AutomotiveStore:
         if decoded.get('details'):
             decoded.update(json.loads(decoded.pop('details')))
         decoded.update({'vin': vin, 'wmi': vin[:3], 'model_year_code': vin[9], 'plant_code': vin[10],
-                        'serial_number': vin[11:], 'checksum_valid': checksum_valid})
+                        'model_year': self.model_year(vin[9]), 'serial_number': vin[11:],
+                        'checksum_valid': checksum_valid, 'database_match': bool(row)})
         return decoded
 
     def import_vin_csv(self, content):
