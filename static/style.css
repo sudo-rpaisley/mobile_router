@@ -625,3 +625,8 @@ html[data-theme="dark"] .evidence-output {
 .social-link-list span, .social-link-list small { display: block; overflow-wrap: anywhere; }
 .social-profile-delete { margin-top: 1rem; text-align: right; }
 @media (max-width: 576px) { .social-repeat-row { grid-template-columns: 1fr auto; } .social-repeat-row select, .social-repeat-row input:first-child { grid-column: 1 / -1; } }
+.social-section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+.social-credential-unassigned { border-color: #f0ad4e; background: rgba(240, 173, 78, .08); }
+.social-credential-card .badge { margin-bottom: .55rem; }
+.social-credential-notes { margin: .75rem 0 0; padding-top: .75rem; border-top: 1px solid var(--theme-border, #dee2e6); white-space: pre-wrap; }
+@media (max-width: 768px) { .social-section-heading { flex-direction: column; } }

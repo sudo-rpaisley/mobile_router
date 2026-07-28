@@ -3,6 +3,7 @@
 import re
 import time
 import uuid
+from copy import deepcopy
 from urllib.parse import urlparse
 
 
@@ -81,7 +82,7 @@ def validate_profile(values):
 
 def list_profiles(store, lock):
     with lock:
-        profiles = [dict(profile) for profile in store.values()]
+        profiles = [deepcopy(profile) for profile in store.values()]
     for profile in profiles:
         profile.setdefault('credentials', [])
         profile.setdefault('devices', [])
@@ -90,6 +91,10 @@ def list_profiles(store, lock):
             {'platform': platform, 'url': profile.get(key)}
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if profile.get(key)
         ])
+        for credential in profile['credentials']:
+            credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
+            credential.setdefault('purpose', '')
+            credential.setdefault('notes', '')
     return sorted(profiles, key=lambda profile: profile.get('updated_at', 0), reverse=True)
 
 
@@ -98,7 +103,7 @@ def get_profile(profile_id, store, lock):
         profile = store.get(profile_id)
         if not profile:
             return None
-        result = dict(profile)
+        result = deepcopy(profile)
         result.setdefault('credentials', [])
         result.setdefault('devices', [])
         result.setdefault('emails', [{'label': 'Email', 'value': result['email']}] if result.get('email') else [])
@@ -106,6 +111,10 @@ def get_profile(profile_id, store, lock):
             {'platform': platform, 'url': result.get(key)}
             for platform, key in (('Facebook', 'facebook_url'), ('LinkedIn', 'linkedin_url')) if result.get(key)
         ])
+        for credential in result['credentials']:
+            credential.setdefault('credential_kind', 'device' if credential.get('device_id') else ('website' if credential.get('website_url') else 'unassigned'))
+            credential.setdefault('purpose', '')
+            credential.setdefault('notes', '')
         return result
 
 
@@ -143,6 +152,9 @@ def add_credential(profile_id, values, store, lock, now=None):
     secret_ciphertext = str(values.get('secret_ciphertext') or '')
     website_url = _clean_url(values.get('website_url'), 'Website link')
     device_id = str(values.get('device_id') or '').strip()
+    credential_kind = str(values.get('credential_kind') or '').strip().casefold()
+    if credential_kind not in {'unassigned', 'website', 'device'}:
+        credential_kind = 'device' if device_id else ('website' if website_url else 'unassigned')
     if not label:
         raise ValueError('Credential label is required.')
     if not username and not secret_ciphertext:
@@ -154,6 +166,9 @@ def add_credential(profile_id, values, store, lock, now=None):
     credential = {
         'id': str(uuid.uuid4()), 'label': label[:160], 'username': username[:320],
         'secret_ciphertext': secret_ciphertext, 'website_url': website_url, 'device_id': device_id,
+        'credential_kind': credential_kind,
+        'purpose': str(values.get('purpose') or '').strip()[:500],
+        'notes': str(values.get('credential_notes') or '').strip()[:2000],
         'created_at': now if now is not None else time.time(),
     }
     with lock:

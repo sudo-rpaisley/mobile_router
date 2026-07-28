@@ -87,6 +87,14 @@
 
   document.getElementById('vault-unlock')?.addEventListener('click', unlockVault);
   document.getElementById('vault-lock')?.addEventListener('click', lockVault);
+  document.querySelectorAll('[data-add-device-password]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.getElementById('credential_kind').value = 'device';
+      document.getElementById('credential_device').value = button.dataset.addDevicePassword;
+      document.getElementById('credential_label').value = button.dataset.deviceName + ' password';
+      window.jQuery('#add-credential-modal').modal('show');
+    });
+  });
 
   document.getElementById('credential-form')?.addEventListener('submit', async function (event) {
     var secretInput = document.getElementById('credential_secret');

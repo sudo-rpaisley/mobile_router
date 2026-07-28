@@ -98,11 +98,24 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         save_state.assert_called_once_with('social-profile-credential-create')
 
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
+            'label': 'Recovered password', 'credential_kind': 'unassigned',
+            'purpose': 'Used for something but unknown what for yet',
+            'credential_notes': 'Review later', 'username': 'alex',
+            'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:dW5rbm93bg==',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['credentials'][1]['credential_kind'], 'unassigned')
+
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
         self.assertIn(b'iPhone 13', response.data)
         self.assertIn(b'Discovered iPhone', response.data)
         self.assertIn(b'Apple ID', response.data)
         self.assertIn(b'credential-reveal', response.data)
+        self.assertIn(b'Purpose unknown', response.data)
+        self.assertIn(b'Used for something but unknown what for yet', response.data)
+        self.assertIn(b'Add password', response.data)
         self.assertIn(b'\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2', response.data)
         self.assertIn(b'social-profiles.js', response.data)
         response = self.client.post(f'/social-engineering/profiles/{profile_id}/audit', data={

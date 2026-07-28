@@ -18,50 +18,34 @@
   <div class="modal fade" id="edit-profile-modal" tabindex="-1" role="dialog" aria-labelledby="edit-profile-title" aria-hidden="true"><div class="modal-dialog modal-lg" role="document"><div class="modal-content theme-card"><form method="post" action="/social-engineering/profiles/{{ profile.id }}/update" enctype="multipart/form-data"><div class="modal-header"><h2 id="edit-profile-title" class="modal-title">Edit {{ profile.full_name }}</h2><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body theme-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="social-profile-editor-grid"><div class="form-group"><label for="edit_full_name">Full name</label><input class="form-control" id="edit_full_name" name="full_name" value="{{ profile.full_name }}" required></div><div class="form-group"><label for="edit_photo">Replace picture</label><input class="form-control-file" id="edit_photo" name="profile_photo" type="file" accept="image/jpeg,image/png,image/gif,image/webp"></div><div class="form-group"><label for="edit_organization">Organization</label><input class="form-control" id="edit_organization" name="organization" value="{{ profile.organization }}"></div><div class="form-group"><label for="edit_job_title">Job title</label><input class="form-control" id="edit_job_title" name="job_title" value="{{ profile.job_title }}"></div><div class="form-group"><label for="edit_phone">Phone</label><input class="form-control" id="edit_phone" name="phone" value="{{ profile.phone }}"></div></div><h3 class="theme-subsection-title">Email addresses</h3><div data-repeat-list="emails">{% for email in profile.emails or [{'label':'Personal','value':''}] %}<div class="social-repeat-row"><input class="form-control" name="email_label" value="{{ email.label }}"><input class="form-control" type="email" name="email_value" value="{{ email.value }}"><button class="btn btn-outline-danger" type="button" data-remove-row><i class="fas fa-times"></i></button></div>{% endfor %}</div><button class="btn btn-sm btn-outline-primary" type="button" data-add-email>Add email</button><h3 class="theme-subsection-title mt-3">Sites</h3><div data-repeat-list="social">{% for link in profile.social_links or [{'platform':'Website','url':''}] %}<div class="social-repeat-row"><input class="form-control" name="social_platform" value="{{ link.platform }}"><input class="form-control" type="url" name="social_url" value="{{ link.url }}"><button class="btn btn-outline-danger" type="button" data-remove-row><i class="fas fa-times"></i></button></div>{% endfor %}</div><button class="btn btn-sm btn-outline-primary" type="button" data-add-social>Add site</button><div class="form-group mt-3"><label for="edit_notes">Notes</label><textarea class="form-control" id="edit_notes" name="notes" rows="4">{{ profile.notes }}</textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Save changes</button></div></form></div></div></div>
 
   <section class="theme-card card"><div class="card-body">
-    <h2 class="theme-section-title">Devices</h2>
-    <p class="text-muted">Add personally associated devices and optionally match them to a MAC address discovered in Device Inventory.</p>
-    <form class="theme-form social-inline-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/devices">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="form-group"><label for="device_name">Device name</label><input class="form-control" id="device_name" name="name" placeholder="iPhone 13" required></div>
-      <div class="form-group"><label for="device_type">Icon/type</label><select class="form-control" id="device_type" name="device_type"><option value="iphone">iPhone</option><option value="android">Android phone</option><option value="laptop">Laptop</option><option value="desktop">Desktop</option><option value="tablet">Tablet</option><option value="router">Router</option><option value="iot">IoT device</option><option value="other">Other</option></select></div>
-      <div class="form-group"><label for="device_mac">MAC address (optional)</label><input class="form-control" id="device_mac" name="mac" placeholder="ac:16:2d:a2:71:9e"></div>
-      <div class="form-group"><label for="device_notes">Notes</label><input class="form-control" id="device_notes" name="notes"></div>
-      <button class="btn btn-primary" type="submit">Add device</button>
-    </form>
-    {% if profile.devices %}<div class="social-device-grid">
+    <div class="social-section-heading"><div><p class="page-kicker">Hardware</p><h2 class="theme-section-title">Devices</h2><p class="text-muted mb-0">Phones, computers, routers, and other equipment associated with this contact.</p></div><button class="btn btn-outline-primary" type="button" data-toggle="modal" data-target="#add-device-modal"><i class="fas fa-plus"></i> Add device</button></div>
+    {% if profile.devices %}<div class="social-device-grid mt-3">
       {% for device in profile.devices %}<article class="social-device-card">
         <i class="fas {{ device.icon }} social-device-icon" aria-hidden="true"></i>
         <div><h3>{{ device.name }}</h3><p>{{ device.device_type|title }}{% if device.mac %} · <code>{{ device.mac }}</code>{% endif %}</p>
           {% if device.inventory_match %}<a class="badge badge-success" href="/clients/{{ device.mac }}">Matched: {{ device.inventory_match.display_name or device.inventory_match.name or device.inventory_match.ip or device.mac }}</a>{% elif device.mac %}<span class="badge badge-secondary">Not currently discovered</span>{% endif %}
           {% if device.notes %}<p class="text-muted mb-0">{{ device.notes }}</p>{% endif %}
+          <button class="btn btn-sm btn-outline-primary mt-2" type="button" data-add-device-password="{{ device.id }}" data-device-name="{{ device.name }}"><i class="fas fa-key"></i> Add password</button>
         </div>
         <form method="post" action="/social-engineering/profiles/{{ profile.id }}/devices/{{ device.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" aria-label="Delete {{ device.name }}" type="submit"><i class="fas fa-trash"></i></button></form>
       </article>{% endfor %}
-    </div>{% endif %}
+    </div>{% else %}<div class="theme-empty-state"><i class="fas fa-laptop"></i><p>No devices saved for this contact.</p></div>{% endif %}
   </div></section>
 
   <section class="theme-card card"><div class="card-body">
-    <h2 class="theme-section-title">Website and device credentials</h2>
-    <div class="alert alert-warning">New secrets are encrypted in your browser before being saved. The master password is never sent to the server and cannot be recovered.</div>
-    <div class="theme-actions"><button id="vault-unlock" class="btn btn-outline-primary" type="button">Unlock vault</button><button id="vault-lock" class="btn btn-outline-secondary" type="button">Lock vault</button><span id="vault-status" class="badge badge-secondary">Locked</span></div>
-    <form id="credential-form" class="theme-form social-inline-form" method="post" action="/social-engineering/profiles/{{ profile.id }}/credentials">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" id="secret_ciphertext" name="secret_ciphertext">
-      <div class="form-group"><label for="credential_label">Label</label><input class="form-control" id="credential_label" name="label" placeholder="Apple ID or router login" required></div>
-      <div class="form-group"><label for="credential_url">Website</label><input class="form-control" type="url" id="credential_url" name="website_url" placeholder="https://example.com"></div>
-      <div class="form-group"><label for="credential_device">Device</label><select class="form-control" id="credential_device" name="device_id"><option value="">No linked device</option>{% for device in profile.devices %}<option value="{{ device.id }}">{{ device.name }}</option>{% endfor %}</select></div>
-      <div class="form-group"><label for="credential_username">Username/email</label><input class="form-control" id="credential_username" name="username" autocomplete="off"></div>
-      <div class="form-group"><label for="credential_secret">Password/secret</label><input class="form-control" type="password" id="credential_secret" autocomplete="new-password"></div>
-      <button class="btn btn-primary" type="submit">Save credential</button>
-    </form>
-    {% if profile.credentials %}<div class="social-credential-grid">
-      {% for credential in profile.credentials %}<article class="social-credential-card">
-        <div><h3>{{ credential.label }}</h3>{% if credential.website_url %}<a href="{{ credential.website_url }}" target="_blank" rel="noopener noreferrer">{{ credential.website_url }}</a>{% endif %}<p class="mb-1"><strong>Username:</strong> {{ credential.username or 'Not provided' }}</p>
+    <div class="social-section-heading"><div><p class="page-kicker">Private vault</p><h2 class="theme-section-title">Passwords and credentials</h2><p class="text-muted mb-0">Website logins, device passwords, and passwords whose purpose is not known yet.</p></div><div class="theme-actions"><span id="vault-status" class="badge badge-secondary">Locked</span><button id="vault-unlock" class="btn btn-outline-primary" type="button">Unlock</button><button id="vault-lock" class="btn btn-outline-secondary" type="button">Lock</button><button class="btn btn-primary" type="button" data-toggle="modal" data-target="#add-credential-modal"><i class="fas fa-plus"></i> Add password</button></div></div>
+    {% if profile.credentials %}<div class="social-credential-grid mt-3">
+      {% for credential in profile.credentials %}<article class="social-credential-card {% if credential.credential_kind == 'unassigned' %}social-credential-unassigned{% endif %}">
+        <div><span class="badge {% if credential.credential_kind == 'device' %}badge-info{% elif credential.credential_kind == 'website' %}badge-primary{% else %}badge-warning{% endif %}">{% if credential.credential_kind == 'unassigned' %}Purpose unknown{% else %}{{ credential.credential_kind|title }}{% endif %}</span><h3>{{ credential.label }}</h3>{% if credential.purpose %}<p class="text-muted mb-1">{{ credential.purpose }}</p>{% endif %}{% if credential.website_url %}<a href="{{ credential.website_url }}" target="_blank" rel="noopener noreferrer">{{ credential.website_url }}</a>{% endif %}<p class="mb-1"><strong>Username:</strong> {{ credential.username or 'Not provided' }}</p>
           <p class="mb-0"><strong>Secret:</strong> <span class="credential-secret" data-ciphertext="{{ credential.secret_ciphertext or '' }}" data-legacy-secret="{{ credential.secret or '' }}">••••••••</span> <button class="btn btn-sm btn-outline-secondary credential-reveal" type="button" aria-label="Reveal secret" aria-pressed="false"><i class="fas fa-eye"></i></button></p>
+          {% if credential.notes %}<p class="social-credential-notes">{{ credential.notes }}</p>{% endif %}
         </div>
         <form method="post" action="/social-engineering/profiles/{{ profile.id }}/credentials/{{ credential.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" aria-label="Delete {{ credential.label }}" type="submit"><i class="fas fa-trash"></i></button></form>
       </article>{% endfor %}
-    </div>{% endif %}
+    </div>{% else %}<div class="theme-empty-state"><i class="fas fa-key"></i><p>No passwords saved for this contact.</p></div>{% endif %}
   </div></section>
+
+  {% include '_social-profile-modals.html' %}
   <script>window.socialProfileSecurity = {{ {'profileId': profile.id, 'csrfToken': csrf_token}|tojson }};</script>
   <script src="/static/js/social-engineering.js"></script>
   <script src="/static/js/social-profiles.js"></script>
