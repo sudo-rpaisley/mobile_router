@@ -109,6 +109,30 @@ Run the application directly with Python:
 python app.py
 ```
 
+### Running tests
+
+Install the development dependencies, then invoke pytest through Python. Using
+`python -m pytest` also works on Windows when the standalone `pytest` command is
+not available on `PATH`.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+### Protecting Social Engineering profiles
+
+The first visit to Mobile Router creates a local administrator account, and
+authentication then protects the entire application. Administrators can create
+additional role-based accounts from **System → User Management**. Each account
+has its own private Social Engineering profiles, devices, and credentials.
+Set `MOBILE_ROUTER_SECRET_KEY` to a long, stable random value so login sessions
+remain valid across application restarts. New credential secrets are encrypted
+in the browser with a user-supplied vault password before they are written to
+the Git-ignored `data/runtime_state.json` file. Browser encryption requires a
+secure context, such as `localhost` or HTTPS. The vault password is not stored
+and cannot be recovered by the application.
+
 The server listens on `0.0.0.0:8080`. Once running, navigate to
 `http://localhost:8080` in a web browser to access the UI. From there you can
 browse interfaces or open the **Red Team** page to try the network utilities.

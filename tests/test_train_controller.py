@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+import app as app_module
 from app import app
 from scripts.train_controller import TrainControllerError, TrainControllerService
 
@@ -91,7 +92,13 @@ def test_training_progression_persists_and_locks_later_steps(tmp_path):
 def train_client(tmp_path):
     instance, _ = service(tmp_path)
     app.config.update(TESTING=True, TRAIN_CONTROLLER_SERVICE=instance)
-    yield app.test_client(), instance
+    client = app.test_client()
+    app_module.social_users.setdefault('train-test', {
+        'id': 'train-test', 'username': 'train-test', 'role': 'admin', 'password_hash': 'unused',
+    })
+    with client.session_transaction() as flask_session:
+        flask_session['social_user'] = {'username': 'train-test', 'role': 'admin'}
+    yield client, instance
     app.config.pop("TRAIN_CONTROLLER_SERVICE", None)
 
 
@@ -147,7 +154,13 @@ def test_route_reports_unavailable_hardware(tmp_path):
     controller = instance.add_controller("192.0.2.21")["controllers"][0]
     app.config["TRAIN_CONTROLLER_SERVICE"] = instance
     try:
-        response = app.test_client().post(f"/api/train-controller/controllers/{controller['id']}/actions", json={"action": "setup", "authorized": True})
+        client = app.test_client()
+        app_module.social_users.setdefault('train-test', {
+            'id': 'train-test', 'username': 'train-test', 'role': 'admin', 'password_hash': 'unused',
+        })
+        with client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'train-test', 'role': 'admin'}
+        response = client.post(f"/api/train-controller/controllers/{controller['id']}/actions", json={"action": "setup", "authorized": True})
         assert response.status_code == 503
         assert "TRAIN_CONTROLLER_ENABLED" in response.get_json()["message"]
     finally:

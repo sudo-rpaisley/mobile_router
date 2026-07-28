@@ -1,5 +1,7 @@
 import json
+import io
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -14,6 +16,272 @@ from services.oui import lookup_manufacturer, oui_database_status
 class RouteSmokeTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+        app_module.social_profiles.clear()
+        app_module.social_users.clear()
+        app_module.social_audit_log.clear()
+        app_module.social_users['test-admin'] = {
+            'id': 'test-admin', 'username': 'test-admin', 'role': 'admin',
+            'password_hash': 'unused-in-authenticated-tests',
+        }
+        self.csrf_token = 'test-csrf-token'
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            flask_session['social_csrf_token'] = self.csrf_token
+
+    def login_social_admin(self):
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            flask_session['social_csrf_token'] = self.csrf_token
+
+    def test_social_engineering_profile_crud(self):
+        self.login_social_admin()
+        response = self.client.get('/social-engineering')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<h1 class="page-title">People</h1>', response.data)
+        self.assertIn(b'New individual', response.data)
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post('/social-engineering/profiles', data={
+                'full_name': 'Alex Example',
+                'email_label': ['Personal', 'Work', 'Old account'],
+                'email_value': ['alex@example.com', 'alex@work.example', 'al***@old.example'],
+                'email_status': ['complete', 'complete', 'partial'],
+                'email_source': ['Provided directly', 'Business card', 'Old note'],
+                'email_confidence': ['confirmed', 'likely', 'possible'],
+                'email_verified_date': ['2026-07-28', '', ''],
+                'social_platform': ['Facebook', 'GitHub', 'Instagram'],
+                'social_url': ['facebook.com/alex.example', 'https://github.com/alex', 'https://instagram.com/alex'],
+                'social_status': ['complete', 'complete', 'complete'],
+                'social_account': ['alex.example', 'alex', 'alexphotos'],
+                'social_recovery_emails': ['', 'alex@example.com, alex@work.example', ''],
+                'social_recovery_phone': ['', '+1 555 0100', ''],
+                'social_recovery_notes': ['', 'Recovery codes held offline', ''],
+                'social_recovery_refs': ['', '', ''],
+                'social_source': ['Public profile', 'Provided directly', 'Public profile'],
+                'social_confidence': ['likely', 'confirmed', 'possible'],
+                'social_verified_date': ['', '2026-07-28', ''],
+                'organization': 'Example Company', 'job_title': 'Analyst',
+                'phone': '+1 555 01**', 'phone_status': 'partial',
+                'phone_source': 'Old directory', 'phone_confidence': 'possible',
+                'tags': 'priority, training', 'profile_status': 'needs_review',
+                'notes': 'Authorized awareness exercise participant.',
+                'csrf_token': self.csrf_token,
+                'profile_photo': (io.BytesIO(b'GIF89a-test-image'), 'alex.gif'),
+            }, content_type='multipart/form-data')
+
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-create')
+        profile_id = next(iter(app_module.social_profiles))
+        profile = app_module.social_profiles[profile_id]
+        self.assertEqual(profile['facebook_url'], 'https://facebook.com/alex.example')
+        self.assertEqual(len(profile['emails']), 3)
+        self.assertEqual(len(profile['social_links']), 3)
+        self.assertEqual(profile['emails'][2]['status'], 'partial')
+        self.assertEqual(profile['social_links'][1]['recovery_emails'], ['alex@example.com', 'alex@work.example'])
+        self.assertEqual(profile['tags'], ['priority', 'training'])
+        recovery_ref = f"email:{profile['emails'][0]['id']}"
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
+            'full_name': profile['full_name'], 'organization': profile['organization'],
+            'job_title': profile['job_title'], 'phone': profile['phone'], 'phone_status': 'partial',
+            'tags': 'priority, training', 'profile_status': 'needs_review',
+            'email_id': [item['id'] for item in profile['emails']],
+            'email_label': [item['label'] for item in profile['emails']],
+            'email_value': [item['value'] for item in profile['emails']],
+            'email_status': [item['status'] for item in profile['emails']],
+            'social_id': [item['id'] for item in profile['social_links']],
+            'social_platform': [item['platform'] for item in profile['social_links']],
+            'social_url': [item['url'] for item in profile['social_links']],
+            'social_status': [item['status'] for item in profile['social_links']],
+            'social_account': [item['account'] for item in profile['social_links']],
+            'social_recovery_emails': ['', '', ''], 'social_recovery_phone': ['', '', ''],
+            'social_recovery_notes': ['', 'Linked to saved personal email', ''],
+            'social_recovery_refs': ['', recovery_ref, ''],
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_PHOTO_DIR, True)
+
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Alex Example', response.data)
+        self.assertIn(b'alex@example.com', response.data)
+        self.assertIn(b'GitHub', response.data)
+        self.assertIn(b'Instagram', response.data)
+        self.assertIn(b'alex@work.example', response.data)
+        self.assertIn(b'Profile picture for Alex Example', response.data)
+        self.assertIn(b'Linked to saved personal email', response.data)
+        self.assertIn(b'Personal email: alex@example.com', response.data)
+        self.assertIn(b'al***@old.example', response.data)
+        self.assertIn(b'Partial', response.data)
+
+        response = self.client.get('/social-engineering?q=github&tag=training&status=needs_review')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Alex Example', response.data)
+        response = self.client.get('/social-engineering?q=missing')
+        self.assertNotIn(b'Alex Example', response.data)
+
+        app_module.device_inventory['mac:ac:16:2d:a2:71:9e'] = {
+            'id': 'mac:ac:16:2d:a2:71:9e', 'mac': 'ac:16:2d:a2:71:9e',
+            'display_name': 'Discovered iPhone',
+        }
+        self.addCleanup(app_module.device_inventory.pop, 'mac:ac:16:2d:a2:71:9e', None)
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/devices', data={
+                'name': 'iPhone 13', 'device_type': 'iphone',
+                'mac': 'AC-16-2D-A2-71-9E', 'notes': 'Personal phone',
+                'csrf_token': self.csrf_token,
+            })
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-device-create')
+        device = app_module.social_profiles[profile_id]['devices'][0]
+        self.assertEqual(device['mac'], 'ac:16:2d:a2:71:9e')
+        self.assertEqual(device['icon'], 'fa-mobile-alt')
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/devices/{device["id"]}/update', data={
+            'name': 'iPhone 13 Pro', 'device_type': 'iphone', 'inventory_mac': 'ac:16:2d:a2:71:9e',
+            'manufacturer': 'Apple', 'model': 'iPhone 13 Pro', 'operating_system': 'iOS',
+            'hostname': 'alex-iphone', 'device_status': 'active', 'notes': 'Updated device',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['devices'][0]['model'], 'iPhone 13 Pro')
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
+                'label': 'Apple ID', 'website_url': 'appleid.apple.com',
+                'device_id': device['id'], 'username': 'alex@example.com',
+                'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:Y2lwaGVydGV4dA==',
+                'csrf_token': self.csrf_token,
+            })
+        self.assertEqual(response.status_code, 302)
+        save_state.assert_called_once_with('social-profile-credential-create')
+
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/credentials', data={
+            'label': 'Recovered password', 'credential_kind': 'unassigned',
+            'purpose': 'Used for something but unknown what for yet',
+            'credential_notes': 'Review later', 'username': 'alex',
+            'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:dW5rbm93bg==',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['credentials'][1]['credential_kind'], 'unassigned')
+        unknown_credential = app_module.social_profiles[profile_id]['credentials'][1]
+        response = self.client.post(
+            f'/social-engineering/profiles/{profile_id}/credentials/{unknown_credential["id"]}/update',
+            data={'label': 'Recovered router password', 'credential_kind': 'device', 'device_id': device['id'],
+                  'username': 'admin', 'purpose': 'Router administration', 'credential_notes': 'Rotated',
+                  'secret_ciphertext': 'vault:v1:c2FsdA==:aXY=:cm90YXRlZA==', 'csrf_token': self.csrf_token},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('rotated_at', app_module.social_profiles[profile_id]['credentials'][1])
+
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertIn(b'iPhone 13', response.data)
+        self.assertIn(b'Discovered iPhone', response.data)
+        self.assertIn(b'Apple ID', response.data)
+        self.assertIn(b'credential-reveal', response.data)
+        self.assertIn(b'Router administration', response.data)
+        self.assertIn(b'Edit / rotate', response.data)
+        self.assertIn(b'Add password', response.data)
+        self.assertIn(b'\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2', response.data)
+        self.assertIn(b'social-profiles.js', response.data)
+        response = self.client.post(f'/social-engineering/profiles/{profile_id}/audit', data={
+            'action': 'credential.reveal', 'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(app_module.social_audit_log[0]['action'], 'credential.reveal')
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/update', data={
+                **profile, 'full_name': 'Alex Updated',
+                'csrf_token': self.csrf_token,
+            })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(app_module.social_profiles[profile_id]['full_name'], 'Alex Updated')
+        save_state.assert_called_once_with('social-profile-update')
+
+        with patch('app.save_runtime_state') as save_state:
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/delete', data={'csrf_token': self.csrf_token})
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn(profile_id, app_module.social_profiles)
+        save_state.assert_called_once_with('social-profile-delete')
+
+    def test_social_profile_rejects_invalid_contact_fields(self):
+        self.login_social_admin()
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Unsafe Link',
+            'email': 'safe@example.com',
+            'facebook_url': 'javascript:alert(1)',
+            'csrf_token': self.csrf_token,
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Facebook link must be a valid HTTP or HTTPS URL', response.data)
+        self.assertFalse(app_module.social_profiles)
+
+    def test_social_profiles_require_login_csrf_and_role(self):
+        self.login_social_admin()
+        response = self.client.post('/vault-verifier', data={
+            'vault_verifier': 'vault:v1:c2FsdA==:aXY=:dmVyaWZpZXI=',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(app_module.social_users['test-admin']['vault_verifier'].startswith('vault:v1:'))
+        response = self.client.post('/vault-verifier', data={
+            'vault_verifier': 'vault:v1:b3RoZXI=:aXY=:dmVyaWZpZXI=',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 409)
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/social-engineering')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.location)
+
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+        response = self.client.post('/social-engineering/profiles', data={'full_name': 'No Token'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Invalid or expired form token', response.data)
+
+        app_module.social_auth_service.create_user(
+            'test-viewer', 'another-correct-password', 'viewer',
+            app_module.social_users, app_module.social_users_lock,
+        )
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'test-viewer', 'role': 'viewer'}
+            flask_session['social_csrf_token'] = self.csrf_token
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Forbidden', 'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 403)
+
+    def test_application_login_and_private_profile_ownership(self):
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.location)
+
+        self.login_social_admin()
+        response = self.client.post('/users', data={
+            'username': 'alice', 'password': 'alice-secure-password', 'role': 'editor',
+            'csrf_token': self.csrf_token,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('alice', app_module.social_users)
+
+        response = self.client.post('/social-engineering/profiles', data={
+            'full_name': 'Admin Private Record', 'csrf_token': self.csrf_token,
+        })
+        profile_id = next(iter(app_module.social_profiles))
+        self.assertEqual(app_module.social_profiles[profile_id]['owner'], 'test-admin')
+
+        with self.client.session_transaction() as flask_session:
+            flask_session['social_user'] = {'username': 'alice', 'role': 'editor'}
+        response = self.client.get('/social-engineering')
+        self.assertNotIn(b'Admin Private Record', response.data)
+        response = self.client.get(f'/social-engineering/profiles/{profile_id}')
+        self.assertEqual(response.status_code, 404)
 
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')
@@ -884,10 +1152,25 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertEqual(lookup_manufacturer('52:54:00:12:34:56'), 'QEMU/KVM Virtual NIC')
         self.assertEqual(lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('8C-49-62-BD-7D-37'), 'Roku, Inc.')
+        self.assertEqual(lookup_manufacturer('ac:16:2d:a2:71:9e'), 'Hewlett Packard')
         from scripts.wifi import utils as wifi_utils
         self.assertEqual(wifi_utils._mac_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(app_module.lookup_manufacturer('8c:49:62:bd:7d:37'), 'Roku, Inc.')
         self.assertEqual(lookup_manufacturer('not-a-mac'), 'Unknown')
+
+    def test_client_detail_replaces_unknown_manufacturer_with_oui_vendor(self):
+        app_module.device_inventory.clear()
+        app_module.record_inventory_devices([{
+            'mac': 'ac:16:2d:a2:71:9e',
+            'manufacturer': 'Unknown',
+        }], 'active-scan', 'eth0')
+
+        response = self.client.get('/clients/ac:16:2d:a2:71:9e')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Hewlett Packard', response.data)
+        device = app_module.find_inventory_device('ac:16:2d:a2:71:9e')
+        self.assertEqual(device['manufacturer'], 'Hewlett Packard')
 
     def test_oui_downloader_tries_fallback_urls(self):
         from scripts import update_oui_db
@@ -1344,99 +1627,6 @@ class RouteSmokeTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload['results'][0]['title'], 'Router')
         inspect_http.assert_called_once_with('192.168.20.10', [80])
-
-
-    def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
-        app_module.device_inventory.clear()
-        app_module.record_inventory_devices([
-            {
-                'address': '6a:76:8a:0c:36:70',
-                'name': 'Trail Speaker',
-                'manufacturer': 'Audio Lab',
-                'status': 'OK',
-                'device_class': 'Bluetooth',
-                'instance_id': 'BTHENUM\\DEV_6A768A0C3670',
-            }
-        ], 'bluetooth-scan', 'hci0')
-
-        response = self.client.get('/clients/6a:76:8a:0c:36:70')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Trail Speaker', response.data)
-        self.assertIn(b'Bluetooth Device', response.data)
-        self.assertIn(b'Bluetooth Address', response.data)
-        self.assertIn(b'6a:76:8a:0c:36:70', response.data)
-        self.assertIn(b'Status', response.data)
-        self.assertIn(b'OK', response.data)
-        self.assertNotIn(b'IP Address', response.data)
-        self.assertIn(b'Bluetooth Controls', response.data)
-        self.assertIn(b'data-action="connect"', response.data)
-        self.assertIn(b'data-action="pair"', response.data)
-        self.assertIn(b'Refresh This Device', response.data)
-        self.assertIn(b'Forget From Inventory', response.data)
-        self.assertIn(b'Bluetooth Action History', response.data)
-        self.assertIn(b'Default host adapter', response.data)
-        self.assertIn(b'bluetooth-scan.js', response.data)
-        self.assertNotIn(b'Bluetooth Notes', response.data)
-        self.assertNotIn(b'Device Port Scan', response.data)
-        self.assertNotIn(b'IP Client Actions', response.data)
-        self.assertNotIn(b'port_scan_live.js', response.data)
-        self.assertNotIn(b'ip_client.js', response.data)
-
-
-    def test_bluetooth_client_detail_uses_contextual_connected_actions(self):
-        app_module.device_inventory.clear()
-        app_module.record_inventory_devices([
-            {
-                'address': '6a:76:8a:0c:36:71',
-                'name': 'Connected Speaker',
-                'manufacturer': 'Audio Lab',
-                'connected': True,
-                'paired': True,
-                'trusted': True,
-            }
-        ], 'bluetooth-scan', 'hci0')
-
-        response = self.client.get('/clients/6a:76:8a:0c:36:71')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'data-action="disconnect"', response.data)
-        self.assertIn(b'data-action="untrust"', response.data)
-        self.assertNotIn(b'data-action="connect"', response.data)
-        self.assertNotIn(b'data-action="pair"', response.data)
-
-
-    @patch('app.set_interface_power_state')
-    def test_interface_power_endpoint_toggles_interface(self, set_power):
-        set_power.return_value = 'WiFi was turned off.'
-
-        response = self.client.post('/interfaces/WiFi/state', data={'state': 'down'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['message'], 'WiFi was turned off.')
-        set_power.assert_called_once()
-
-    def test_interface_detail_includes_power_controls(self):
-        wireless_interface = SimpleNamespace(
-            name='WiFi',
-            interface_type='Wireless',
-            state='UP',
-            addresses=[],
-            manufacturer='Unknown',
-            extra_info={},
-        )
-
-        with (
-            patch.object(app_module, 'network_interfaces', [wireless_interface]),
-            patch.object(app_module, 'networkTechnologies', {'Wireless'}),
-        ):
-            response = self.client.get('/wireless/WiFi')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'data-interface-power', response.data)
-        self.assertIn(b'Turn on', response.data)
-        self.assertIn(b'Turn off', response.data)
-        self.assertIn(b'interface-power.js', response.data)
 
 
     def test_bluetooth_client_detail_uses_device_name_and_metadata(self):
@@ -2458,6 +2648,71 @@ class RouteSmokeTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['result']['state'], 'on')
+
+
+    def test_social_profile_relationship_merge_attachment_import_and_dashboard(self):
+        first = app_module.social_profile_service.create_profile({
+            'full_name': 'Alex Duplicate', 'email_value': ['alex@example.com'],
+            'authorization_basis': 'Authorized assessment', 'review_date': '2026-08-15',
+            'retention_until': '2027-01-01', 'custom_field_name': ['Badge ID'],
+            'custom_field_value': ['A-101'], 'custom_field_type': ['text'],
+        }, app_module.social_profiles, app_module.social_profiles_lock)
+        second = app_module.social_profile_service.create_profile({'full_name': 'Alex Duplicate', 'email_value': ['alex@example.com']}, app_module.social_profiles, app_module.social_profiles_lock)
+        with app_module.social_profiles_lock:
+            app_module.social_profiles[first['id']]['owner'] = 'test-admin'
+            app_module.social_profiles[second['id']]['owner'] = 'test-admin'
+
+        page = self.client.get('/social-engineering')
+        self.assertIn(b'Possible duplicates', page.data)
+        self.assertIn(b'Unknown passwords', page.data)
+        detail = self.client.get(f"/social-engineering/profiles/{first['id']}")
+        self.assertIn(b'Authorized assessment', detail.data)
+        self.assertIn(b'Badge ID', detail.data)
+        relation = self.client.post(f"/social-engineering/profiles/{first['id']}/relationships", data={
+            'csrf_token': self.csrf_token, 'target_profile_id': second['id'], 'relationship': 'Coworker',
+        })
+        self.assertEqual(relation.status_code, 302)
+        self.assertEqual(app_module.social_profiles[first['id']]['relationships'][0]['relationship'], 'Coworker')
+
+        with tempfile.TemporaryDirectory() as attachment_dir, patch.object(app_module, 'SOCIAL_PROFILE_ATTACHMENT_DIR', attachment_dir):
+            response = self.client.post(f"/social-engineering/profiles/{first['id']}/attachments", data={
+                'csrf_token': self.csrf_token, 'description': 'Authorization evidence',
+                'attachment': (io.BytesIO(b'evidence'), 'approval.txt'),
+            }, content_type='multipart/form-data')
+            self.assertEqual(response.status_code, 302)
+            attachment = app_module.social_profiles[first['id']]['attachments'][0]
+            self.assertEqual(attachment['sha256'], 'ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e')
+            download = self.client.get(f"/social-engineering/profiles/{first['id']}/attachments/{attachment['id']}")
+            self.assertEqual(download.data, b'evidence')
+
+        export = self.client.get('/social-engineering/export')
+        self.assertEqual(export.status_code, 200)
+        self.assertNotIn(b'secret_ciphertext', export.data)
+        imported = self.client.post('/social-engineering/import', data={
+            'csrf_token': self.csrf_token,
+            'contacts_file': (io.BytesIO(json.dumps({'profiles': [{'full_name': 'Imported Contact', 'tags': ['imported']}]}).encode()), 'contacts.json'),
+        }, content_type='multipart/form-data')
+        self.assertEqual(imported.status_code, 302)
+        self.assertTrue(any(item['full_name'] == 'Imported Contact' for item in app_module.social_profiles.values()))
+
+        merged = self.client.post('/social-engineering/profiles/merge', data={
+            'csrf_token': self.csrf_token, 'primary_id': first['id'], 'duplicate_id': second['id'],
+        })
+        self.assertEqual(merged.status_code, 302)
+        self.assertNotIn(second['id'], app_module.social_profiles)
+
+    def test_vault_master_password_rotation_requires_all_credentials(self):
+        profile = app_module.social_profile_service.create_profile({'full_name': 'Vault User'}, app_module.social_profiles, app_module.social_profiles_lock)
+        with app_module.social_profiles_lock:
+            app_module.social_profiles[profile['id']]['owner'] = 'test-admin'
+            app_module.social_profiles[profile['id']]['credentials'] = [{'id': 'cred-1', 'secret_ciphertext': 'vault:v1:old:salt:value'}]
+        response = self.client.post('/vault-rotate', data={
+            'csrf_token': self.csrf_token, 'vault_verifier': 'vault:v1:new:verifier:value',
+            'credentials': json.dumps({'cred-1': 'vault:v1:new:salt:value'}),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(app_module.social_profiles[profile['id']]['credentials'][0]['secret_ciphertext'], 'vault:v1:new:salt:value')
+        self.assertEqual(app_module.social_users['test-admin']['vault_verifier'], 'vault:v1:new:verifier:value')
 
 
 if __name__ == '__main__':

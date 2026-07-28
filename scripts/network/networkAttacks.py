@@ -1,7 +1,6 @@
 import socket
 import time
-import asyncio
-from scapy.all import IP, TCP, send
+from scapy.all import Ether, IP, TCP, send
 
 def synFlood(src, dst, sport, dport, frames, selectedInterface):
     print("!!DoS is starting!!")

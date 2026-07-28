@@ -7,6 +7,11 @@ from app import app
 
 def test_bluetooth_device_page_renders_contextual_browser_controls():
     client = app.test_client()
+    app_module.social_users.setdefault('browser-test', {
+        'id': 'browser-test', 'username': 'browser-test', 'role': 'admin', 'password_hash': 'unused',
+    })
+    with client.session_transaction() as flask_session:
+        flask_session['social_user'] = {'username': 'browser-test', 'role': 'admin'}
     app_module.device_inventory.clear()
     app_module.record_inventory_devices([
         {
@@ -59,3 +64,15 @@ def test_bluetooth_browser_script_rerenders_actions_after_ajax():
     assert 'updateBluetoothStateBadges' in script
     assert 'response.actions' in script
     assert 'response.device_state' in script
+
+
+def test_social_profile_components_have_dark_theme_coverage():
+    css = open('static/style.css', encoding='utf-8').read()
+
+    assert 'html[data-theme="dark"] .social-profile-card' in css
+    assert 'html[data-theme="dark"] .social-account-card' in css
+    assert 'html[data-theme="dark"] .social-credential-unassigned' in css
+    assert 'html[data-theme="dark"] .modal-header' in css
+    assert 'html[data-theme="dark"] .form-control::placeholder' in css
+    assert 'html[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator' in css
+    assert 'color-scheme: dark' in css

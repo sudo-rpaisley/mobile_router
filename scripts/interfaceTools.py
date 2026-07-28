@@ -36,6 +36,7 @@ FALLBACK_OUI_DB = {
     '90:9a:4a': 'Ubiquiti Networks',
     '9c:2a:70': 'MikroTik',
     'a8:b1:3b': 'Netgear',
+    'ac:16:2d': 'Hewlett Packard',
     'b8:27:eb': 'Raspberry Pi Foundation',
     'bc:92:6b': 'Amazon Technologies',
     'e8:2a:ea': 'Ubiquiti Networks',

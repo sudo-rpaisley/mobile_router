@@ -9,6 +9,14 @@ import time
 from services import device_intel
 
 
+def _known_manufacturer(*values):
+    """Return the first meaningful vendor name, ignoring unknown placeholders."""
+    for value in values:
+        if value and str(value).strip().casefold() != 'unknown':
+            return value
+    return None
+
+
 def find_device(identifier, inventory, lock, normalize_mac):
     """Find an inventory item by normalized MAC, IP, or inventory id."""
     normalized = normalize_mac(identifier) if identifier else None
@@ -55,12 +63,11 @@ def merge_devices(
             first_seen = existing.get('first_seen', now)
             sources = sorted(set(existing.get('sources', [])) | {source})
             interfaces_seen = sorted(set(existing.get('interfaces', [])) | ({interface} if interface else set()))
-            manufacturer = (
-                device.get('manufacturer')
-                or (lookup_manufacturer(mac) if mac else None)
-                or existing.get('manufacturer')
-                or 'Unknown'
-            )
+            manufacturer = _known_manufacturer(
+                device.get('manufacturer'),
+                existing.get('manufacturer'),
+                lookup_manufacturer(mac) if mac else None,
+            ) or 'Unknown'
             observed_names = device_intel.merge_observed_names(existing, device, source, now)
             merged = {
                 **existing,

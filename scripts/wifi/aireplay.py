@@ -1,6 +1,4 @@
 import subprocess
-from typing import Optional
-
 
 def deauth(ap_mac: str, target_mac: str, iface: str, frames: int = 1) -> str:
     """Send deauthentication frames using aireplay-ng."""

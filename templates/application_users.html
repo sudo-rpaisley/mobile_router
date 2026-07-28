@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}User Management{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Application security</p><h1 class="page-title">User Management</h1><p class="page-subtitle">Create accounts for the entire Mobile Router application. Each user receives private Social Engineering profiles, devices, and credentials.</p></div></section>
+<section class="theme-grid social-profile-layout">
+  <article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Add user</h2>{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}<form class="theme-form" method="post" action="/users"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="form-group"><label for="new_username">Username</label><input class="form-control" id="new_username" name="username" required></div><div class="form-group"><label for="new_password">Temporary password</label><input class="form-control" id="new_password" name="password" type="password" minlength="10" required></div><div class="form-group"><label for="new_role">Role</label><select class="form-control" id="new_role" name="role"><option value="viewer">Viewer</option><option value="editor">Editor</option><option value="credential_manager">Credential manager</option><option value="admin">Administrator</option></select></div><button class="btn btn-primary" type="submit">Create user</button></form></div></article>
+  <article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Application users</h2><div class="social-profile-card-grid">{% for user in users %}<article class="social-profile-card"><i class="fas fa-user-shield social-profile-avatar" aria-hidden="true"></i><span><strong>{{ user.username }}</strong><small>{{ user.role|replace('_', ' ')|title }}</small></span></article>{% endfor %}</div></div></article>
+</section>
+{% endblock %}
