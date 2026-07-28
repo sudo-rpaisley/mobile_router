@@ -179,3 +179,31 @@ python scripts/update_oui_db.py
 
 The downloader writes a compact `prefix,vendor` CSV to `oui/oui_db.csv`, which
 keeps runtime lookups offline after the database is downloaded.
+
+### Offline automotive data and reports
+
+Open **Tools → Automotive** to import VIN/WMI and diagnostic trouble-code data,
+look up VINs and codes without an internet query, save vehicles, and create work
+reports. Automotive records are stored separately in
+`data/automotive.sqlite3`; override that location with
+`MOBILE_ROUTER_AUTOMOTIVE_DB` when removable or encrypted storage is preferred.
+
+VIN imports are CSV files with `wmi`, `manufacturer`, and `country` columns.
+Additional columns are retained and returned by the decoder. Code imports can
+be CSV (`code`, `description`, and optional `make`), plain text, or a searchable
+PDF. Image-only/scanned PDFs must be OCRed first. A direct HTTP(S) link can be
+supplied as an explicit import action, but all later lookups use the saved local
+copy. Imports are capped at 25 MB.
+
+Reports can associate error codes and make-specific translations with a saved
+vehicle, record odometer, technician, work performed, and notes, and export as
+JSON, CSV, or PDF. The reader panel documents the intended future OBD-II adapter
+support: USB serial and Bluetooth Classic first, with BLE and Wi-Fi connectors
+as later additions. Manual lookups and reports do not require reader hardware.
+
+Imported files are limited to 25 MB and tracked by SHA-256 checksum so accidental
+duplicate imports can be rejected. Direct-link imports reject loopback, private,
+link-local, and reserved destinations, including redirect targets. Saved reports
+snapshot the code translations used at creation time, so later database updates
+do not rewrite historical workshop records. Vehicles can be edited or archived
+from their detail page.

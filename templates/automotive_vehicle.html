@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Vehicle{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Saved vehicle</p>
+    <h1 class="page-title">{{ vehicle.nickname or vehicle.vin }}</h1>
+    <p class="page-subtitle"><code>{{ vehicle.vin }}</code></p>
+  </div>
+</section>
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Edit vehicle</h2>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="vehicle-vin">VIN</label><input id="vehicle-vin" class="form-control" required name="vin" maxlength="17" value="{{ vehicle.vin }}">
+    <label for="vehicle-nickname">Nickname</label><input id="vehicle-nickname" class="form-control" name="nickname" value="{{ vehicle.nickname or '' }}">
+    <label for="vehicle-year">Year</label><input id="vehicle-year" class="form-control" name="year" value="{{ vehicle.year or '' }}">
+    <label for="vehicle-make">Make</label><input id="vehicle-make" class="form-control" name="make" value="{{ vehicle.make or '' }}">
+    <label for="vehicle-model">Model</label><input id="vehicle-model" class="form-control" name="model" value="{{ vehicle.model or '' }}">
+    <label for="vehicle-notes">Notes</label><textarea id="vehicle-notes" class="form-control" name="notes">{{ vehicle.notes or '' }}</textarea>
+    <button class="btn btn-primary" type="submit">Save changes</button>
+  </form>
+  <form method="post" action="{{ url_for('automotive.archive_vehicle', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <button class="btn btn-outline-danger" type="submit">Archive vehicle</button>
+  </form>
+</div></section>
+<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Report history</h2><ul>
+  {% for report in reports if report.vehicle_id == vehicle.id %}<li><a href="{{ url_for('automotive.report_view', report_id=report.id) }}">{{ report.title }}</a></li>{% else %}<li>No reports for this vehicle.</li>{% endfor %}
+</ul></div></section>
+{% endblock %}
