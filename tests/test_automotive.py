@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from services.automotive import AutomotiveStore, simple_pdf
-from routes.automotive import MAX_ARCHIVE_UNCOMPRESSED_BYTES, _collapse_dtc_matches, _validate_download_url
+from routes.automotive import MAX_ARCHIVE_UNCOMPRESSED_BYTES, _collapse_dtc_matches, _stack_dtc_matches, _validate_download_url
 
 
 class AutomotiveStoreTest(unittest.TestCase):
@@ -91,6 +91,21 @@ class AutomotiveStoreTest(unittest.TestCase):
         collapsed = _collapse_dtc_matches(matches)
         self.assertEqual(len(collapsed), 2)
         self.assertEqual(collapsed[0]['duplicate_count'], 2)
+
+    def test_code_detail_stacks_same_function_across_manufacturers(self):
+        matches = [
+            {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'make': '', 'model': '',
+             'scope': 'generic', 'lookup_priority': 20},
+            {'code': 'P0300', 'category': 'P', 'description': 'Random misfire', 'make': 'Saab', 'model': '9-5',
+             'scope': 'model', 'lookup_priority': 50},
+            {'code': 'P0300', 'category': 'P', 'description': 'Cylinder misfire', 'make': 'Saab', 'model': '9-3',
+             'scope': 'model', 'lookup_priority': 50},
+        ]
+        stacks = _stack_dtc_matches(matches)
+        self.assertEqual(len(stacks), 2)
+        random = next(stack for stack in stacks if stack['description'] == 'Random misfire')
+        self.assertEqual(len(random['variants']), 2)
+        self.assertEqual(random['manufacturers'], ['Generic OBD-II', 'Saab'])
 
     def test_identical_dtc_rows_are_not_inserted_twice(self):
         content = (b'code,description,make,model,module\n'

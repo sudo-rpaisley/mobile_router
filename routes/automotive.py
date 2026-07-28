@@ -80,6 +80,31 @@ def _collapse_dtc_matches(matches):
     return list(collapsed.values())
 
 
+def _stack_dtc_matches(matches):
+    """Stack equal code functions while retaining every manufacturer variant."""
+    stacks = {}
+    for match in _collapse_dtc_matches(matches):
+        key = (str(match.get('description') or '').strip().casefold(),
+               str(match.get('category') or '').strip().casefold())
+        stack = stacks.setdefault(key, {
+            'description': match.get('description') or '', 'category': match.get('category') or '', 'variants': [],
+            'manufacturers': [], 'models': [],
+        })
+        stack['variants'].append(match)
+        make = str(match.get('make') or 'Generic OBD-II').strip()
+        model = str(match.get('model') or '').strip()
+        if make not in stack['manufacturers']:
+            stack['manufacturers'].append(make)
+        if model and model not in stack['models']:
+            stack['models'].append(model)
+    for stack in stacks.values():
+        stack['variants'].sort(key=lambda item: (
+            0 if not item.get('make') else 1, str(item.get('make') or '').casefold(),
+            str(item.get('model') or '').casefold(), -int(item.get('lookup_priority') or 0),
+        ))
+    return list(stacks.values())
+
+
 def _pdf_text(content):
     PdfReader = importlib.import_module('pypdf').PdfReader
     try:
@@ -323,10 +348,11 @@ def create_automotive_blueprint(context_provider):
     @blueprint.get('/automotive/codes/<code>')
     def code_detail(code):
         database = store()
-        matches = _collapse_dtc_matches(database.lookup_code(code, request.args.get('make', '')))
+        matches = database.lookup_code(code, request.args.get('make', ''))
         if not matches:
             abort(404)
-        return render_template('automotive_code.html', title=code.upper(), code=code.upper(), matches=matches,
+        return render_template('automotive_code.html', title=code.upper(), code=code.upper(),
+                               stacks=_stack_dtc_matches(matches), definition_count=len(matches),
                                **context_provider())
 
     @blueprint.get('/automotive/databases/dtc/conflicts')

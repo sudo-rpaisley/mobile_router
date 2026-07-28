@@ -550,8 +550,9 @@ class RouteSmokeTest(unittest.TestCase):
             database = AutomotiveStore()
             database.import_dtc_csv(b'code,description,make,model,scope\nP0300,First definition,Saab,9-5,model\n')
             database.import_dtc_csv(b'code,description,make,model,scope\nP0300,Second definition,Saab,9-5,model\n')
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,First definition,Toyota,Corolla,model\n')
             browser = self.client.get('/automotive/codes?code=P0300&make=Saab')
-            code_page = self.client.get('/automotive/codes/P0300?make=Saab')
+            code_page = self.client.get('/automotive/codes/P0300')
             conflict_page = self.client.get('/automotive/databases/dtc/conflicts')
             saved = self.client.post('/automotive/sessions', data={
                 'csrf_token': self.csrf_token, 'title': 'Immutable scan', 'transport': 'simulator',
@@ -560,8 +561,10 @@ class RouteSmokeTest(unittest.TestCase):
             }, follow_redirects=True)
         self.assertEqual(browser.status_code, 200)
         self.assertIn(b'View full code details', browser.data)
-        self.assertIn(b'Every active local definition', code_page.data)
+        self.assertIn(b'3 local definitions stacked into 2 functions', code_page.data)
         self.assertIn(b'First definition', code_page.data)
+        self.assertIn(b'Saab', code_page.data)
+        self.assertIn(b'Toyota', code_page.data)
         self.assertIn(b'DTC conflict review', conflict_page.data)
         self.assertIn(b'Immutable scan', saved.data)
         self.assertIn(b'Immutable diagnostic session', saved.data)
