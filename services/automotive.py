@@ -527,7 +527,7 @@ class AutomotiveStore:
         return {'manufacturers': manufacturers, 'models': models}
 
     def browse_codes(self, make='', model='', category='', query='', limit=25, offset=0):
-        """Browse active local definitions, collapsing duplicate imported rows."""
+        """Browse one card per code; the detail page retains every definition."""
         clauses = ["status='active'"]
         params = []
         if make:
@@ -543,17 +543,26 @@ class AutomotiveStore:
             clauses.append('(UPPER(code) LIKE UPPER(?) OR LOWER(description) LIKE LOWER(?))')
             params.extend([f'%{query}%', f'%{query}%'])
         where = ' AND '.join(clauses)
-        grouped = f"""SELECT MIN(id) AS id, code, category, description, scope, make, model,
-            year_start, year_end, module, engine, applicability_notes,
-            MAX(lookup_priority) AS lookup_priority, COUNT(*) AS duplicate_count
-            FROM dtc_definitions WHERE {where}
-            GROUP BY UPPER(code), LOWER(make), LOWER(model), description, scope,
-                year_start, year_end, LOWER(module), LOWER(engine), applicability_notes"""
+        filtered = f"SELECT * FROM dtc_definitions WHERE {where}"
+        grouped = f"""WITH ranked AS (
+                SELECT *,ROW_NUMBER() OVER (PARTITION BY UPPER(code)
+                    ORDER BY lookup_priority DESC,is_override DESC,id DESC) AS position
+                FROM ({filtered})
+            ), totals AS (
+                SELECT UPPER(code) AS normalized_code,COUNT(*) AS definition_count,
+                    COUNT(DISTINCT CASE WHEN TRIM(make)<>'' THEN LOWER(make) END) AS manufacturer_count
+                FROM ({filtered}) GROUP BY UPPER(code)
+            )
+            SELECT ranked.id,ranked.code,ranked.category,ranked.description,ranked.scope,ranked.make,ranked.model,
+                ranked.year_start,ranked.year_end,ranked.module,ranked.engine,ranked.applicability_notes,
+                ranked.lookup_priority,totals.definition_count,totals.manufacturer_count
+            FROM ranked JOIN totals ON UPPER(ranked.code)=totals.normalized_code WHERE ranked.position=1"""
         with self.connect() as db:
-            total = db.execute(f'SELECT COUNT(*) FROM ({grouped})', params).fetchone()[0]
+            # The filtered query occurs twice in the CTE, so its bound parameters occur twice too.
+            grouped_params = params + params
+            total = db.execute(f'SELECT COUNT(*) FROM ({grouped})', grouped_params).fetchone()[0]
             rows = db.execute(
-                grouped + " ORDER BY code, CASE WHEN make='' THEN 1 ELSE 0 END, make COLLATE NOCASE, model COLLATE NOCASE LIMIT ? OFFSET ?",
-                params + [limit, offset],
+                grouped + ' ORDER BY code LIMIT ? OFFSET ?', grouped_params + [limit, offset],
             ).fetchall()
         return [dict(row) for row in rows], total
 

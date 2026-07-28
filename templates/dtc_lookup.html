@@ -10,7 +10,7 @@
     <header>
       {{ brand_icon(match.make) }}
       <div>
-        {% if show_code %}<a class="dtc-code-link" href="{{ url_for('automotive.code_detail', code=match.code, make=match.make) }}">{{ match.code }}</a>{% endif %}
+        {% if show_code %}<a class="dtc-code-link" href="{{ url_for('automotive.code_detail', code=match.code) }}">{{ match.code }}</a>{% endif %}
         <h3>{{ match.make or 'Generic OBD-II' }}</h3>
         {% if match.model %}<p>{{ match.model }}</p>{% endif %}
       </div>
@@ -25,8 +25,9 @@
       </dl>
     {% endif %}
     {% if match.applicability_notes %}<small>{{ match.applicability_notes }}</small>{% endif %}
-    {% if match.duplicate_count > 1 %}<small>{{ match.duplicate_count }} identical imported records combined.</small>{% endif %}
-    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('automotive.code_detail', code=match.code or code, make=match.make) }}">View full code details</a>
+    {% if match.duplicate_count|default(0) > 1 %}<small>{{ match.duplicate_count }} identical imported records combined.</small>{% endif %}
+    {% if match.definition_count|default(0) > 1 %}<small>{{ match.definition_count }} definitions{% if match.manufacturer_count %} across {{ match.manufacturer_count }} manufacturer{{ '' if match.manufacturer_count == 1 else 's' }}{% endif %} are combined on this card.</small>{% endif %}
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('automotive.code_detail', code=match.code or code) }}">View full code details</a>
   </article>
 {%- endmacro %}
 {% block content %}

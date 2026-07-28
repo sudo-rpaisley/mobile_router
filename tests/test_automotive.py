@@ -52,7 +52,23 @@ class AutomotiveStoreTest(unittest.TestCase):
         self.assertEqual([row['model'] for row in facets['models']], ['9-3', '9-5'])
         rows, total = self.store.browse_codes(make='Saab', model='9-5')
         self.assertEqual(total, 1)
-        self.assertEqual(rows[0]['duplicate_count'], 1)
+        self.assertEqual(rows[0]['definition_count'], 1)
+        all_rows, all_total = self.store.browse_codes()
+        self.assertEqual(all_total, 2)
+        p0300 = next(row for row in all_rows if row['code'] == 'P0300')
+        self.assertEqual(p0300['definition_count'], 2)
+        self.assertEqual(p0300['manufacturer_count'], 2)
+
+    def test_code_browser_has_one_card_when_applicability_notes_differ(self):
+        self.store.import_dtc_csv(
+            b'code,description,make,applicability_notes\n'
+            b'B0001,Deployment control,Saab,Confirm model and module support\n'
+            b'B0001,Deployment control,Saab,Generic OBD-II definition\n'
+        )
+        rows, total = self.store.browse_codes(make='Saab')
+        self.assertEqual(total, 1)
+        self.assertEqual([row['code'] for row in rows], ['B0001'])
+        self.assertEqual(rows[0]['definition_count'], 2)
 
     def test_lookup_cards_collapse_only_identical_definitions(self):
         matches = [
