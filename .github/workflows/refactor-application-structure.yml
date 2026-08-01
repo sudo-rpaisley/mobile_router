@@ -1,6 +1,7 @@
 name: Refactor application structure
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - agent/refactor-application-structure
@@ -10,6 +11,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: refactor-application-structure
+  cancel-in-progress: false
 
 jobs:
   refactor:
