@@ -222,6 +222,31 @@ def _network_count():
     return sum(len(network.access_points) for network in networks.values())
 
 
+def _flush_current_network(
+    ssid,
+    bssid,
+    channel,
+    signal,
+    security,
+    wps,
+    wps_status,
+    channel_width,
+    width_source,
+):
+    if bssid:
+        _add_network(
+            ssid,
+            bssid,
+            channel,
+            signal,
+            security,
+            wps=wps or _security_mentions_wps(security),
+            wps_status=wps_status,
+            channel_width=channel_width or 20,
+            width_source=width_source,
+        )
+
+
 def _scan_linux_with_iw(interface_name):
     if not interface_name:
         raise RuntimeError('A wireless interface is required for iw scanning')
@@ -242,24 +267,20 @@ def _scan_linux_with_iw(interface_name):
     current_channel_width = None
     current_width_source = 'inferred'
 
-    def flush_bss():
-        if current_bssid:
-            _add_network(
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('BSS '):
+            _flush_current_network(
                 current_ssid,
                 current_bssid,
                 current_channel,
                 current_signal,
                 current_security,
-                wps=current_wps or _security_mentions_wps(current_security),
-                wps_status=current_wps_status,
-                channel_width=current_channel_width or 20,
-                width_source=current_width_source,
+                current_wps,
+                current_wps_status,
+                current_channel_width,
+                current_width_source,
             )
-
-    for line in result.stdout.splitlines():
-        stripped = line.strip()
-        if stripped.startswith('BSS '):
-            flush_bss()
             current_bssid = stripped.split()[1].split('(')[0]
             current_ssid = None
             current_channel = None
@@ -298,7 +319,17 @@ def _scan_linux_with_iw(interface_name):
             current_wps = True
             current_wps_status = stripped.split(':', 1)[1].strip()
 
-    flush_bss()
+    _flush_current_network(
+        current_ssid,
+        current_bssid,
+        current_channel,
+        current_signal,
+        current_security,
+        current_wps,
+        current_wps_status,
+        current_channel_width,
+        current_width_source,
+    )
 
 def _scan_linux_with_scapy(interface_name, timeout):
     from scapy.all import sniff
@@ -407,20 +438,6 @@ def _scan_windows_with_netsh(interface_name=None):
     current_channel_width = None
     current_width_source = 'inferred'
 
-    def flush_bssid():
-        if current_bssid:
-            _add_network(
-                current_ssid,
-                current_bssid,
-                current_channel,
-                current_signal,
-                current_security,
-                wps=current_wps or _security_mentions_wps(current_security),
-                wps_status=current_wps_status,
-                channel_width=current_channel_width or 20,
-                width_source=current_width_source,
-            )
-
     for line in result.stdout.splitlines():
         stripped = line.strip()
         if not stripped or ':' not in stripped:
@@ -430,7 +447,17 @@ def _scan_windows_with_netsh(interface_name=None):
         key_lower = key.lower()
 
         if key_lower.startswith('ssid ') and value:
-            flush_bssid()
+            _flush_current_network(
+                current_ssid,
+                current_bssid,
+                current_channel,
+                current_signal,
+                current_security,
+                current_wps,
+                current_wps_status,
+                current_channel_width,
+                current_width_source,
+            )
             current_ssid = value
             current_security = None
             current_bssid = None
@@ -443,7 +470,17 @@ def _scan_windows_with_netsh(interface_name=None):
         elif key_lower == 'authentication':
             current_security = value or 'Open'
         elif key_lower.startswith('bssid '):
-            flush_bssid()
+            _flush_current_network(
+                current_ssid,
+                current_bssid,
+                current_channel,
+                current_signal,
+                current_security,
+                current_wps,
+                current_wps_status,
+                current_channel_width,
+                current_width_source,
+            )
             current_bssid = value
             current_signal = None
             current_channel = None
@@ -459,7 +496,17 @@ def _scan_windows_with_netsh(interface_name=None):
             current_wps = value.lower() not in {'no', 'false', 'disabled', 'not supported'}
             current_wps_status = value or 'advertised'
 
-    flush_bssid()
+    _flush_current_network(
+        current_ssid,
+        current_bssid,
+        current_channel,
+        current_signal,
+        current_security,
+        current_wps,
+        current_wps_status,
+        current_channel_width,
+        current_width_source,
+    )
 
 
 def _scan_windows_with_pywifi(interface_name):

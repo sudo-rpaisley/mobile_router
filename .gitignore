@@ -1,11 +1,19 @@
-logs/
-contact_messages.txt
+# Python environments
+mobileRouter/
+.venv/
+venv/
+env/
+
+# Python caches and test output
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+
+# Application runtime data
+logs/
+contact_messages.txt
 instance/train_controller.json
 data/runtime_state.json
 instance/social_profile_photos/
-
 instance/social_profile_attachments/
