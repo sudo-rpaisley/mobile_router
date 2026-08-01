@@ -2,7 +2,7 @@
 
 The implementation is split by responsibility under ``services.social_profile``.
 Existing callers can continue importing this module while newer code may import
-the focused validation, storage, credential, and device services directly.
+the focused validation, storage, relationship, credential, and device services.
 """
 
 from .social_profile.credentials import (
@@ -16,19 +16,21 @@ from .social_profile.devices import (
     delete_device,
     update_device,
 )
+from .social_profile.relationships import (
+    add_relationship,
+    delete_relationship,
+    duplicate_candidates,
+    merge_profiles,
+)
 from .social_profile.storage import (
     _normalize_profile,
     add_attachment,
-    add_relationship,
     create_profile,
     dashboard_summary,
     delete_attachment,
     delete_profile,
-    delete_relationship,
-    duplicate_candidates,
     get_profile,
     list_profiles,
-    merge_profiles,
     search_profiles,
     update_profile,
 )
