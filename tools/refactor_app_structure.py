@@ -66,7 +66,8 @@ def extract_nodes(source: str, extractions: tuple[Extraction, ...]) -> tuple[str
 
     for extraction in extractions:
         missing = [name for name in extraction.names if name not in nodes_by_name]
-        already_extracted = all(name not in source for name in extraction.names) and extraction.destination.exists()
+        import_anchor = extraction.import_statement.splitlines()[0]
+        already_extracted = extraction.destination.exists() and import_anchor in source
         if missing:
             if already_extracted:
                 continue
