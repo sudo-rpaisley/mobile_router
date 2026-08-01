@@ -1,6 +1,6 @@
 # Duplicate Python code report
 
-Scanned **72 Python files** and **558 non-trivial functions**.
+Scanned **75 Python files** and **586 non-trivial functions**.
 
 Exact groups are high-confidence consolidation candidates. Structural groups only share control-flow shape and require manual review.
 
@@ -10,43 +10,169 @@ No matches found.
 
 ## Structurally similar function bodies
 
-### CSV export formatting
+### Structural group: 5 functions, 30 total lines
 
-- `services/evidence.py` — `evidence_as_csv`
-- `services/labs.py` — `handshake_records_csv`
+- `routes/core_routes.py:92-97` — `red_team` (6 lines)
+- `routes/core_routes.py:280-285` — `network_scan` (6 lines)
+- `routes/core_routes.py:288-293` — `diagnostics_page` (6 lines)
+- `routes/core_routes.py:296-301` — `service_discovery_page` (6 lines)
+- `routes/core_routes.py:304-309` — `advanced_diagnostics_page` (6 lines)
 
-Both construct CSV output, but they use different schemas. A generic table-to-CSV helper may be useful if more exports are added; merging these two alone would add abstraction without much reduction.
+### Structural group: 2 functions, 23 total lines
 
-### Timestamped record snapshots
+- `services/evidence.py:64-79` — `evidence_as_csv` (16 lines)
+- `services/labs.py:263-269` — `handshake_records_csv` (7 lines)
 
-- `services/alerts.py` — `alert_records`
-- `services/evidence.py` — `evidence_records`
+### Structural group: 2 functions, 14 total lines
 
-Both copy locked records and add a formatted creation timestamp. This is a reasonable future shared service helper, but the domain-specific names remain clearer at their call sites.
+- `services/alerts.py:65-71` — `alert_records` (7 lines)
+- `services/evidence.py:10-16` — `evidence_records` (7 lines)
 
-### Job status routes
+### Structural group: 2 functions, 12 total lines
 
-- `routes/diagnostic_routes.py` — `port_scan_job_status`
-- `routes/interface_routes.py` — `scan_job_status`
+- `routes/diagnostic_routes.py:64-69` — `port_scan_job_status` (6 lines)
+- `routes/interface_routes.py:178-183` — `scan_job_status` (6 lines)
 
-The response flow is similar, but each route owns a different store, lock, snapshot function, and not-found message. A shared job-status response helper is possible, but should wait for a broader job-registry consolidation.
+### Structural group: 2 functions, 10 total lines
 
-### Small parameter wrappers
+- `scripts/train_controller.py:238-242` — `_controller` (5 lines)
+- `scripts/train_controller.py:245-249` — `_engine` (5 lines)
 
-- `scripts/train_controller.py` — `_controller` and `_engine`
-- `scripts/interfaceTools.py` — `get_ipv4` and `get_ipv6`
-- `scripts/capabilities.py` — `install_optional_package` and `install_required_package`
+### Structural group: 2 functions, 10 total lines
 
-These pairs are intentionally retained. Each wrapper is only five lines and gives the caller a clear domain-specific operation; replacing them with generic parameter plumbing would not materially improve maintainability.
+- `scripts/interfaceTools.py:182-186` — `get_ipv4` (5 lines)
+- `scripts/interfaceTools.py:188-192` — `get_ipv6` (5 lines)
 
-## Consolidations completed
+### Structural group: 2 functions, 10 total lines
 
-- one shared context-refresh implementation now serves nine route registrars and three extracted support modules;
-- Bluetooth helper-path discovery is implemented once;
-- the BlueZ `busctl` availability probe is implemented once;
-- network discovery modules share one MAC normaliser;
-- Linux and Windows Wi-Fi scan parsers share one network-flush implementation.
+- `scripts/capabilities.py:318-322` — `install_optional_package` (5 lines)
+- `scripts/capabilities.py:325-329` — `install_required_package` (5 lines)
 
-## Remaining repeated source fragments
+## Repeated six-line source blocks
 
-The report still identifies repeated setup declarations around the three state-aware support modules and repeated `subprocess.run` argument blocks. These are configuration or call-site similarities rather than duplicated implementations. Consolidating them would obscure local error handling and is not recommended without a larger dependency-injection or command-runner redesign.
+### Block 1: 3 occurrences
+
+- `scripts/bluetooth_phone.py:272`
+- `scripts/bluetooth_phone.py:428`
+- `scripts/bluetooth_phone_bluez.py:95`
+
+```python
+capture_output=True,
+text=True,
+timeout=timeout,
+check=False,
+)
+except (OSError, subprocess.TimeoutExpired) as exc:
+```
+
+### Block 2: 2 occurrences
+
+- `app_support/client_intelligence.py:12`
+- `app_support/passive_monitoring.py:12`
+
+```python
+
+
+_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
+
+
+@_refresh_context
+```
+
+### Block 3: 2 occurrences
+
+- `app_support/client_intelligence.py:2`
+- `app_support/passive_monitoring.py:2`
+
+```python
+
+from app_support.context import context_refresher
+
+
+_CONTEXT_PROVIDER = None
+
+```
+
+### Block 4: 2 occurrences
+
+- `app_support/client_intelligence.py:11`
+- `app_support/passive_monitoring.py:11`
+
+```python
+_CONTEXT_PROVIDER = provider
+
+
+_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
+
+
+```
+
+### Block 5: 2 occurrences
+
+- `app_support/bluetooth_actions.py:56`
+- `scripts/bluetooth_phone.py:388`
+
+```python
+capture_output=True,
+text=True,
+timeout=timeout,
+check=False,
+)
+if result.returncode != 0:
+```
+
+### Block 6: 2 occurrences
+
+- `scripts/interfaceTools.py:689`
+- `scripts/network/discovery.py:70`
+
+```python
+continue
+seen.add(key)
+unique.append(device)
+return unique
+
+
+```
+
+### Block 7: 2 occurrences
+
+- `app_support/client_intelligence.py:3`
+- `app_support/passive_monitoring.py:3`
+
+```python
+from app_support.context import context_refresher
+
+
+_CONTEXT_PROVIDER = None
+
+
+```
+
+### Block 8: 2 occurrences
+
+- `app_support/client_intelligence.py:10`
+- `app_support/passive_monitoring.py:10`
+
+```python
+global _CONTEXT_PROVIDER
+_CONTEXT_PROVIDER = provider
+
+
+_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
+
+```
+
+### Block 9: 2 occurrences
+
+- `scripts/interfaceTools.py:688`
+- `scripts/network/discovery.py:69`
+
+```python
+if not key or key in seen:
+continue
+seen.add(key)
+unique.append(device)
+return unique
+
+```
