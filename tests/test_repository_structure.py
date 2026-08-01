@@ -21,7 +21,8 @@ def test_extracted_modules_remain_focused():
         'scripts/network/classification.py': 200,
         'scripts/network/passive_capture.py': 160,
         'services/social_profile/validation.py': 400,
-        'services/social_profile/storage.py': 400,
+        'services/social_profile/storage.py': 300,
+        'services/social_profile/relationships.py': 180,
         'services/social_profile/credentials.py': 220,
         'services/social_profile/devices.py': 180,
     }
