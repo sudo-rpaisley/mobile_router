@@ -1,20 +1,35 @@
-"""Repair the known malformed Bluetooth information f-string in app.py."""
+"""Apply deterministic repairs exposed by the first full CI run."""
 
 from pathlib import Path
 
 
-APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
-BROKEN = """outputs.append(f'{property_name}: {(result.stdout or '').strip()}')"""
-FIXED = """outputs.append(f"{property_name}: {(result.stdout or '').strip()}")"""
+ROOT = Path(__file__).resolve().parents[1]
+APP_PATH = ROOT / "app.py"
+ROUTE_TEST_PATH = ROOT / "tests" / "test_routes.py"
+
+BROKEN_APP = """outputs.append(f'{property_name}: {(result.stdout or '').strip()}')"""
+FIXED_APP = """outputs.append(f"{property_name}: {(result.stdout or '').strip()}")"""
+BROKEN_ASSERTION = """self.assertEqual(response.data.count(b'Device scan'), 1)"""
+FIXED_ASSERTION = """self.assertEqual(
+            response.data.count(
+                b'href="/clients/192.168.20.10">Device scan</a>'
+            ),
+            1,
+        )"""
+
+
+def replace_once(path: Path, broken: str, fixed: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    if broken in source:
+        path.write_text(source.replace(broken, fixed, 1), encoding="utf-8")
+        return
+    if fixed not in source:
+        raise RuntimeError(f"Expected statement was not found in {path}")
 
 
 def main() -> None:
-    source = APP_PATH.read_text(encoding="utf-8")
-    if BROKEN in source:
-        APP_PATH.write_text(source.replace(BROKEN, FIXED, 1), encoding="utf-8")
-        return
-    if FIXED not in source:
-        raise RuntimeError("Expected Bluetooth information statement was not found")
+    replace_once(APP_PATH, BROKEN_APP, FIXED_APP)
+    replace_once(ROUTE_TEST_PATH, BROKEN_ASSERTION, FIXED_ASSERTION)
 
 
 if __name__ == "__main__":
