@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for, session
+from flask import Flask, Response, current_app, render_template, request, jsonify, send_from_directory, send_file, redirect, url_for, session
 from flask_socketio import SocketIO
 import os
 import json
@@ -15,10 +15,11 @@ import socket
 import secrets
 import hashlib
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 from routes import register_blueprints
 from services import device_intel
@@ -109,6 +110,8 @@ HTTP_PREVIEW_DIR = os.path.join(app.instance_path, 'http_previews')
 EVIDENCE_DIR = os.path.join(app.instance_path, 'evidence_vault')
 SOCIAL_PROFILE_PHOTO_DIR = os.path.join(app.instance_path, 'social_profile_photos')
 SOCIAL_PROFILE_ATTACHMENT_DIR = os.path.join(app.instance_path, 'social_profile_attachments')
+SOCIAL_PROFILE_ID_DIR = os.path.join(app.instance_path, 'social_profile_ids')
+SOCIAL_PROFILE_SIGNATURE_DIR = os.path.join(app.instance_path, 'social_profile_signatures')
 MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
 
@@ -286,6 +289,29 @@ ROADMAP_SECTIONS = [
             {'title': 'iperf3 performance testing', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now runs bounded iperf3 client/server checks for LAN throughput baselines when iperf3 is installed.', 'description': 'Run controlled iperf3 client/server tests for throughput, jitter, loss, and LAN performance baselines.'},
             {'title': 'SNMP inventory discovery', 'priority': 'Low', 'priority_class': 'secondary', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now safely collects SNMP system and interface metadata from authorized targets when credentials are supplied.', 'description': 'Safely collect SNMP system identity and interface metadata from authorized devices when credentials are provided.'},
             {'title': 'IPv6 assessment toolkit', 'priority': 'Medium', 'priority_class': 'warning', 'status': 'Done', 'completed_note': 'Advanced Diagnostics now includes IPv6 ping, traceroute, neighbor/default-route views, AAAA lookup, and bounded IPv6 TCP checks.', 'description': 'Add IPv6 ping, traceroute, neighbor discovery, router advertisement visibility, DNS records, and IPv6 port scanning support.'},
+        ],
+    },
+    {
+        'title': 'Automotive diagnostics',
+        'items': [
+            {'title': 'Offline VIN, DTC, vehicle, and workshop records', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Automotive pages now provide local WMI/VIN and DTC lookups, saved vehicles, translation snapshots, report exports, and SQLite persistence.', 'description': 'Provide the local automotive data and reporting foundation without online lookups.'},
+            {'title': 'Staged automotive database imports', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'VIN and DTC uploads are checksum-tracked, staged for row review, selectively approved in one transaction, or discarded.', 'description': 'Review parsed VIN and DTC records before they affect live lookup results.'},
+            {'title': 'Vehicle and module identity inventory', 'priority': 'High', 'priority_class': 'danger', 'status': 'Done', 'completed_note': 'Vehicle pages retain chassis, frame, body, engine, transmission, registration, fleet, and legacy identifiers plus ECU/module identities, calibration data, and module-reported VIN match warnings.', 'description': 'Keep one canonical vehicle VIN while tracking physical identifiers and every control-module identity observation.'},
+            {'title': 'Simulated OBD-II reader', 'priority': 'High', 'priority_class': 'danger', 'description': 'Build an ELM327-style simulator for connection, VIN, current/pending/permanent DTC, freeze-frame, readiness, live-PID, timeout, malformed-response, and clear-code scenarios before hardware arrives.'},
+            {'title': 'Transport-neutral OBD architecture', 'priority': 'High', 'priority_class': 'danger', 'description': 'Define shared discovery, connect, command, timeout, cancellation, and disconnect contracts for simulated, USB serial, Bluetooth Classic, BLE, and Wi-Fi readers.'},
+            {'title': 'Immutable diagnostic sessions', 'priority': 'High', 'priority_class': 'danger', 'description': 'Persist adapter identity, protocol, vehicle VIN, raw responses, categorized DTCs, freeze-frame values, readiness monitors, PID samples, warnings, and before/after state.'},
+            {'title': 'Automotive diagnostics workspace', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add reader and vehicle selection, connection state, quick/full scans, readiness, freeze-frame, live data, saved sessions, and create-report actions.'},
+            {'title': 'USB serial ELM327 and STN support', 'priority': 'High', 'priority_class': 'danger', 'description': 'Discover ports, probe baud rates, initialize supported adapters, detect protocols, enforce bounded commands, cancel work, and retain raw exchanges.'},
+            {'title': 'Bluetooth Classic and Wi-Fi OBD transports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Support paired RFCOMM/SPP readers and configured TCP readers through the same diagnostic-session service.'},
+            {'title': 'Adapter-specific Bluetooth LE plugins', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add BLE GATT transports as explicit adapter plugins rather than treating every BLE reader as a generic serial device.'},
+            {'title': 'Safe DTC clearing workflow', 'priority': 'High', 'priority_class': 'danger', 'description': 'Require a saved pre-clear scan and explicit warning, record the action, explain readiness reset, and automatically capture a post-clear scan.'},
+            {'title': 'Full downloadable VIN decoder dataset', 'priority': 'High', 'priority_class': 'danger', 'description': 'Add a versioned authoritative dataset adapter for make, model, year, body, engine, plant, restraint, and manufacturer-specific VDS decoding while keeping runtime lookup offline.'},
+            {'title': 'Versioned DTC definition library', 'priority': 'High', 'priority_class': 'danger', 'description': 'Preserve multiple sourced definitions and translations by make, model, year, engine, module, language, source page, confidence, and superseded state instead of replacing code/make pairs.'},
+            {'title': 'PDF provenance and OCR review', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Retain original documents, page numbers, extracted context, confidence, and corrections, with optional OCR staging for image-only diagnostic manuals.'},
+            {'title': 'Professional workshop PDF reports', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Add Unicode, wrapping, pagination, DTC tables, branding, dates, diagnostic sessions, before/after results, parts, labor, recommendations, attachments, and signatures.'},
+            {'title': 'Report revisions and finalization', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Support draft, final, amended, and void states with revision history, finalized-by identity, and immutable finalized records.'},
+            {'title': 'Automotive backup and restore', 'priority': 'Medium', 'priority_class': 'warning', 'description': 'Export, validate, and restore the complete automotive database, source documents, vehicle histories, sessions, reports, and import provenance.'},
+            {'title': 'Automotive route, browser, and hardware tests', 'priority': 'High', 'priority_class': 'danger', 'description': 'Cover authentication, CSRF, uploads, redirects, corrupt PDFs, migrations, rollback, reader simulation, diagnostic sessions, report downloads, accessibility, and mobile layouts.'},
         ],
     },
     {
@@ -2421,7 +2447,7 @@ def social_login_required(roles=None):
                 return redirect(url_for('social_auth_setup'))
             user = session.get('social_user')
             if not user:
-                return redirect(url_for('social_auth_login', next=request.path))
+                return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
             if user.get('role') not in allowed_roles:
                 return json_error('You do not have permission for this action.', 403)
             if request.method == 'POST' and not secrets.compare_digest(
@@ -2492,6 +2518,77 @@ def save_social_profile_photo(profile_id, upload):
     return filename
 
 
+def save_profile_image(upload, directory, prefix):
+    """Persist a bounded identity/signature image and return storage metadata."""
+    if not upload or not upload.filename:
+        raise ValueError('Choose an image to upload.')
+    safe_name = secure_filename(upload.filename) or 'image'
+    extension = os.path.splitext(safe_name)[1].casefold()
+    if extension not in {'.jpg', '.jpeg', '.png', '.webp'}:
+        raise ValueError('Use a JPG, PNG, or WebP image.')
+    content = upload.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        raise ValueError('Images must be 10 MB or smaller.')
+    filename = f'{prefix}-{uuid.uuid4()}{extension}'
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, filename), 'wb') as handle:
+        handle.write(content)
+    return {'filename': filename, 'original_name': safe_name, 'size': len(content),
+            'sha256': hashlib.sha256(content).hexdigest()}
+
+
+def identity_image_ocr(path):
+    """Run local Tesseract when available; OCR never uses an online service."""
+    executable = shutil.which('tesseract')
+    if not executable:
+        return '', 'unavailable'
+    try:
+        result = subprocess.run([executable, path, 'stdout'], capture_output=True, text=True, timeout=45, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return '', 'failed'
+    text = result.stdout.strip()
+    return text, 'complete' if text else 'no_text'
+
+
+def identity_ocr_fields(text):
+    """Extract conservative labeled values while retaining the full OCR text for review."""
+    def labeled(pattern):
+        match = re.search(pattern, text, re.I | re.M)
+        return match.group(1).strip() if match else ''
+    dates = re.findall(r'\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b', text)
+    return {
+        'document_number': labeled(r'(?:document|licen[cs]e|passport|id)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9 -]{3,})'),
+        'date_of_birth': labeled(r'(?:date of birth|birth|dob)\s*[:\-]?\s*([^\n]+)'),
+        'expiry_date': labeled(r'(?:expiry|expires|expiration|exp)\s*[:\-]?\s*([^\n]+)'),
+        'detected_dates': dates[:10],
+    }
+
+
+def login_destination(value):
+    """Return a safe, existing local GET destination or the application home page."""
+    candidate = str(value or '').strip()
+    parsed = urlsplit(candidate)
+    if (not candidate.startswith('/') or candidate.startswith('//') or '\\' in candidate
+            or parsed.scheme or parsed.netloc):
+        return url_for('index')
+    try:
+        endpoint, route_values = current_app.url_map.bind_to_environ(request.environ).match(parsed.path, method='GET')
+    except HTTPException:
+        return url_for('index')
+    if endpoint in {'social_auth_login', 'social_auth_setup', 'social_auth_logout'}:
+        return url_for('index')
+    if endpoint == 'interfaces_by_type' and not any(
+        iface.interface_type.casefold() == route_values['interface_type'].casefold() for iface in network_interfaces
+    ):
+        return url_for('index')
+    if endpoint == 'interface_detail' and not any(
+        iface.interface_type.casefold() == route_values['interface_type'].casefold()
+        and iface.name == route_values['interface_name'] for iface in network_interfaces
+    ):
+        return url_for('index')
+    return parsed.path + (f'?{parsed.query}' if parsed.query else '')
+
+
 @app.before_request
 def require_application_login():
     """Require a local account for every application page and API except auth/static assets."""
@@ -2502,15 +2599,15 @@ def require_application_login():
     if request.endpoint in public_endpoints:
         return None
     if not social_users:
-        return redirect(url_for('social_auth_setup', next=request.path))
+        return redirect(url_for('social_auth_setup', next=request.full_path.rstrip('?')))
     session_user = current_app_user()
     if not session_user:
-        return redirect(url_for('social_auth_login', next=request.path))
+        return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
     with social_users_lock:
         stored_user = social_users.get(session_user.get('username'))
     if not stored_user:
         session.pop('social_user', None)
-        return redirect(url_for('social_auth_login', next=request.path))
+        return redirect(url_for('social_auth_login', next=request.full_path.rstrip('?')))
     session['social_user'] = {'username': stored_user['username'], 'role': stored_user['role']}
     return None
 
@@ -2523,7 +2620,7 @@ def inject_application_auth():
 @app.route('/setup', methods=['GET', 'POST'])
 def social_auth_setup():
     if social_users:
-        return redirect(url_for('social_auth_login'))
+        return redirect(url_for('social_auth_login', next=request.form.get('next') or request.args.get('next', '')))
     if request.method == 'POST':
         if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
             return json_error('Invalid or expired form token.', 400)
@@ -2533,21 +2630,21 @@ def social_auth_setup():
                 social_users, social_users_lock,
             )
         except ValueError as exc:
-            return render_template('social_auth.html', title='Social Profile Setup', mode='setup', error=str(exc), csrf_token=social_csrf_token(), **current_context()), 400
+            return render_template('social_auth.html', title='Social Profile Setup', mode='setup', error=str(exc), next_url=request.form.get('next') or request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context()), 400
         session['social_user'] = {'username': user['username'], 'role': user['role']}
         with social_profiles_lock:
             for profile in social_profiles.values():
                 profile.setdefault('owner', user['username'])
         record_social_audit('auth.setup')
         save_runtime_state('social-auth-setup')
-        return redirect(url_for('social_engineering_page'))
-    return render_template('social_auth.html', title='Social Profile Setup', mode='setup', csrf_token=social_csrf_token(), **current_context())
+        return redirect(login_destination(request.form.get('next') or request.args.get('next')))
+    return render_template('social_auth.html', title='Social Profile Setup', mode='setup', next_url=request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context())
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def social_auth_login():
     if not social_users:
-        return redirect(url_for('social_auth_setup'))
+        return redirect(url_for('social_auth_setup', next=request.form.get('next') or request.args.get('next', '')))
     if request.method == 'POST':
         if not secrets.compare_digest(str(request.form.get('csrf_token') or ''), social_csrf_token()):
             return json_error('Invalid or expired form token.', 400)
@@ -2555,12 +2652,12 @@ def social_auth_login():
             request.form.get('username'), request.form.get('password'), social_users, social_users_lock,
         )
         if not user:
-            return render_template('social_auth.html', title='Social Profile Login', mode='login', error='Invalid username or password.', csrf_token=social_csrf_token(), **current_context()), 401
+            return render_template('social_auth.html', title='Social Profile Login', mode='login', error='Invalid username or password.', next_url=request.form.get('next') or request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context()), 401
         session['social_user'] = {'username': user['username'], 'role': user['role']}
         record_social_audit('auth.login')
         save_runtime_state('social-auth-login')
-        return redirect(url_for('social_engineering_page'))
-    return render_template('social_auth.html', title='Social Profile Login', mode='login', csrf_token=social_csrf_token(), **current_context())
+        return redirect(login_destination(request.form.get('next') or request.args.get('next')))
+    return render_template('social_auth.html', title='Social Profile Login', mode='login', next_url=request.args.get('next', ''), csrf_token=social_csrf_token(), **current_context())
 
 
 @app.route('/logout', methods=['POST'])
@@ -2574,12 +2671,12 @@ def social_auth_logout():
 
 @app.route('/social-engineering/setup')
 def legacy_social_auth_setup():
-    return redirect(url_for('social_auth_setup'))
+    return redirect(url_for('social_auth_setup', next=request.args.get('next', '')))
 
 
 @app.route('/social-engineering/login')
 def legacy_social_auth_login():
-    return redirect(url_for('social_auth_login'))
+    return redirect(url_for('social_auth_login', next=request.args.get('next', '')))
 
 
 @app.route('/users')
@@ -2752,6 +2849,14 @@ def delete_social_profile(profile_id):
         attachment_path = os.path.join(SOCIAL_PROFILE_ATTACHMENT_DIR, attachment.get('filename', ''))
         if os.path.isfile(attachment_path):
             os.unlink(attachment_path)
+    for collection, directory in (
+        (profile.get('identity_documents', []), SOCIAL_PROFILE_ID_DIR),
+        (profile.get('signatures', []), SOCIAL_PROFILE_SIGNATURE_DIR),
+    ):
+        for item in collection:
+            path = os.path.join(directory, item.get('filename', ''))
+            if os.path.isfile(path):
+                os.unlink(path)
     record_social_audit('profile.delete', profile_id)
     save_runtime_state('social-profile-delete')
     return redirect(url_for('social_engineering_page'))
@@ -2973,6 +3078,138 @@ def add_social_profile_attachment(profile_id):
     return redirect(url_for('social_profile_detail', profile_id=profile_id))
 
 
+@app.route('/social-engineering/profiles/<profile_id>/identity-documents', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def add_identity_document(profile_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    try:
+        image = save_profile_image(request.files.get('identity_image'), SOCIAL_PROFILE_ID_DIR, f'{profile_id}-id')
+    except ValueError as exc:
+        return json_error(str(exc))
+    path = os.path.join(SOCIAL_PROFILE_ID_DIR, image['filename'])
+    ocr_text, ocr_status = identity_image_ocr(path)
+    detected = identity_ocr_fields(ocr_text)
+    document = {
+        'id': str(uuid.uuid4()), **image, 'document_type': str(request.form.get('document_type') or 'other')[:100],
+        'document_number': str(request.form.get('document_number') or detected['document_number'])[:200],
+        'issuing_country': str(request.form.get('issuing_country') or '')[:100],
+        'date_of_birth': str(request.form.get('date_of_birth') or detected['date_of_birth'])[:100],
+        'issue_date': str(request.form.get('issue_date') or '')[:100],
+        'expiry_date': str(request.form.get('expiry_date') or detected['expiry_date'])[:100],
+        'address': str(request.form.get('address') or '')[:1000], 'notes': str(request.form.get('notes') or '')[:2000],
+        'ocr_text': ocr_text[:20000], 'ocr_status': ocr_status, 'detected_dates': detected['detected_dates'],
+        'created_at': time.time(), 'updated_at': time.time(),
+    }
+    with social_profiles_lock:
+        social_profiles[profile_id].setdefault('identity_documents', []).append(document)
+    record_social_audit('identity-document.create', profile_id, document['document_type'])
+    save_runtime_state('identity-document-create')
+    return redirect(url_for('identity_document_detail', profile_id=profile_id, document_id=document['id']))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/identity-documents/<document_id>', methods=['GET', 'POST'])
+@social_login_required()
+def identity_document_detail(profile_id, document_id):
+    profile = owned_social_profile(profile_id)
+    document = next((item for item in (profile or {}).get('identity_documents', []) if item.get('id') == document_id), None)
+    if not document:
+        return render_template('identity_document.html', title='Identity document not found', profile=profile, document=None, **current_context()), 404
+    if request.method == 'POST':
+        if current_app_user().get('role') not in {'editor', 'admin'}:
+            return json_error('You do not have permission for this action.', 403)
+        fields = ('document_type', 'document_number', 'issuing_country', 'date_of_birth', 'issue_date', 'expiry_date', 'address', 'notes')
+        with social_profiles_lock:
+            stored = next(item for item in social_profiles[profile_id].setdefault('identity_documents', []) if item.get('id') == document_id)
+            for field in fields:
+                stored[field] = str(request.form.get(field) or '').strip()[:2000 if field in {'address', 'notes'} else 200]
+            stored['updated_at'] = time.time()
+        record_social_audit('identity-document.update', profile_id, document_id)
+        save_runtime_state('identity-document-update')
+        return redirect(url_for('identity_document_detail', profile_id=profile_id, document_id=document_id, saved=1))
+    return render_template('identity_document.html', title=f"{profile['full_name']} identity document", profile=profile,
+                           document=document, csrf_token=social_csrf_token(), **current_context())
+
+
+@app.route('/social-engineering/profiles/<profile_id>/identity-documents/<document_id>/image')
+@social_login_required()
+def identity_document_image(profile_id, document_id):
+    profile = owned_social_profile(profile_id)
+    document = next((item for item in (profile or {}).get('identity_documents', []) if item.get('id') == document_id), None)
+    if not document:
+        return json_error('Identity document not found', 404)
+    return send_from_directory(SOCIAL_PROFILE_ID_DIR, document['filename'])
+
+
+@app.route('/social-engineering/profiles/<profile_id>/identity-documents/<document_id>/delete', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def delete_identity_document(profile_id, document_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    with social_profiles_lock:
+        items = social_profiles[profile_id].setdefault('identity_documents', [])
+        document = next((item for item in items if item.get('id') == document_id), None)
+        if document:
+            social_profiles[profile_id]['identity_documents'] = [item for item in items if item.get('id') != document_id]
+    if not document:
+        return json_error('Identity document not found', 404)
+    path = os.path.join(SOCIAL_PROFILE_ID_DIR, document['filename'])
+    if os.path.isfile(path):
+        os.unlink(path)
+    record_social_audit('identity-document.delete', profile_id, document_id)
+    save_runtime_state('identity-document-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/signatures', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def add_profile_signature(profile_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    try:
+        image = save_profile_image(request.files.get('signature_image'), SOCIAL_PROFILE_SIGNATURE_DIR, f'{profile_id}-signature')
+    except ValueError as exc:
+        return json_error(str(exc))
+    signature = {'id': str(uuid.uuid4()), **image, 'label': str(request.form.get('label') or 'Signature')[:200],
+                 'signed_at': str(request.form.get('signed_at') or '')[:100], 'notes': str(request.form.get('notes') or '')[:2000],
+                 'created_at': time.time()}
+    with social_profiles_lock:
+        social_profiles[profile_id].setdefault('signatures', []).append(signature)
+    record_social_audit('signature.create', profile_id, signature['label'])
+    save_runtime_state('signature-create')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
+@app.route('/social-engineering/profiles/<profile_id>/signatures/<signature_id>/image')
+@social_login_required()
+def profile_signature_image(profile_id, signature_id):
+    profile = owned_social_profile(profile_id)
+    signature = next((item for item in (profile or {}).get('signatures', []) if item.get('id') == signature_id), None)
+    if not signature:
+        return json_error('Signature not found', 404)
+    return send_from_directory(SOCIAL_PROFILE_SIGNATURE_DIR, signature['filename'])
+
+
+@app.route('/social-engineering/profiles/<profile_id>/signatures/<signature_id>/delete', methods=['POST'])
+@social_login_required({'editor', 'admin'})
+def delete_profile_signature(profile_id, signature_id):
+    if not owned_social_profile(profile_id):
+        return json_error('Profile not found', 404)
+    with social_profiles_lock:
+        items = social_profiles[profile_id].setdefault('signatures', [])
+        signature = next((item for item in items if item.get('id') == signature_id), None)
+        if signature:
+            social_profiles[profile_id]['signatures'] = [item for item in items if item.get('id') != signature_id]
+    if not signature:
+        return json_error('Signature not found', 404)
+    path = os.path.join(SOCIAL_PROFILE_SIGNATURE_DIR, signature['filename'])
+    if os.path.isfile(path):
+        os.unlink(path)
+    record_social_audit('signature.delete', profile_id, signature_id)
+    save_runtime_state('signature-delete')
+    return redirect(url_for('social_profile_detail', profile_id=profile_id))
+
+
 @app.route('/social-engineering/profiles/<profile_id>/attachments/<attachment_id>')
 @social_login_required()
 def download_social_profile_attachment(profile_id, attachment_id):
@@ -3115,6 +3352,10 @@ def roadmap_page():
 
 
 app.config['TRAIN_CONTROLLER_EVIDENCE_RECORDER'] = create_evidence_record
+app.config['AUTOMOTIVE_PEOPLE_PROVIDER'] = lambda: [
+    {'id': profile.get('id'), 'full_name': profile.get('full_name') or 'Unnamed person'}
+    for profile in owned_social_profiles()
+]
 register_blueprints(app, current_context)
 
 

@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}Vehicle{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Saved vehicle</p>
+    <h1 class="page-title">{{ vehicle.nickname or vehicle.vin }}</h1>
+    <p class="page-subtitle"><code>{{ vehicle.vin }}</code></p>
+  </div>
+</section>
+{% if request.args.get('saved') %}<div class="alert alert-success">Vehicle saved. You can now add identifiers, modules, and reports.</div>{% elif request.args.get('already_saved') %}<div class="alert alert-info">This VIN was already saved; its existing vehicle record is shown.</div>{% endif %}
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Edit vehicle</h2>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="vehicle-vin">VIN</label><input id="vehicle-vin" class="form-control" required name="vin" maxlength="17" value="{{ vehicle.vin }}">
+    <label for="vehicle-nickname">Nickname</label><input id="vehicle-nickname" class="form-control" name="nickname" value="{{ vehicle.nickname or '' }}">
+    <label for="vehicle-year">Year</label><input id="vehicle-year" class="form-control" name="year" value="{{ vehicle.year or '' }}">
+    <label for="vehicle-make">Make</label><input id="vehicle-make" class="form-control" name="make" value="{{ vehicle.make or '' }}">
+    <label for="vehicle-model">Model</label><input id="vehicle-model" class="form-control" name="model" value="{{ vehicle.model or '' }}">
+    <label for="vehicle-notes">Notes</label><textarea id="vehicle-notes" class="form-control" name="notes">{{ vehicle.notes or '' }}</textarea>
+    <button class="btn btn-primary" type="submit">Save changes</button>
+  </form>
+  <form method="post" action="{{ url_for('automotive.archive_vehicle', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <button class="btn btn-outline-danger" type="submit">Archive vehicle</button>
+  </form>
+</div></section>
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Connected people</h2>
+  <p class="text-muted">Connect this vehicle to people saved under Records → Social Engineering, such as an owner, driver, keeper, technician, or previous owner.</p>
+  <div class="table-responsive"><table class="table"><thead><tr><th>Person</th><th>Relationship</th><th>Notes</th><th></th></tr></thead><tbody>
+    {% for link in vehicle_people %}<tr><td><a href="{{ url_for('social_profile_detail', profile_id=link.person_id) }}">{{ link.person_name }}</a></td><td>{{ link.relationship|replace('_',' ')|title }}</td><td>{{ link.notes or '—' }}</td><td><form method="post" action="{{ url_for('automotive.delete_vehicle_person', vehicle_id=vehicle.id, link_id=link.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></td></tr>{% else %}<tr><td colspan="4">No people connected yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if people %}<form method="post" action="{{ url_for('automotive.add_vehicle_person', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="vehicle-person">Person</label><select id="vehicle-person" class="form-control" name="person_id" required><option value="">Select a person</option>{% for person in people %}<option value="{{ person.id }}">{{ person.full_name }}</option>{% endfor %}</select>
+    <label for="vehicle-person-relationship">Relationship</label><select id="vehicle-person-relationship" class="form-control" name="relationship"><option value="owner">Owner</option><option value="primary_driver">Primary driver</option><option value="driver">Driver</option><option value="keeper">Registered keeper</option><option value="technician">Technician</option><option value="previous_owner">Previous owner</option><option value="associated">Associated person</option></select>
+    <label for="vehicle-person-notes">Notes</label><input id="vehicle-person-notes" class="form-control" name="notes">
+    <button class="btn btn-primary" type="submit">Connect person</button>
+  </form>{% else %}<p><a href="{{ url_for('social_engineering_page') }}">Create a person record</a> before connecting someone to this vehicle.</p>{% endif %}
+</div></section>
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">Vehicle identifiers</h2>
+  <p class="text-muted">Keep the canonical VIN above. Add chassis, frame, body, engine, transmission, registration, fleet, and legacy identifiers here.</p>
+  <div class="table-responsive"><table class="table"><thead><tr><th>Type</th><th>Value</th><th>Source</th><th>Verified</th><th></th></tr></thead><tbody>
+    {% for item in identifiers %}<tr><td>{{ item.identifier_type|replace('_',' ')|title }}</td><td><code>{{ item.value }}</code></td><td>{{ item.source or 'Not recorded' }}</td><td>{{ 'Yes' if item.verified else 'No' }}</td><td><form method="post" action="{{ url_for('automotive.delete_vehicle_identifier', vehicle_id=vehicle.id, identifier_id=item.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></td></tr>{% else %}<tr><td colspan="5">No additional identifiers recorded.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <form method="post" action="{{ url_for('automotive.add_vehicle_identifier', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="identifier-type">Identifier type</label><select id="identifier-type" class="form-control" name="identifier_type" required><option value="chassis_number">Chassis number</option><option value="frame_number">Frame number</option><option value="body_number">Body number</option><option value="engine_serial">Engine serial</option><option value="transmission_serial">Transmission serial</option><option value="registration">Registration</option><option value="fleet_number">Fleet number</option><option value="manufacturer_serial">Manufacturer serial</option><option value="legacy_vehicle_number">Legacy vehicle number</option><option value="other">Other</option></select>
+    <label for="identifier-value">Value</label><input id="identifier-value" class="form-control" name="value" required>
+    <label for="identifier-source">Source</label><input id="identifier-source" class="form-control" name="source" placeholder="Stamped chassis, registration document, owner…">
+    <label for="identifier-notes">Notes</label><input id="identifier-notes" class="form-control" name="notes">
+    <label><input type="checkbox" name="verified" value="1"> Verified against the vehicle or a trusted document</label><br>
+    <button class="btn btn-primary" type="submit">Add identifier</button>
+  </form>
+</div></section>
+<section class="theme-card card"><div class="card-body">
+  <h2 class="theme-section-title">ECUs and control modules</h2>
+  <p class="text-muted">Record each module separately. A module-reported VIN is compared with the canonical vehicle VIN and never replaces it automatically.</p>
+  <div class="table-responsive"><table class="table"><thead><tr><th>Module</th><th>Reported VIN</th><th>Identity</th><th>Calibration</th><th></th></tr></thead><tbody>
+    {% for module in modules %}<tr><td><strong>{{ module.module_name }}</strong><br><small>{{ module.module_address }}</small></td><td>{% if module.reported_vin %}<code>{{ module.reported_vin }}</code><br><span class="badge badge-{{ 'success' if module.vin_match else 'danger' }}">{{ 'VIN match' if module.vin_match else 'VIN mismatch' }}</span>{% else %}Not reported{% endif %}</td><td>Part: {{ module.part_number or '—' }}<br>Serial: {{ module.serial_number or '—' }}<br>Hardware: {{ module.hardware_number or '—' }}<br>Software: {{ module.software_number or '—' }}</td><td>ID: {{ module.calibration_id or '—' }}<br>CVN: {{ module.cvn or '—' }}</td><td><form method="post" action="{{ url_for('automotive.delete_vehicle_module', vehicle_id=vehicle.id, module_id=module.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></td></tr>{% else %}<tr><td colspan="5">No modules recorded yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <form method="post" action="{{ url_for('automotive.add_vehicle_module', vehicle_id=vehicle.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+    <label for="module-name">Module name</label><input id="module-name" class="form-control" name="module_name" placeholder="Engine ECU, ABS, BCM…" required>
+    <label for="module-address">Diagnostic address</label><input id="module-address" class="form-control" name="module_address">
+    <label for="module-vin">VIN reported by module</label><input id="module-vin" class="form-control" name="reported_vin" minlength="17" maxlength="17">
+    <label for="module-manufacturer">Manufacturer</label><input id="module-manufacturer" class="form-control" name="manufacturer">
+    <label for="module-part">Part number</label><input id="module-part" class="form-control" name="part_number">
+    <label for="module-hardware">Hardware number</label><input id="module-hardware" class="form-control" name="hardware_number">
+    <label for="module-software">Software number</label><input id="module-software" class="form-control" name="software_number">
+    <label for="module-serial">Module serial number</label><input id="module-serial" class="form-control" name="serial_number">
+    <label for="module-calibration">Calibration ID</label><input id="module-calibration" class="form-control" name="calibration_id">
+    <label for="module-cvn">Calibration verification number (CVN)</label><input id="module-cvn" class="form-control" name="cvn">
+    <label for="module-notes">Notes</label><textarea id="module-notes" class="form-control" name="notes"></textarea>
+    <button class="btn btn-primary" type="submit">Add module</button>
+  </form>
+</div></section>
+<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Stored module values and programming</h2><p class="text-muted">Capture a complete read-only snapshot before proposing changes. Applying to a real vehicle remains disabled until a verified reader transport, pre-write backup, compatibility checks, and post-write verification are available.</p><ul>{% for item in parameter_snapshots %}<li><a href="{{ url_for('automotive.parameter_snapshot_detail', snapshot_id=item.id) }}">{{ item.title }}</a> — {{ item.module_name }} · {{ item.captured_at }}</li>{% else %}<li>No stored-value snapshots.</li>{% endfor %}</ul><form method="post" action="{{ url_for('automotive.save_parameter_snapshot', vehicle_id=vehicle.id) }}"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><label>Module</label><select class="form-control" name="module_id" required><option value="">Choose module</option>{% for module in modules %}<option value="{{ module.id }}">{{ module.module_name }} {{ module.module_address }}</option>{% endfor %}</select><label>Snapshot title</label><input class="form-control" name="title" placeholder="BCM stored values before changes"><label>Source</label><select class="form-control" name="source"><option>manual</option><option>simulator</option><option>usb</option><option>bluetooth</option><option>wifi</option><option>ble</option></select><label>All stored values (JSON object)</label><textarea class="form-control" name="values_json" rows="8" placeholder='{"indicator_flash_count": 3, "follow_me_home_seconds": 30}' required></textarea><button class="btn btn-primary">Save immutable value snapshot</button></form></div></section>
+<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Report history</h2><ul>
+  {% for report in reports if report.vehicle_id == vehicle.id %}<li><a href="{{ url_for('automotive.report_view', report_id=report.id) }}">{{ report.title }}</a></li>{% else %}<li>No reports for this vehicle.</li>{% endfor %}
+</ul></div></section>
+{% endblock %}

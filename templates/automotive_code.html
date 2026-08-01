@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}{{ code }}{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">Diagnostic trouble code</p><h1 class="page-title">{{ code }}</h1><p class="page-subtitle">{{ definition_count }} local definition{{ '' if definition_count == 1 else 's' }} stacked into {{ stacks|length }} function{{ '' if stacks|length == 1 else 's' }}. Open a stack to compare manufacturer-specific applicability and provenance.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('automotive.code_lookup', code=code) }}">Back to browser</a></section>
+{% for stack in stacks %}
+<section class="theme-card card dtc-function-stack"><div class="card-body">
+  <div class="automotive-result-heading"><div><p class="page-kicker">{{ stack.category }} function</p><h2>{{ stack.description }}</h2></div><span class="badge badge-info">{{ stack.variants|length }} variant{{ '' if stack.variants|length == 1 else 's' }}</span></div>
+  <div class="dtc-stack-brands">{% for make in stack.manufacturers %}<span class="badge badge-secondary">{{ make }}</span>{% endfor %}{% for model in stack.models %}<span class="badge badge-light">{{ model }}</span>{% endfor %}</div>
+  {% for item in stack.variants %}
+  <details class="dtc-variant" {% if stack.variants|length == 1 %}open{% endif %}><summary><strong>{{ item.make or 'Generic OBD-II' }}{% if item.model %} · {{ item.model }}{% endif %}</strong><span>{{ item.scope|replace('_',' ')|title }} · Priority {{ item.lookup_priority }}</span></summary><div class="dtc-variant-body">
+    <dl class="automotive-result-grid"><div><dt>Years</dt><dd>{{ item.year_start or 'Any' }}–{{ item.year_end or 'Any' }}</dd></div><div><dt>Module</dt><dd>{{ item.module or 'Any' }}</dd></div><div><dt>Engine</dt><dd>{{ item.engine or 'Any' }}</dd></div><div><dt>Transmission</dt><dd>{{ item.transmission or 'Any' }}</dd></div><div><dt>Market</dt><dd>{{ item.market or 'Any' }}</dd></div><div><dt>Protocol</dt><dd>{{ item.protocol or 'Not specified' }}</dd></div><div><dt>Language</dt><dd>{{ item.language }}</dd></div><div><dt>Confidence</dt><dd>{{ item.confidence }}</dd></div><div><dt>Status</dt><dd>{{ item.status }}</dd></div></dl>
+    <h3>Applicability</h3><p class="preserve-lines">{{ item.applicability_notes or 'No additional applicability notes.' }}</p><h3>Source and notes</h3><dl><dt>Source</dt><dd>{{ item.source_name or 'Not recorded' }}</dd><dt>URL</dt><dd>{% if item.source_url.startswith('https://') or item.source_url.startswith('http://') %}<a href="{{ item.source_url }}" rel="noopener noreferrer">{{ item.source_url }}</a>{% else %}{{ item.source_url or 'Not recorded' }}{% endif %}</dd><dt>Version / retrieved</dt><dd>{{ item.source_version or '—' }} / {{ item.retrieved_at or '—' }}</dd><dt>License</dt><dd>{{ item.license or 'Not recorded' }}</dd><dt>Source line</dt><dd>{{ item.source_line or 'Not recorded' }}</dd><dt>SHA-256</dt><dd><code>{{ item.source_sha256 or 'Not recorded' }}</code></dd><dt>Notes</dt><dd class="preserve-lines">{{ item.notes or 'None' }}</dd></dl>
+  </div></details>
+  {% endfor %}
+</div></section>
+{% endfor %}
+{% endblock %}
