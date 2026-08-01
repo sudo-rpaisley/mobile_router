@@ -1,31 +1,107 @@
 """Client service fingerprinting, scheduled checks, alerts, and HTTP inspection."""
 
-from app_support.context import context_refresher
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import socket
+import subprocess
+import time
+import uuid
+from collections.abc import Callable, Mapping
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
+
+from services import device_intel
+from werkzeug.utils import secure_filename
 
 
-_CONTEXT_PROVIDER = None
+ContextProvider = Callable[[], Mapping[str, Any]]
+_CONTEXT_PROVIDER: ContextProvider | None = None
+_REQUIRED_DEPENDENCIES = {
+    'HTTP_PREVIEW_DIR',
+    'append_client_timeline_event',
+    'client_baseline_diff',
+    'create_client_watch_alert',
+    'enrich_web_port_metadata',
+    'find_inventory_device',
+    'fingerprint_client_services',
+    'inspect_http_services',
+    'is_client_watched',
+    'new_device_alerts',
+    'new_device_alerts_lock',
+    'parse_int',
+    'record_device_open_ports',
+    'run_ping_check',
+    'save_runtime_state',
+    'scan_common_client_ports',
+    'scheduled_client_checks',
+}
 
 
-def configure_client_services_context(provider):
-    global _CONTEXT_PROVIDER
+class ClientServicesDependencies:
+    """Resolve only the application dependencies used by this module.
+
+    The provider remains dynamic so existing tests may monkey-patch names on
+    ``app``. Unlike the previous compatibility bridge, this object never mutates
+    the module namespace and makes every external dependency explicit at the
+    point of use.
+    """
+
+    def __init__(self, provider: ContextProvider):
+        self._provider = provider
+
+    def __getattr__(self, name: str) -> Any:
+        if name not in _REQUIRED_DEPENDENCIES:
+            raise AttributeError(name)
+        context = self._provider()
+        try:
+            return context[name]
+        except KeyError as exc:
+            raise RuntimeError(
+                f'Client services dependency {name!r} is not configured'
+            ) from exc
+
+
+_DEPENDENCIES: ClientServicesDependencies | None = None
+
+
+def configure_client_services_context(provider: ContextProvider) -> None:
+    """Configure the explicit dependency resolver used by client services."""
+    global _CONTEXT_PROVIDER, _DEPENDENCIES
     _CONTEXT_PROVIDER = provider
+    _DEPENDENCIES = ClientServicesDependencies(provider)
 
 
-_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
+def _deps() -> ClientServicesDependencies:
+    if _DEPENDENCIES is None:
+        raise RuntimeError('Client services context has not been configured')
+    return _DEPENDENCIES
 
 
-@_refresh_context
 def fingerprint_client_services(identifier):
     """Run safe, lightweight service fingerprint checks against saved open ports."""
-    device = find_inventory_device(identifier) or {}
+    deps = _deps()
+    device = deps.find_inventory_device(identifier) or {}
     host = device.get('ip') or identifier
     fingerprints = []
     http_ports = []
     for detail in device.get('open_port_details', []):
         port = detail.get('port')
         service = str(detail.get('service') or '').lower()
-        finding = {'port': port, 'service': detail.get('service') or 'Unknown', 'confidence': 'low', 'banner': None, 'notes': []}
-        if port in (80, 443, 8080, 8443, 8000, 9443) or any(name in service for name in ('http', 'https', 'web')):
+        finding = {
+            'port': port,
+            'service': detail.get('service') or 'Unknown',
+            'confidence': 'low',
+            'banner': None,
+            'notes': [],
+        }
+        if port in (80, 443, 8080, 8443, 8000, 9443) or any(
+            name in service for name in ('http', 'https', 'web')
+        ):
             http_ports.append(port)
             finding['confidence'] = 'medium'
             finding['notes'].append('HTTP-like port selected for web inspection.')
@@ -34,22 +110,30 @@ def fingerprint_client_services(identifier):
                 with socket.create_connection((host, int(port)), timeout=2) as sock:
                     sock.settimeout(2)
                     try:
-                        banner = sock.recv(256).decode('utf-8', errors='ignore').strip()
+                        banner = sock.recv(256).decode(
+                            'utf-8', errors='ignore'
+                        ).strip()
                     except socket.timeout:
                         banner = ''
                 if banner:
                     finding['banner'] = banner[:160]
                     finding['confidence'] = 'high'
                 else:
-                    finding['notes'].append('Port accepted TCP connection but did not send a banner quickly.')
+                    finding['notes'].append(
+                        'Port accepted TCP connection but did not send a banner quickly.'
+                    )
                     finding['confidence'] = 'medium'
             except OSError as exc:
                 finding['notes'].append(f'Banner probe unavailable: {exc}')
         else:
-            finding['notes'].append('Service inferred from port number; no active banner probe selected.')
+            finding['notes'].append(
+                'Service inferred from port number; no active banner probe selected.'
+            )
         fingerprints.append(finding)
     if http_ports:
-        web_results = inspect_http_services(host, sorted(set(http_ports))[:8])
+        web_results = deps.inspect_http_services(
+            host, sorted(set(http_ports))[:8]
+        )
         by_port = {item['port']: item for item in web_results}
         for finding in fingerprints:
             web = by_port.get(finding.get('port'))
@@ -57,21 +141,48 @@ def fingerprint_client_services(identifier):
                 finding['http'] = web
                 if web.get('title') or web.get('server') or web.get('status'):
                     finding['confidence'] = 'high'
-    append_client_timeline_event(host, 'Services fingerprinted', f"Checked {len(fingerprints)} saved service(s).", 'service-fingerprint')
+    deps.append_client_timeline_event(
+        host,
+        'Services fingerprinted',
+        f"Checked {len(fingerprints)} saved service(s).",
+        'service-fingerprint',
+    )
     return fingerprints
 
 
-@_refresh_context
 def save_scheduled_client_check(identifier, data):
     """Store a recurring-check plan for a watched or important client."""
+    deps = _deps()
     target = str(identifier or '').strip()
     if not target:
         raise ValueError('Missing client identifier')
-    interval = max(5, min(parse_int(data.get('intervalMinutes') or 60, 'Interval must be an integer'), 10080))
-    checks = sorted({
-        check for check in (data.get('checks') or 'ping,common-ports,baseline-drift').split(',')
-        if check in {'ping', 'common-ports', 'http-inspect', 'service-fingerprint', 'baseline-drift'}
-    })
+    interval = max(
+        5,
+        min(
+            deps.parse_int(
+                data.get('intervalMinutes') or 60,
+                'Interval must be an integer',
+            ),
+            10080,
+        ),
+    )
+    checks = sorted(
+        {
+            check
+            for check in (
+                data.get('checks')
+                or 'ping,common-ports,baseline-drift'
+            ).split(',')
+            if check
+            in {
+                'ping',
+                'common-ports',
+                'http-inspect',
+                'service-fingerprint',
+                'baseline-drift',
+            }
+        }
+    )
     if not checks:
         raise ValueError('Select at least one supported scheduled check')
     plan = {
@@ -82,17 +193,22 @@ def save_scheduled_client_check(identifier, data):
         'last_run': None,
         'status': 'scheduled',
     }
-    scheduled_client_checks[target] = plan
-    append_client_timeline_event(target, 'Scheduled checks updated', f"Scheduled {', '.join(checks)} every {interval} minute(s).", 'scheduled-checks')
-    save_runtime_state('scheduled-check')
+    deps.scheduled_client_checks[target] = plan
+    deps.append_client_timeline_event(
+        target,
+        'Scheduled checks updated',
+        f"Scheduled {', '.join(checks)} every {interval} minute(s).",
+        'scheduled-checks',
+    )
+    deps.save_runtime_state('scheduled-check')
     return dict(plan)
 
 
-@_refresh_context
 def scan_common_client_ports(host, timeout=0.35):
     """Run a bounded common-port refresh for scheduled checks."""
     from scripts.portScanner import COMMON_SERVICE_HINTS, identify_port_service
 
+    deps = _deps()
     target = str(host or '').strip()
     if not target:
         return []
@@ -105,54 +221,85 @@ def scan_common_client_ports(host, timeout=0.35):
         except OSError:
             is_open = False
         if is_open:
-            open_details.append(enrich_web_port_metadata(target, identify_port_service(int(port))))
+            open_details.append(
+                deps.enrich_web_port_metadata(
+                    target, identify_port_service(int(port))
+                )
+            )
     if open_details:
-        record_device_open_ports(target, open_details, source='scheduled-common-ports')
+        deps.record_device_open_ports(
+            target, open_details, source='scheduled-common-ports'
+        )
     return open_details
 
 
-@_refresh_context
 def run_scheduled_client_check(identifier, now=None):
     """Execute one saved scheduled-check plan and persist its summary."""
+    deps = _deps()
     target = str(identifier or '').strip()
-    plan = scheduled_client_checks.get(target)
+    plan = deps.scheduled_client_checks.get(target)
     if not plan:
         raise ValueError('No scheduled check plan found for this client')
     now = now or time.time()
     results = {}
     checks = plan.get('checks') or []
     if 'ping' in checks:
-        results['ping'] = run_ping_check(target, count=2, timeout=2)
+        results['ping'] = deps.run_ping_check(target, count=2, timeout=2)
     if 'common-ports' in checks:
-        results['common_ports'] = scan_common_client_ports(target)
+        results['common_ports'] = deps.scan_common_client_ports(target)
     if 'http-inspect' in checks:
-        device = find_inventory_device(target) or {}
-        ports = [item.get('port') for item in device.get('open_port_details', []) if item.get('web_url') or str(item.get('service') or '').lower().startswith('http')]
-        results['http_inspect'] = inspect_http_services(target, sorted({int(port) for port in ports if port})[:8])
+        device = deps.find_inventory_device(target) or {}
+        ports = [
+            item.get('port')
+            for item in device.get('open_port_details', [])
+            if item.get('web_url')
+            or str(item.get('service') or '').lower().startswith('http')
+        ]
+        results['http_inspect'] = deps.inspect_http_services(
+            target,
+            sorted({int(port) for port in ports if port})[:8],
+        )
     if 'service-fingerprint' in checks:
-        results['service_fingerprint'] = fingerprint_client_services(target)
+        results['service_fingerprint'] = deps.fingerprint_client_services(target)
     if 'baseline-drift' in checks:
-        results['baseline_drift'] = client_baseline_diff(find_inventory_device(target) or {})
-    plan.update({
-        'last_run': now,
-        'next_run': now + (int(plan.get('interval_minutes') or 60) * 60),
-        'last_result': results,
-        'status': 'completed',
-    })
-    append_client_timeline_event(target, 'Scheduled check run', f"Completed scheduled checks: {', '.join(checks)}.", 'scheduled-checks')
-    drift = (results.get('baseline_drift') or {})
-    if is_client_watched(target) and drift.get('status') == 'Drift detected':
-        create_client_watch_alert(target, 'Scheduled check drift detected', f"Baseline drift detected for {target}.")
-    save_runtime_state('scheduled-check-run')
+        results['baseline_drift'] = deps.client_baseline_diff(
+            deps.find_inventory_device(target) or {}
+        )
+    plan.update(
+        {
+            'last_run': now,
+            'next_run': now
+            + (int(plan.get('interval_minutes') or 60) * 60),
+            'last_result': results,
+            'status': 'completed',
+        }
+    )
+    deps.append_client_timeline_event(
+        target,
+        'Scheduled check run',
+        f"Completed scheduled checks: {', '.join(checks)}.",
+        'scheduled-checks',
+    )
+    drift = results.get('baseline_drift') or {}
+    if (
+        deps.is_client_watched(target)
+        and drift.get('status') == 'Drift detected'
+    ):
+        deps.create_client_watch_alert(
+            target,
+            'Scheduled check drift detected',
+            f'Baseline drift detected for {target}.',
+        )
+    deps.save_runtime_state('scheduled-check-run')
     return dict(plan)
 
 
-@_refresh_context
 def run_due_scheduled_client_checks(now=None):
     """Run every scheduled client check whose interval has elapsed."""
+    deps = _deps()
     now = now or time.time()
     due = []
-    for target, plan in list(scheduled_client_checks.items()):
+    for target, plan in list(deps.scheduled_client_checks.items()):
         last_run = plan.get('last_run')
         interval_seconds = int(plan.get('interval_minutes') or 60) * 60
         if last_run is None or now - float(last_run or 0) >= interval_seconds:
@@ -160,14 +307,14 @@ def run_due_scheduled_client_checks(now=None):
     results = []
     for target in due[:25]:
         try:
-            results.append(run_scheduled_client_check(target, now=now))
+            results.append(deps.run_scheduled_client_check(target, now=now))
         except ValueError:
             continue
     return results
 
 
-@_refresh_context
 def create_client_watch_alert(identifier, title, message):
+    deps = _deps()
     alert = {
         'id': str(uuid.uuid4()),
         'alert_type': 'watched-client',
@@ -177,31 +324,66 @@ def create_client_watch_alert(identifier, title, message):
         'device_url': f"/clients/{quote(str(identifier))}",
         'read': False,
         'timestamp': time.time(),
-        'time_label': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+        'time_label': time.strftime(
+            '%Y-%m-%d %H:%M:%S', time.localtime()
+        ),
     }
-    with new_device_alerts_lock:
-        new_device_alerts.insert(0, alert)
-        del new_device_alerts[200:]
+    with deps.new_device_alerts_lock:
+        deps.new_device_alerts.insert(0, alert)
+        del deps.new_device_alerts[200:]
     return alert
 
 
-@_refresh_context
 def capture_http_preview_thumbnail(url):
     """Capture a small web preview when a local browser/screenshot utility exists."""
-    tool = shutil.which('wkhtmltoimage') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+    deps = _deps()
+    tool = (
+        shutil.which('wkhtmltoimage')
+        or shutil.which('chromium')
+        or shutil.which('chromium-browser')
+        or shutil.which('google-chrome')
+    )
     if not tool:
         return None
-    os.makedirs(HTTP_PREVIEW_DIR, exist_ok=True)
-    filename = secure_filename(re.sub(r'[^A-Za-z0-9_.-]+', '_', url))[:120] + '.png'
-    output_path = os.path.join(HTTP_PREVIEW_DIR, filename)
+    os.makedirs(deps.HTTP_PREVIEW_DIR, exist_ok=True)
+    filename = (
+        secure_filename(re.sub(r'[^A-Za-z0-9_.-]+', '_', url))[:120]
+        + '.png'
+    )
+    output_path = os.path.join(deps.HTTP_PREVIEW_DIR, filename)
     try:
-        if os.path.exists(output_path) and time.time() - os.path.getmtime(output_path) < 3600:
+        if (
+            os.path.exists(output_path)
+            and time.time() - os.path.getmtime(output_path) < 3600
+        ):
             return f'/http-previews/{filename}'
         if os.path.basename(tool) == 'wkhtmltoimage':
-            command = [tool, '--width', '480', '--height', '320', url, output_path]
+            command = [
+                tool,
+                '--width',
+                '480',
+                '--height',
+                '320',
+                url,
+                output_path,
+            ]
         else:
-            command = [tool, '--headless', '--disable-gpu', '--no-sandbox', f'--screenshot={output_path}', '--window-size=480,320', url]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=8, check=False)
+            command = [
+                tool,
+                '--headless',
+                '--disable-gpu',
+                '--no-sandbox',
+                f'--screenshot={output_path}',
+                '--window-size=480,320',
+                url,
+            ]
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
         if result.returncode == 0 and os.path.exists(output_path):
             return f'/http-previews/{filename}'
     except (OSError, subprocess.TimeoutExpired):
@@ -209,42 +391,56 @@ def capture_http_preview_thumbnail(url):
     return None
 
 
-@_refresh_context
 def inspect_http_services(host, ports):
     """Safely inspect likely HTTP services for titles and headers."""
+    deps = _deps()
     results = []
     for port in ports:
         scheme = 'https' if int(port) in (443, 8443, 9443) else 'http'
-        url = f"{scheme}://{host}:{port}/"
-        result = {'port': int(port), 'url': url, 'status': None, 'title': None, 'server': None, 'error': None, 'favicon': None}
+        url = f'{scheme}://{host}:{port}/'
+        result = {
+            'port': int(port),
+            'url': url,
+            'status': None,
+            'title': None,
+            'server': None,
+            'error': None,
+            'favicon': None,
+        }
         try:
             req = Request(url, headers={'User-Agent': 'MobileRouterLab/1.0'})
             with urlopen(req, timeout=3) as resp:
                 body = resp.read(65536).decode('utf-8', errors='ignore')
                 result['status'] = getattr(resp, 'status', None)
                 result['server'] = resp.headers.get('Server')
-                match = re.search(r'<title[^>]*>(.*?)</title>', body, re.I | re.S)
+                match = re.search(
+                    r'<title[^>]*>(.*?)</title>', body, re.I | re.S
+                )
                 if match:
-                    result['title'] = re.sub(r'\s+', ' ', match.group(1)).strip()[:120]
+                    result['title'] = re.sub(
+                        r'\s+', ' ', match.group(1)
+                    ).strip()[:120]
                 result['favicon'] = device_intel.favicon_metadata(url, urlopen)
-                result['thumbnail_url'] = capture_http_preview_thumbnail(url)
-        except HTTPError as e:
-            result['status'] = e.code
-            result['server'] = e.headers.get('Server')
-            result['error'] = e.reason
-        except (URLError, TimeoutError, socket.timeout, ValueError) as e:
-            result['error'] = str(e)
+                result['thumbnail_url'] = deps.capture_http_preview_thumbnail(url)
+        except HTTPError as exc:
+            result['status'] = exc.code
+            result['server'] = exc.headers.get('Server')
+            result['error'] = exc.reason
+        except (URLError, TimeoutError, socket.timeout, ValueError) as exc:
+            result['error'] = str(exc)
         results.append(result)
     return results
 
 
 __all__ = [
+    'ClientServicesDependencies',
+    'capture_http_preview_thumbnail',
+    'configure_client_services_context',
+    'create_client_watch_alert',
     'fingerprint_client_services',
+    'inspect_http_services',
+    'run_due_scheduled_client_checks',
+    'run_scheduled_client_check',
     'save_scheduled_client_check',
     'scan_common_client_ports',
-    'run_scheduled_client_check',
-    'run_due_scheduled_client_checks',
-    'create_client_watch_alert',
-    'capture_http_preview_thumbnail',
-    'inspect_http_services'
 ]
