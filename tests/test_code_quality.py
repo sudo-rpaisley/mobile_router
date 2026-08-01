@@ -60,3 +60,9 @@ def test_social_routes_are_split_by_responsibility():
         for path in route_modules
     )
 
+def test_stateful_support_domains_are_extracted():
+    assert len(Path('app.py').read_text(encoding='utf-8').splitlines()) <= 2550
+    assert len(Path('app_support/client_intelligence.py').read_text(encoding='utf-8').splitlines()) <= 430
+    assert len(Path('app_support/client_services.py').read_text(encoding='utf-8').splitlines()) <= 330
+    assert len(Path('app_support/passive_monitoring.py').read_text(encoding='utf-8').splitlines()) <= 300
+
