@@ -462,7 +462,7 @@ def _run_busctl_bluetooth_action(busctl, action, address, timeout=15):
                 check=False,
             )
             if result.returncode == 0:
-                outputs.append(f'{property_name}: {(result.stdout or '').strip()}')
+                outputs.append(f"{property_name}: {(result.stdout or '').strip()}")
         return '\n'.join(outputs) or f'BlueZ D-Bus info completed for {address}'
     else:
         raise ValueError('Unsupported Bluetooth action')
