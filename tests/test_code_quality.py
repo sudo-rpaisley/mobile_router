@@ -27,3 +27,15 @@ def test_header_references_only_the_retained_bootstrap_builds():
     assert "css/bootstrap.min.css" in header
     assert "js/bootstrap.min.js" in header
     assert 'bootstrap.bundle' not in header
+
+def test_app_is_split_into_manageable_modules():
+    app_path = Path('app.py')
+    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 4000
+
+    expected_modules = {
+        Path('app_support/roadmap.py'),
+        Path('app_support/bluetooth_actions.py'),
+        Path('app_support/identifiers.py'),
+    }
+    assert all(path.is_file() for path in expected_modules)
+
