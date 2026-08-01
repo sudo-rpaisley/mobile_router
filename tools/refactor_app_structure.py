@@ -51,7 +51,10 @@ def render_module(header: str, source_lines: list[str], nodes: list[ast.AST]) ->
     return "\n".join(parts).rstrip() + "\n"
 
 
-def extract_nodes(source: str, extractions: tuple[Extraction, ...]) -> tuple[str, dict[Path, str]]:
+def extract_nodes(
+    source: str,
+    extractions: tuple[Extraction, ...],
+) -> tuple[str, dict[Path, str]]:
     tree = ast.parse(source)
     source_lines = source.splitlines(keepends=True)
     nodes_by_name = {
@@ -67,19 +70,24 @@ def extract_nodes(source: str, extractions: tuple[Extraction, ...]) -> tuple[str
     for extraction in extractions:
         missing = [name for name in extraction.names if name not in nodes_by_name]
         import_anchor = extraction.import_statement.splitlines()[0]
-        already_extracted = extraction.destination.exists() and import_anchor in source
+        already_extracted = (
+            extraction.destination.exists() and import_anchor in source
+        )
         if missing:
             if already_extracted:
                 continue
             raise RuntimeError(
-                f"Cannot extract {extraction.destination}: missing top-level nodes {missing}"
+                f"Cannot extract {extraction.destination}: "
+                f"missing top-level nodes {missing}"
             )
 
         selected = [nodes_by_name[name] for name in extraction.names]
         first_line = min(node.lineno for node in selected)
         replacements[first_line] = extraction.import_statement.rstrip() + "\n"
         generated[extraction.destination] = render_module(
-            extraction.header, source_lines, selected
+            extraction.header,
+            source_lines,
+            selected,
         )
 
         for node in selected:
@@ -104,10 +112,10 @@ def extract_nodes(source: str, extractions: tuple[Extraction, ...]) -> tuple[str
 
 def ensure_quality_guards() -> None:
     text = QUALITY_TEST_PATH.read_text(encoding="utf-8")
-    marker = "def test_app_is_split_into_manageable_modules():"
-    if marker in text:
-        return
-    addition = '''\n\ndef test_app_is_split_into_manageable_modules():
+
+    first_marker = "def test_app_is_split_into_manageable_modules():"
+    if first_marker not in text:
+        text = text.rstrip() + '''\n\ndef test_app_is_split_into_manageable_modules():
     app_path = Path('app.py')
     assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 4000
 
@@ -118,7 +126,16 @@ def ensure_quality_guards() -> None:
     }
     assert all(path.is_file() for path in expected_modules)
 '''
-    QUALITY_TEST_PATH.write_text(text.rstrip() + addition + "\n", encoding="utf-8")
+
+    second_marker = "def test_discovery_parsers_are_extracted():"
+    if second_marker not in text:
+        text = text.rstrip() + '''\n\ndef test_discovery_parsers_are_extracted():
+    app_path = Path('app.py')
+    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 3750
+    assert Path('app_support/network_discovery.py').is_file()
+'''
+
+    QUALITY_TEST_PATH.write_text(text.rstrip() + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -136,7 +153,8 @@ def main() -> None:
             destination=SUPPORT_DIR / "roadmap.py",
             names=("ROADMAP_SECTIONS", "remaining_roadmap_items"),
             import_statement=(
-                "from app_support.roadmap import ROADMAP_SECTIONS, remaining_roadmap_items"
+                "from app_support.roadmap import "
+                "ROADMAP_SECTIONS, remaining_roadmap_items"
             ),
             header='"""Static product-roadmap data and projections."""',
         ),
@@ -184,11 +202,41 @@ def main() -> None:
             destination=SUPPORT_DIR / "identifiers.py",
             names=("MAC_RE", "normalize_mac", "inventory_key"),
             import_statement=(
-                "from app_support.identifiers import MAC_RE, inventory_key, normalize_mac"
+                "from app_support.identifiers import "
+                "MAC_RE, inventory_key, normalize_mac"
             ),
             header=(
                 '"""Normalization and stable-key helpers for discovered devices."""\n\n'
                 "import re\n"
+            ),
+        ),
+        Extraction(
+            destination=SUPPORT_DIR / "network_discovery.py",
+            names=(
+                "classify_service_role",
+                "_parse_mdns_output",
+                "_parse_ssdp_response",
+                "_parse_lldpctl_keyvalue",
+                "parse_neighbor_table",
+                "merge_discovered_devices",
+                "passive_device_identity",
+            ),
+            import_statement=(
+                "from app_support.network_discovery import (\n"
+                "    _parse_lldpctl_keyvalue,\n"
+                "    _parse_mdns_output,\n"
+                "    _parse_ssdp_response,\n"
+                "    classify_service_role,\n"
+                "    merge_discovered_devices,\n"
+                "    parse_neighbor_table,\n"
+                "    passive_device_identity,\n"
+                ")"
+            ),
+            header=(
+                '"""Pure parsers and merge helpers for network discovery."""\n\n'
+                "import re\n"
+                "import uuid\n\n"
+                "from app_support.identifiers import normalize_mac\n"
             ),
         ),
     )
