@@ -1737,7 +1737,12 @@ class RouteSmokeTest(unittest.TestCase):
             ),
             1,
         )
-        self.assertEqual(response.data.count(b'Tools scan'), 1)
+        self.assertEqual(
+            response.data.count(
+                b'href="/port-scan?host=192.168.20.10">Tools scan</a>'
+            ),
+            1,
+        )
         self.assertIn(b'Export devices + ports', response.data)
         self.assertIn(b'Import devices + ports', response.data)
 
