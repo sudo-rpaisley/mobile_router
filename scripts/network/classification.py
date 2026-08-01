@@ -3,12 +3,10 @@
 import ipaddress
 
 from . import discovery
+from .common import normalize_mac
 
 
-def _normalize_mac(mac):
-    if not mac:
-        return None
-    return str(mac).strip().replace("-", ":").lower()
+_normalize_mac = normalize_mac
 
 
 def classify_scan_entry(device, interface=None, network=None):

@@ -1,10 +1,8 @@
+from .common import normalize_mac
 """Bounded metadata-only passive packet observation."""
 
 
-def _normalize_mac(mac):
-    if not mac:
-        return None
-    return str(mac).strip().replace("-", ":").lower()
+_normalize_mac = normalize_mac
 
 
 def packet_passive_scan(
