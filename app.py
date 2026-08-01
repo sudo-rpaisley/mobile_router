@@ -1979,10 +1979,10 @@ def inject_application_auth():
     return {'app_user': current_app_user(), 'app_csrf_token': social_csrf_token()}
 
 
-from .home.runner.work.mobile_router.mobile_router.routes.social_auth import register_social_auth_routes
-from .home.runner.work.mobile_router.mobile_router.routes.social_profiles import register_social_profile_routes
-from .home.runner.work.mobile_router.mobile_router.routes.social_profile_resources import register_social_profile_resource_routes
-from .home.runner.work.mobile_router.mobile_router.routes.social_profile_transfer import register_social_profile_transfer_routes
+from routes.social_auth import register_social_auth_routes
+from routes.social_profiles import register_social_profile_routes
+from routes.social_profile_resources import register_social_profile_resource_routes
+from routes.social_profile_transfer import register_social_profile_transfer_routes
 
 globals().update(register_social_auth_routes(app, lambda: globals()))
 globals().update(register_social_profile_routes(app, lambda: globals()))
