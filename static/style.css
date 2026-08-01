@@ -700,6 +700,61 @@ html[data-theme="dark"] .close {
 html[data-theme="dark"] .close:hover,
 html[data-theme="dark"] .close:focus { color: #fff; opacity: 1; }
 html[data-theme="dark"] .form-control::placeholder { color: #8290a8; opacity: 1; }
+
+.automotive-lookup-form { max-width: 58rem; margin-bottom: 1.5rem; }
+.automotive-lookup-controls { display: flex; gap: .75rem; align-items: stretch; }
+.automotive-lookup-controls .form-control { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.automotive-lookup-controls .btn { flex: 0 0 auto; }
+.automotive-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 1.25rem; border-top: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); }
+.automotive-result-heading h2 { margin-bottom: 0; }
+.automotive-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin: 1.5rem 0 0; }
+.automotive-result-grid > div { padding: 1rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .75rem; background: rgba(128, 144, 168, .06); }
+.automotive-result-grid dt { margin-bottom: .35rem; }
+.automotive-result-grid dd { margin: 0; overflow-wrap: anywhere; }
+.automotive-save-result { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); }
+.automotive-save-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1rem; max-width: 58rem; }
+.automotive-save-form label { margin: .25rem 0 0; }
+.automotive-save-form textarea, .automotive-save-form #save-notes, .automotive-save-form .btn { grid-column: 1 / -1; }
+@media (max-width: 600px) { .automotive-save-form { grid-template-columns: 1fr; } .automotive-save-form > * { grid-column: 1 !important; } }
+@media (max-width: 600px) { .automotive-lookup-controls { flex-direction: column; } .automotive-result-heading { align-items: flex-start; flex-direction: column; } }
+.identity-document-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin: 1rem 0; }
+.identity-document-card { display: flex; flex-direction: column; gap: .6rem; padding: .75rem; border: 1px solid var(--theme-border); border-radius: .75rem; color: inherit; }
+.identity-document-card img { width: 100%; aspect-ratio: 1.586 / 1; object-fit: contain; background: #0b1220; border-radius: .5rem; }
+.identity-document-card small { display: block; color: var(--theme-muted); }
+.identity-document-large { width: 100%; max-height: 34rem; object-fit: contain; border-radius: .75rem; background: #0b1220; }
+.identity-ocr-text { max-height: 28rem; overflow: auto; white-space: pre-wrap; }
+.automotive-review-toolbar, .automotive-pagination { display: flex; justify-content: space-between; align-items: end; gap: .75rem; flex-wrap: wrap; }
+.automotive-review-toolbar .form-control { width: auto; min-width: 7rem; }
+.automotive-pagination { justify-content: center; margin: 1rem 0; }
+.dtc-definition-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+.dtc-definition-card { display: flex; flex-direction: column; gap: .75rem; min-width: 0; padding: 1rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .85rem; background: rgba(128, 144, 168, .06); }
+.dtc-definition-card header { display: flex; align-items: center; gap: .75rem; }
+.dtc-definition-card header > div { min-width: 0; flex: 1; }
+.dtc-definition-card h3, .dtc-definition-card header p, .dtc-definition-text { margin: 0; }
+.dtc-definition-card header p, .dtc-definition-card small { color: var(--theme-muted); }
+.dtc-brand-icon { display: inline-flex; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; align-items: center; justify-content: center; border: 1px solid rgba(96, 165, 250, .45); border-radius: 50%; background: var(--theme-primary-soft, rgba(59, 130, 246, .14)); color: var(--theme-primary, #3b82f6); font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+.dtc-brand-icon img { width: 1.8rem; height: 1.8rem; object-fit: contain; }
+.dtc-code-link { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 800; }
+.dtc-definition-text { flex: 1; font-size: 1.05rem; }
+.dtc-applicability { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 0; }
+.dtc-applicability div { min-width: 5rem; }
+.dtc-applicability dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--theme-muted); }
+.dtc-applicability dd { margin: 0; }
+.dtc-browse-controls { display: grid; grid-template-columns: repeat(5, minmax(9rem, 1fr)) auto; gap: .75rem; align-items: end; margin: 1.25rem 0; }
+.dtc-browse-controls label { margin: 0; }
+.dtc-manufacturer-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; margin: 1rem 0; }
+.dtc-manufacturer-strip a { display: flex; align-items: center; gap: .65rem; padding: .65rem; border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .7rem; color: inherit; }
+.dtc-manufacturer-strip a:hover { border-color: var(--theme-primary); text-decoration: none; }
+.dtc-manufacturer-strip small { display: block; color: var(--theme-muted); }
+.dtc-function-stack .automotive-result-heading { padding-top: 0; border-top: 0; }
+.dtc-stack-brands { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1rem 0; }
+.dtc-variant { border: 1px solid var(--theme-border, rgba(128, 144, 168, .28)); border-radius: .75rem; margin-top: .75rem; overflow: hidden; }
+.dtc-variant summary { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; cursor: pointer; background: rgba(128, 144, 168, .06); }
+.dtc-variant summary span { color: var(--theme-muted); }
+.dtc-variant-body { padding: 0 1rem 1rem; }
+.preserve-lines { white-space: pre-line; }
+@media (max-width: 1000px) { .dtc-browse-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .dtc-browse-controls { grid-template-columns: 1fr; } .dtc-definition-grid { grid-template-columns: 1fr; } }
 html[data-theme="dark"] .social-account-card a,
 html[data-theme="dark"] .social-profile-details a { color: #7db7ff; }
 html[data-theme="dark"] .form-control:focus,

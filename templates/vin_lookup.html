@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}VIN Lookup{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Offline automotive data</p>
+    <h1 class="page-title">VIN lookup</h1>
+    <p class="page-subtitle">VIN decoding uses the bundled WMI baseline and databases imported on this device. It never performs an online lookup.</p>
+  </div>
+</section>
+<section class="theme-card card automotive-lookup-card"><div class="card-body">
+  <form method="get" class="automotive-lookup-form">
+    <label for="vin">VIN</label>
+    <div class="automotive-lookup-controls">
+      <input id="vin" class="form-control" name="vin" value="{{ vin }}" minlength="17" maxlength="17" autocomplete="off" spellcheck="false" required>
+      <button class="btn btn-primary" type="submit">Look up VIN</button>
+    </div>
+  </form>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  {% if result %}
+    <div class="automotive-result-heading">
+      <div><p class="page-kicker">Local match</p><h2>{{ result.manufacturer or 'Manufacturer not found' }}</h2></div>
+      <span class="badge badge-{{ 'success' if result.database_match else 'warning' }}">{{ 'Database match' if result.database_match else 'No local WMI match' }}</span>
+    </div>
+    <dl class="automotive-result-grid">
+      <div><dt>VIN</dt><dd><code>{{ result.vin }}</code></dd></div>
+      <div><dt>WMI</dt><dd>{{ result.wmi }}</dd></div>
+      <div><dt>Country</dt><dd>{{ result.country or 'Not in local database' }}</dd></div>
+      <div><dt>Check digit</dt><dd>{{ 'Valid' if result.checksum_valid else 'Does not match or is not required in this market' }}</dd></div>
+      <div><dt>Model year</dt><dd>{{ result.model_year or 'Unknown' }} <small class="text-muted">(code {{ result.model_year_code }})</small></dd></div>
+      <div><dt>Plant code</dt><dd>{{ result.plant_code }}</dd></div>
+      <div><dt>Serial number</dt><dd>{{ result.serial_number }}</dd></div>
+      {% if result.manufacturer_type %}<div><dt>Manufacturer type</dt><dd>{{ result.manufacturer_type }}</dd></div>{% endif %}
+    </dl>
+    <section class="automotive-save-result" aria-labelledby="save-vehicle-title">
+      <h3 id="save-vehicle-title">Save this vehicle</h3>
+      <p class="text-muted">Create a vehicle record from this offline VIN result, then add chassis, engine, transmission, ECU, service, and report details.</p>
+      <form method="post" action="{{ url_for('automotive.save_vehicle') }}" class="automotive-save-form">
+        <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+        <input type="hidden" name="vin" value="{{ result.vin }}">
+        <input type="hidden" name="year" value="{{ result.model_year or '' }}">
+        <input type="hidden" name="make" value="{{ result.manufacturer or '' }}">
+        <label for="save-nickname">Nickname</label><input id="save-nickname" class="form-control" name="nickname" placeholder="My Saab, daily driver…">
+        <label for="save-model">Model</label><input id="save-model" class="form-control" name="model" placeholder="9-3, 9-5…">
+        <label for="save-notes">Notes</label><textarea id="save-notes" class="form-control" name="notes" placeholder="Optional initial notes"></textarea>
+        <button class="btn btn-primary" type="submit">Save vehicle</button>
+      </form>
+    </section>
+  {% endif %}
+</div></section>
+{% endblock %}

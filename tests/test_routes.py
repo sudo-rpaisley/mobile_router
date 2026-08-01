@@ -5,11 +5,13 @@ import shutil
 import tempfile
 import time
 import unittest
+import zipfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import app as app_module
 from app import app
+from services.automotive import AutomotiveStore
 from services.oui import lookup_manufacturer, oui_database_status
 
 
@@ -205,6 +207,41 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertNotIn(profile_id, app_module.social_profiles)
         save_state.assert_called_once_with('social-profile-delete')
 
+    def test_person_identity_card_ocr_page_and_signature(self):
+        profile_id = 'identity-profile'
+        app_module.social_profiles[profile_id] = {
+            'id': profile_id, 'full_name': 'Alex Driver', 'owner': 'test-admin',
+            'emails': [], 'social_links': [], 'devices': [], 'credentials': [], 'relationships': [],
+            'attachments': [], 'identity_documents': [], 'signatures': [], 'custom_fields': [],
+        }
+        self.addCleanup(app_module.social_profiles.pop, profile_id, None)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_ID_DIR, True)
+        self.addCleanup(shutil.rmtree, app_module.SOCIAL_PROFILE_SIGNATURE_DIR, True)
+        with patch('app.identity_image_ocr', return_value=('ID NO: SAAB12345\nDOB: 1980-01-02\nEXP: 2030-01-02', 'complete')):
+            response = self.client.post(f'/social-engineering/profiles/{profile_id}/identity-documents', data={
+                'document_type': 'driving_licence', 'identity_image': (io.BytesIO(b'fake-png'), 'licence.png'),
+                'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Card image', response.data)
+        self.assertIn(b'SAAB12345', response.data)
+        self.assertIn(b'1980-01-02', response.data)
+        self.assertIn(b'OCR result', response.data)
+        document = app_module.social_profiles[profile_id]['identity_documents'][0]
+        update = self.client.post(
+            f'/social-engineering/profiles/{profile_id}/identity-documents/{document["id"]}',
+            data={'document_type': 'driving_licence', 'document_number': 'REVIEWED-1',
+                  'issuing_country': 'Sweden', 'csrf_token': self.csrf_token}, follow_redirects=True,
+        )
+        self.assertIn(b'Identity document details saved', update.data)
+        signature = self.client.post(f'/social-engineering/profiles/{profile_id}/signatures', data={
+            'label': 'Driver signature', 'signed_at': '2026-07-28',
+            'signature_image': (io.BytesIO(b'fake-signature'), 'signature.png'), 'csrf_token': self.csrf_token,
+        }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(signature.status_code, 200)
+        self.assertIn(b'Driver signature', signature.data)
+        self.assertIn(b'REVIEWED-1', signature.data)
+
     def test_social_profile_rejects_invalid_contact_fields(self):
         self.login_social_admin()
         response = self.client.post('/social-engineering/profiles', data={
@@ -283,6 +320,38 @@ class RouteSmokeTest(unittest.TestCase):
         response = self.client.get(f'/social-engineering/profiles/{profile_id}')
         self.assertEqual(response.status_code, 404)
 
+    def test_login_returns_to_requested_page_with_query_string(self):
+        with self.client.session_transaction() as flask_session:
+            flask_session.pop('social_user', None)
+        response = self.client.get('/automotive/codes?code=P0300&make=Saab')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login?next=', response.location)
+        login_page = self.client.get(response.location)
+        self.assertIn(b'name="next"', login_page.data)
+        self.assertIn(b'/automotive/codes?code=P0300&amp;make=Saab', login_page.data)
+
+        with patch('app.social_auth_service.authenticate', return_value={'username': 'test-admin', 'role': 'admin'}), \
+                patch('app.save_runtime_state'):
+            logged_in = self.client.post('/login', data={
+                'username': 'test-admin', 'password': 'correct-password', 'csrf_token': self.csrf_token,
+                'next': '/automotive/codes?code=P0300&make=Saab',
+            })
+        self.assertEqual(logged_in.status_code, 302)
+        self.assertEqual(logged_in.location, '/automotive/codes?code=P0300&make=Saab')
+
+    def test_login_uses_home_for_missing_or_external_destination(self):
+        for destination in ('', '/page-that-does-not-exist', 'https://example.com/elsewhere', '//example.com/elsewhere'):
+            with self.client.session_transaction() as flask_session:
+                flask_session.pop('social_user', None)
+            with patch('app.social_auth_service.authenticate', return_value={'username': 'test-admin', 'role': 'admin'}), \
+                    patch('app.save_runtime_state'):
+                response = self.client.post('/login', data={
+                    'username': 'test-admin', 'password': 'correct-password', 'csrf_token': self.csrf_token,
+                    'next': destination,
+                })
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.location, '/')
+
     def test_capabilities_page_renders(self):
         response = self.client.get('/capabilities')
         self.assertEqual(response.status_code, 200)
@@ -307,6 +376,9 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Device inventory page', response.data)
         self.assertIn(b'Persistent local inventory state', response.data)
         self.assertIn(b'Bluetooth action checklist', response.data)
+        self.assertIn(b'Automotive diagnostics', response.data)
+        self.assertIn(b'Simulated OBD-II reader', response.data)
+        self.assertIn(b'Professional workshop PDF reports', response.data)
         self.assertIn(b'WPS exposure checks', response.data)
         self.assertNotIn(b'Authorization guardrails', response.data)
         self.assertNotIn(b'Demo/simulation mode', response.data)
@@ -314,6 +386,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Remote cracking orchestration', response.data)
         self.assertIn(b'PineAP-style recon and campaign engine', response.data)
         self.assertIn(b'Hak5-inspired lab features', response.data)
+
         self.assertIn(b'Payload profile switchboard', response.data)
         self.assertIn(b'Inline network tap mode', response.data)
         self.assertIn(b'Central capability registry', response.data)
@@ -360,6 +433,214 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Done', response.data)
         self.assertIn(b'completed', response.data)
         self.assertIn(b'remaining', response.data)
+
+    def test_bundled_saab_vin_lookup(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.get('/automotive/vin?vin=ys3dh38kx22031788')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Saab Automobile AB', response.data)
+        self.assertIn(b'Sweden', response.data)
+        self.assertIn(b'2002', response.data)
+        self.assertIn(b'Database match', response.data)
+        self.assertIn(b'Save this vehicle', response.data)
+        self.assertIn(b'value="YS3DH38KX22031788"', response.data)
+        self.assertIn(b'value="2002"', response.data)
+        self.assertIn(b'value="Saab Automobile AB"', response.data)
+
+    def test_vin_lookup_result_can_be_saved_as_vehicle(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'year': '2002', 'make': 'Saab Automobile AB',
+                'model': '9-3', 'nickname': 'My Saab', 'notes': 'Saved from lookup',
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+            duplicate = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Vehicle saved', response.data)
+        self.assertIn(b'My Saab', response.data)
+        self.assertIn(b'9-3', response.data)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertIn(b'already saved', duplicate.data)
+
+    def test_saved_vehicle_can_connect_to_owned_person(self):
+        app_module.social_profiles['person-vehicle-owner'] = {
+            'id': 'person-vehicle-owner', 'full_name': 'Alex Owner', 'owner': 'test-admin',
+        }
+        self.addCleanup(app_module.social_profiles.pop, 'person-vehicle-owner', None)
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/vehicles', data={
+                'vin': 'YS3DH38KX22031788', 'csrf_token': self.csrf_token,
+            }, follow_redirects=False)
+            vehicle_url = response.headers['Location'].split('?')[0]
+            connected = self.client.post(f'{vehicle_url}/people', data={
+                'person_id': 'person-vehicle-owner', 'relationship': 'owner', 'notes': 'Registered owner',
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertEqual(connected.status_code, 200)
+        self.assertIn(b'Alex Owner', connected.data)
+        self.assertIn(b'>Owner<', connected.data)
+        self.assertIn(b'Registered owner', connected.data)
+
+    def test_detailed_dtc_import_uses_dtc_review_columns(self):
+        content = (
+            b'code,definition,definition_scope,manufacturer,module,lookup_priority,source_name\n'
+            b'B0001,Driver Frontal Stage 1 Deployment Control,Generic,Generic OBD-II,SRS,2,Example source\n'
+        )
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(content), 'detailed.csv'), 'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        for heading in (b'Code', b'Scope', b'Make / applicability', b'Priority', b'Definition', b'Source'):
+            self.assertIn(heading, response.data)
+        self.assertIn(b'B0001', response.data)
+        self.assertIn(b'SRS', response.data)
+        self.assertIn(b'Example source', response.data)
+
+    def test_automotive_page_can_run_existing_dtc_duplicate_cleanup(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            record = {'code': 'P0300', 'category': 'P', 'description': 'Random misfire',
+                      'scope': 'manufacturer', 'make': 'Saab', 'lookup_priority': 50, 'status': 'active'}
+            with database.connect() as db:
+                database._insert_dtc_definition(db, record)
+                db.execute('INSERT INTO dtc_definitions(code,category,description,scope,make,lookup_priority,status,definition_key,created_at) '
+                           "VALUES('P0300','P','Random misfire','manufacturer','SAAB',50,'active','',0)")
+            page = self.client.get('/automotive')
+            cleaned = self.client.post('/automotive/databases/dtc/deduplicate', data={
+                'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+        self.assertIn(b'Scan and remove identical DTC definitions', page.data)
+        self.assertEqual(cleaned.status_code, 200)
+        self.assertIn(b'Removed 1 identical DTC definition', cleaned.data)
+
+    def test_automotive_writes_require_role_and_csrf(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            app_module.social_users['automotive-viewer'] = {
+                'id': 'automotive-viewer', 'username': 'automotive-viewer', 'role': 'viewer', 'password_hash': 'unused',
+            }
+            with self.client.session_transaction() as flask_session:
+                flask_session['social_user'] = {'username': 'automotive-viewer', 'role': 'viewer'}
+            forbidden = self.client.post('/automotive/databases/dtc/deduplicate', data={'csrf_token': self.csrf_token})
+            app_module.social_users.pop('automotive-viewer')
+            with self.client.session_transaction() as flask_session:
+                flask_session['social_user'] = {'username': 'test-admin', 'role': 'admin'}
+            bad_csrf = self.client.post('/automotive/databases/dtc/deduplicate', data={'csrf_token': 'wrong'})
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(bad_csrf.status_code, 400)
+
+    def test_code_detail_conflicts_and_immutable_session_pages(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,First definition,Saab,9-5,model\n')
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,Second definition,Saab,9-5,model\n')
+            database.import_dtc_csv(b'code,description,make,model,scope\nP0300,First definition,Toyota,Corolla,model\n')
+            browser = self.client.get('/automotive/codes?code=P0300&make=Saab')
+            code_page = self.client.get('/automotive/codes/P0300')
+            conflict_page = self.client.get('/automotive/databases/dtc/conflicts')
+            saved = self.client.post('/automotive/sessions', data={
+                'csrf_token': self.csrf_token, 'title': 'Immutable scan', 'transport': 'simulator',
+                'codes': 'P0300', 'raw_responses': '[]', 'freeze_frame': '{}', 'readiness': '{}',
+                'pid_samples': '[]', 'warnings': '[]',
+            }, follow_redirects=True)
+        self.assertEqual(browser.status_code, 200)
+        self.assertIn(b'View full code details', browser.data)
+        self.assertIn(b'3 local definitions stacked into 2 functions', code_page.data)
+        self.assertIn(b'First definition', code_page.data)
+        self.assertIn(b'Saab', code_page.data)
+        self.assertIn(b'Toyota', code_page.data)
+        self.assertIn(b'DTC conflict review', conflict_page.data)
+        self.assertIn(b'Immutable scan', saved.data)
+        self.assertIn(b'Immutable diagnostic session', saved.data)
+
+    def test_vehicle_module_stored_values_can_be_staged_and_simulated(self):
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            database = AutomotiveStore()
+            vehicle_id = database.save_vehicle({'vin': 'YS3DH38KX22031788', 'make': 'Saab'})
+            module_id = database.add_vehicle_module(vehicle_id, {'module_name': 'BCM'})
+            saved = self.client.post(f'/automotive/vehicles/{vehicle_id}/parameters', data={
+                'csrf_token': self.csrf_token, 'module_id': module_id, 'title': 'BCM values',
+                'values_json': '{"indicator_flash_count": 3}',
+            }, follow_redirects=True)
+            snapshot_id = database.parameter_snapshots(vehicle_id)[0]['id']
+            staged = self.client.post(f'/automotive/parameters/{snapshot_id}/changes', data={
+                'csrf_token': self.csrf_token, 'parameter_key': 'indicator_flash_count', 'proposed_value': '5',
+            }, follow_redirects=True)
+            change_id = database.parameter_changes(snapshot_id)[0]['id']
+            refused = self.client.post(f'/automotive/parameters/{snapshot_id}/changes/{change_id}/apply', data={
+                'csrf_token': self.csrf_token, 'transport': 'usb',
+            })
+            simulated = self.client.post(f'/automotive/parameters/{snapshot_id}/changes/{change_id}/apply', data={
+                'csrf_token': self.csrf_token, 'transport': 'simulator',
+            }, follow_redirects=True)
+        self.assertIn(b'BCM values', saved.data)
+        self.assertIn(b'5', staged.data)
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn(b'Real-vehicle programming is not available', refused.data)
+        self.assertIn(b'No vehicle was modified', simulated.data)
+
+    def test_dtc_zip_stages_multiple_supported_files(self):
+        archive_bytes = io.BytesIO()
+        with zipfile.ZipFile(archive_bytes, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('generic.csv', 'code,description,make\nP0300,Random misfire,\n')
+            archive.writestr('saab/body.txt', 'B0001 - Driver frontal stage 1 deployment control\n')
+            archive.writestr('README.md', 'This unsupported file should be ignored.')
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            response = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(archive_bytes.getvalue()), 'saab-codes.zip'),
+                'make': 'Saab', 'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'P0300', response.data)
+        self.assertIn(b'B0001', response.data)
+        self.assertIn(b'generic.csv', response.data)
+        self.assertIn(b'saab/body.txt', response.data)
+        self.assertNotIn(b'README.md', response.data)
+
+    def test_import_review_paginates_and_preserves_page_selections(self):
+        rows = ['code,description'] + [f'B{index:04X},Definition {index}' for index in range(60)]
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+            os.environ, {'MOBILE_ROUTER_AUTOMOTIVE_DB': os.path.join(data_dir, 'automotive.sqlite3')},
+        ):
+            uploaded = self.client.post('/automotive/databases/dtc', data={
+                'database': (io.BytesIO(('\n'.join(rows) + '\n').encode()), 'many.csv'),
+                'csrf_token': self.csrf_token,
+            }, content_type='multipart/form-data')
+            review_url = uploaded.headers['Location']
+            page_one = self.client.get(f'{review_url}?per_page=25&page=1')
+            saved = self.client.post(f'{review_url}/selection', data={
+                'page_index': [str(index) for index in range(25)],
+                'selected': [str(index) for index in range(1, 25)],
+                'page': '1', 'next_page': '2', 'per_page': '25', 'csrf_token': self.csrf_token,
+            }, follow_redirects=True)
+            applied = self.client.post(f'{review_url}/apply', data={'csrf_token': self.csrf_token}, follow_redirects=True)
+        self.assertEqual(page_one.status_code, 200)
+        self.assertEqual(page_one.data.count(b'class="import-record-checkbox"'), 25)
+        self.assertIn(b'Page 1 of 3', page_one.data)
+        self.assertIn(b'Entries per page', page_one.data)
+        self.assertIn(b'59</strong> of 60 records selected', saved.data)
+        self.assertIn(b'Page 2 of 3', saved.data)
+        self.assertIn(b'Imported 59 database records', applied.data)
 
 
 

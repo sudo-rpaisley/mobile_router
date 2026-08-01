@@ -133,6 +133,14 @@ the Git-ignored `data/runtime_state.json` file. Browser encryption requires a
 secure context, such as `localhost` or HTTPS. The vault password is not stored
 and cannot be recovered by the application.
 
+Person profiles can store photographed identity cards and signatures. JPG, PNG,
+and WebP identity images receive their own review page with the original card,
+editable digital fields, the complete OCR text, and its extraction status. OCR
+runs locally through the optional `tesseract` command and never uploads identity
+images to an online service; when Tesseract is unavailable, the image is still
+saved and its fields can be entered manually. Identity and signature images are
+limited to 10 MB, ownership-protected, audit logged, and removed with the person.
+
 The server listens on `0.0.0.0:8080`. Once running, navigate to
 `http://localhost:8080` in a web browser to access the UI. From there you can
 browse interfaces or open the **Red Team** page to try the network utilities.
@@ -179,3 +187,88 @@ python scripts/update_oui_db.py
 
 The downloader writes a compact `prefix,vendor` CSV to `oui/oui_db.csv`, which
 keeps runtime lookups offline after the database is downloaded.
+
+### Offline automotive data and reports
+
+Open **Tools → Automotive** to import VIN/WMI and diagnostic trouble-code data,
+look up VINs and codes without an internet query, save vehicles, and create work
+reports. Automotive records are stored separately in
+`data/automotive.sqlite3`; override that location with
+`MOBILE_ROUTER_AUTOMOTIVE_DB` when removable or encrypted storage is preferred.
+
+VIN imports are CSV files with `wmi`, `manufacturer`, and `country` columns.
+Additional columns are retained and returned by the decoder. Code imports can
+be CSV (`code`, `description`, and optional `make`), plain text, or a searchable
+PDF. Image-only/scanned PDFs must be OCRed first. A direct HTTP(S) link can be
+supplied as an explicit import action, but all later lookups use the saved local
+copy. Imports are capped at 25 MB.
+
+A small bundled WMI baseline provides useful first-run offline results before a
+larger database is imported; it currently includes Saab passenger vehicles
+(`YS3`). Imported rows extend the baseline and take precedence for matching WMIs.
+After a VIN lookup, the result can be saved directly as a vehicle with the VIN,
+resolved model year, and manufacturer prefilled. Duplicate saves open the
+existing record rather than creating another vehicle with the same VIN.
+
+Reports can associate error codes and make-specific translations with a saved
+vehicle, record odometer, technician, work performed, and notes, and export as
+JSON, CSV, or PDF. The reader panel documents the intended future OBD-II adapter
+support: USB serial and Bluetooth Classic first, with BLE and Wi-Fi connectors
+as later additions. Manual lookups and reports do not require reader hardware.
+
+Imported files are limited to 25 MB and tracked by SHA-256 checksum so accidental
+duplicate imports can be rejected. Direct-link imports reject loopback, private,
+link-local, and reserved destinations, including redirect targets. Saved reports
+snapshot the code translations used at creation time, so later database updates
+do not rewrite historical workshop records. Vehicles can be edited or archived
+from their detail page.
+
+Each saved vehicle keeps one canonical VIN and can also retain typed chassis,
+frame, body, engine, transmission, registration, fleet, manufacturer, and legacy
+identifiers. Control modules can be recorded with address, manufacturer, part,
+hardware, software, serial, calibration ID, CVN, notes, and the VIN reported by
+that module. Module VINs are compared with the canonical VIN and mismatches are
+flagged without replacing the saved vehicle identity.
+
+Diagnostic sessions store immutable adapter/transport/protocol metadata,
+raw responses, DTC translation snapshots, freeze-frame data, readiness state,
+PID samples, and warnings; reports can be linked to a saved session. The DTC
+browser links every card to a full provenance/applicability page and includes an
+administrator conflict-review workflow. Automotive writes require CSRF validation;
+database imports and conflict resolution require an administrator, while vehicle,
+session, and report changes require an editor or administrator. Recognized vehicle
+brands use Simple Icons manufacturer marks with a text fallback for other makes.
+Vehicle modules can retain immutable JSON snapshots of all coding/configuration
+values, such as indicator flash count or lighting timers. Editors can stage a
+before/after change with units and notes. Applying is currently restricted to
+the simulator: real ECU programming is deliberately blocked until a verified
+reader transport can back up, write, read back, and verify the module safely.
+Saved vehicles can also be connected to owned person records with owner, primary
+driver, driver, registered keeper, technician, previous-owner, or general
+association roles. Automotive links retain a display-name snapshot while the
+person detail remains protected by the existing profile ownership rules.
+
+Database uploads are staged before they affect live lookups. The review page
+shows every parsed record and lets an administrator exclude incorrect rows,
+approve the selected records in one transaction, or discard the staged import.
+Large staged imports are paginated to avoid rendering every definition in the
+browser at once. Users can display 25, 50, 100, or 250 entries per page; page
+selections are saved in SQLite while moving between pages, and the final import
+applies the combined selections from the entire staged dataset.
+
+The **DTC CSV, text, or searchable PDF** upload option accepts both simple CSV
+files (`code,description,make`) and detailed versioned definitions. Detailed
+columns include `definition`/`description`, `definition_scope`/`scope`, make,
+model, year range, module, engine, transmission, market, protocol, language,
+lookup priority, override state, source name/URL/version/hash/line, retrieval
+date, license, confidence, status, applicability notes, and general notes.
+Multiple definitions for one code are retained and make-specific active matches
+rank ahead of generic definitions during lookup.
+
+The same DTC upload accepts ZIP archives containing multiple `.csv`, `.txt`, and
+searchable `.pdf` sources. Unsupported entries are ignored, each supported entry
+is retained as its source name, and all parsed definitions appear together in
+one staged review. ZIPs are limited to 250 entries and 250 MB uncompressed by
+default, while the uploaded compressed file remains limited to 25 MB. Set
+`MOBILE_ROUTER_AUTOMOTIVE_ZIP_LIMIT_MB` to change the uncompressed ceiling.
+Encrypted entries or unsafe compression ratios are rejected.
