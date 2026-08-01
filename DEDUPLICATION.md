@@ -1,72 +1,105 @@
-# Deduplication work branch
+# Deduplication and cleanup work branch
 
-This branch is based on `agent/refactor-application-structure` and is intentionally separate so the consolidation work can be reviewed and applied later without blocking the main structural refactor.
+This branch is based on `agent/refactor-application-structure` and remains separate so the consolidation and cleanup work can be reviewed or applied later without blocking the main structural refactor.
 
-## Completed consolidations
+## Shared-code consolidations completed
 
-- Replaced twelve copied context-refresh decorators with `app_support.context`.
+- Replaced twelve copied context-refresh implementations with shared helpers in `app_support.context`.
 - Replaced two copies of Bluetooth helper-path discovery with `scripts.bluetooth_support.project_helper_candidates`.
 - Replaced three copies of the BlueZ `busctl` availability probe with `scripts.bluetooth_support.bluez_service_available`.
 - Replaced two private network MAC normalisers with `scripts.network.common.normalize_mac`.
-- Replaced the duplicated Linux/Windows Wi-Fi scan flush functions with one shared `_flush_current_network` implementation.
-- Preserved existing private names as aliases where callers or tests may rely on them.
+- Replaced the duplicated Linux and Windows Wi-Fi scan flush functions with one shared `_flush_current_network` implementation.
+- Preserved private compatibility aliases where existing callers or tests may still rely on them.
 
-## Audit result
+## Complexity cleanup completed
 
-The corrected AST audit scanned 72 Python files and 558 non-trivial functions. It found no remaining exact duplicate function bodies.
+### Social profile validation
 
-The remaining similarities are deliberately documented rather than automatically merged. They include CSV formatting, locked timestamped record snapshots, job-status routes, and several tiny domain-specific wrappers. These share control-flow shape but have different schemas, stores, messages, or semantic names; consolidating them now would add abstraction with little maintainability benefit.
+`services/social_profile/validation.py::validate_profile` now coordinates focused helpers for:
 
-A second-pass audit also ran Ruff, Vulture, and Radon against the pull-request merge result. Vulture found no likely unused functions at 80% confidence. The complete test suite still passed with 263 tests passed and 1 skipped.
+- email parsing and legacy-email compatibility;
+- social-link and recovery-data parsing;
+- phone metadata;
+- profile status, tags, review dates, and retention data;
+- custom fields and legacy platform URLs.
 
-See `duplicate_code_report.md` for the duplicate review notes and `tools/report_duplicate_code.py` for the repeatable audit.
+The public function signature and persisted profile shape are unchanged.
 
-## Further cleanup priorities
+### Wireless client merging
 
-### 1. Replace dynamic namespace injection
+`services/wireless_clients.py::merge_network_clients` now coordinates separate stages for:
 
-The largest remaining architectural issue is the compatibility layer built around `globals().update(context_provider())`. It preserves legacy monkey-patching, but it prevents static analysis from resolving dependencies. Ruff consequently reports more than one thousand undefined-name findings inside extracted route and support modules, even though those names are supplied at runtime.
+- loading the network-scoped cache;
+- merging current wireless observations;
+- matching and enriching from inventory records;
+- decorating client state and labels;
+- partitioning visible and disappeared clients.
 
-Replace it gradually with an explicit application dependency object or small typed context classes. Route registrars and support modules should receive only the dependencies they use. This will also allow many compatibility imports in `app.py` to be removed safely.
+The public signature, cache format, and network response shape are unchanged.
 
-### 2. Split the highest-complexity functions
+### Client service modules
 
-The most valuable targets are:
+The former `app_support/client_services.py` implementation is now a small compatibility façade over:
 
-- `services/social_profile/validation.py::validate_profile` — split email, social-link, metadata, date, and custom-field parsing into focused validators.
-- `services/wireless_clients.py::merge_network_clients` — split cache loading, observation merging, inventory enrichment, display decoration, and visible/disappeared partitioning.
-- `app_support/client_intelligence.py` — split name resolution, health calculation, profile construction, metadata updates, and relationship mapping.
-- `services/inventory.py` — split open-port recording and import validation/merging.
-- `services/device_intel.py::infer_device_role` — move evidence rules into small ordered classifiers.
+- `app_support/client_service_dependencies.py`;
+- `app_support/client_service_http.py`;
+- `app_support/client_service_scheduling.py`.
 
-These are behaviour-sensitive changes and should be applied one function family at a time with focused tests.
+This separates HTTP inspection and banner work from scheduled checks and watched-client alerts while preserving the original import surface.
 
-### 3. Split the remaining monolithic compatibility modules
+## Explicit dependency migration
 
-Radon marks these as the weakest-maintainability files:
+`app_support.context` now provides a non-mutating `DependencyProxy` and `dependency_proxy` helper. These resolve only an explicit allow-list of dependencies from the application provider and do not copy application globals into another module.
 
-- `app.py` — continue extracting runtime-state ownership, scan-job coordination, Bluetooth history, service discovery, and authentication helpers.
-- `scripts/interfaceTools.py` — divide interface enumeration, address handling, Bluetooth discovery, wireless operations, and platform command adapters.
-- `scripts/wifi/utils.py` — divide shared Wi-Fi models/state, Linux parsers, Windows parsers, scan backends, and grouping/presentation helpers.
+The following areas have been migrated away from dynamic namespace mutation:
 
-The compatibility filenames can remain as thin re-export façades until callers migrate.
+- `app_support.client_services` and its focused implementation modules;
+- `routes.core_routes`.
 
-### 4. Narrow broad exception handling
+The dynamic provider remains deliberate for now so existing tests and compatibility callers can still monkey-patch application-owned functions. New architecture tests prevent these migrated modules from returning to `globals().update`, `bind_context`, or `context_refresher`.
 
-The audit found 43 broad `except Exception` cases. Some are appropriate at process or background-worker boundaries, but inner parsing and command helpers should catch specific exceptions, preserve useful failure details, and log unexpected errors before returning fallbacks.
+The core route migration also replaced a broad contact-form `except Exception` handler with specific `OSError`, `TypeError`, and `ValueError` handling.
 
-### 5. Make compatibility exports explicit
+## Final audit result
 
-Ruff reports around 60 apparently unused imports, mostly because `app.py` deliberately exposes names for extracted modules and tests. Replace implicit exposure with documented compatibility façades and sorted `__all__` declarations. Genuine unused imports can then be removed without breaking monkey-patching.
+The repeatable AST audit scanned **75 Python files** and **586 non-trivial functions**. It found **no exact duplicate function bodies**.
 
-### 6. Standardise legacy naming
+The remaining matches are structural similarities rather than duplicated implementations. They include small page-rendering routes, CSV exports with different schemas, locked record snapshots, job-status handlers, tiny domain wrappers, subprocess call syntax, and unique-list filtering. They remain separate where a generic abstraction would add more indirection than maintainability.
 
-New modules use snake_case, while compatibility names such as `networkTechnologies`, `interfaceTools`, and `networkScan` remain. Keep import-compatible aliases temporarily, but make all internal code use the snake_case names and document eventual removal of the legacy aliases.
+The audit still highlights the same legacy context-refresh setup in:
 
-### 7. Introduce static checks incrementally
+- `app_support/client_intelligence.py`;
+- `app_support/passive_monitoring.py`.
 
-Ruff should be added to normal CI only after the dependency-injection migration begins. Start with safe formatting and modernisation rules, then enable undefined-name and unused-import checks module by module as dynamic context injection is removed.
+See `duplicate_code_report.md` for the generated report and `tools/report_duplicate_code.py` for the repeatable audit.
+
+## Remaining cleanup priorities
+
+### 1. Continue explicit dependency migration
+
+Migrate `client_intelligence.py` and `passive_monitoring.py` next, followed by the client, diagnostic, interface, laboratory, and social route families. Each migration should use a narrow dependency allow-list and retain dynamic resolution only where compatibility tests require it.
+
+### 2. Continue complexity reduction
+
+The next valuable function families are:
+
+- client name resolution, health calculation, and relationship mapping in `app_support/client_intelligence.py`;
+- open-port recording and import validation in `services/inventory.py`;
+- evidence rules in `services/device_intel.py::infer_device_role`;
+- platform parsing and command execution in `scripts/interfaceTools.py` and `scripts/wifi/utils.py`.
+
+### 3. Reduce remaining application ownership
+
+Continue moving runtime-state ownership, scan-job coordination, Bluetooth history, authentication support, and service-discovery coordination out of `app.py`. Compatibility names can remain as explicit re-exports until callers migrate.
+
+### 4. Narrow exception handling
+
+Broad exception handling should remain only at process, worker, or request boundaries where a final safety net is intentional. Inner parsers and command helpers should catch specific failures and retain useful diagnostic detail.
+
+### 5. Introduce static checks incrementally
+
+Enable Ruff rules module by module as namespace injection is removed. Begin with the migrated modules, then add unused-import and undefined-name enforcement only after their dependencies are explicit.
 
 ## Validation requirement
 
-Every cleanup pass must compile and pass the complete pytest suite. The latest validated audit completed with 263 tests passed and 1 skipped.
+Every cleanup pass must compile, produce a clean duplicate audit, and pass the complete pytest suite. The latest validated pull-request merge result completed with **264 tests passed and 1 skipped**.
