@@ -7,7 +7,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -15,23 +15,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Remove temporary scratch branches
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/deduplicate-shared-code'
-        shell: bash
-        run: |
-          for branch in \
-            agent/deduplicate-shared-code-analysis \
-            agent/deduplicate-shared-code-audit-temp \
-            agent/deduplicate-shared-code-cleanup \
-            agent/deduplicate-shared-code-do-not-use \
-            agent/deduplicate-shared-code-final \
-            agent/deduplicate-shared-code-unused \
-            agent/deduplicate-shared-code-v2 \
-            agent/deduplicate-shared-code-work
-          do
-            git push origin --delete "$branch" || true
-          done
 
       - name: Set up Python
         uses: actions/setup-python@v5
