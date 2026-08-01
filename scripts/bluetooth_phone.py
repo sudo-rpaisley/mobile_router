@@ -10,6 +10,7 @@ from scripts.bluetooth_phone_connector import (
     BluetoothPhoneConnectorError,
     BluetoothPhoneHelperClient,
 )
+from scripts.bluetooth_support import bluez_service_available, project_helper_candidates
 
 
 BLUETOOTH_PHONE_FEATURES = (
@@ -180,43 +181,8 @@ def bluetooth_phone_feature_options(settings):
     ]
 
 
-def _bluez_dbus_available(busctl_path):
-    try:
-        result = subprocess.run(
-            [busctl_path, "tree", "org.bluez"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
-
-
-
-def _project_helper_candidates(system, *, python_only=False, native_only=False):
-    root = Path(__file__).resolve().parents[1]
-    extension = ".exe" if system == "Windows" else ""
-    native_names = (
-        f"mobile-router-bluetooth-helper{extension}",
-        f"bluetooth-phone-helper{extension}",
-    )
-    python_names = (
-        "mobile-router-bluetooth-helper.py",
-        "bluetooth-phone-helper.py",
-    )
-    names = python_names if python_only else native_names if native_only else (*native_names, *python_names)
-    folders = (
-        root,
-        root / "bin",
-        root / "helpers",
-        root / "helpers" / "bluetooth",
-        root / "helpers" / system.lower(),
-    )
-    for folder in folders:
-        for name in names:
-            yield folder / name
+_bluez_dbus_available = bluez_service_available
+_project_helper_candidates = project_helper_candidates
 
 
 def _configured_bluetooth_helper(system=None):

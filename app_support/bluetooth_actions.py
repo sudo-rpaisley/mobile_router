@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+from scripts.bluetooth_support import bluez_service_available
 
 BLUETOOTHCTL_ACTIONS = {
     'info': 'info',
@@ -22,18 +23,7 @@ BLUETOOTH_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 class BluetoothToolUnavailable(RuntimeError):
     """Raised when host-local Bluetooth actions cannot be executed."""
 
-def _busctl_bluez_available(busctl):
-    try:
-        result = subprocess.run(
-            [busctl, 'tree', 'org.bluez'],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
+_busctl_bluez_available = bluez_service_available
 
 def bluetooth_action_capability():
     bluetoothctl = shutil.which('bluetoothctl')

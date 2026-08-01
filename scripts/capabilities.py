@@ -7,6 +7,7 @@ import sys
 from typing import Dict, List
 
 from services.oui import oui_database_status
+from scripts.bluetooth_support import bluez_service_available
 
 CORE_COMMANDS = ["ip", "ifconfig", "ipconfig", "arp", "ping", "traceroute", "tracepath", "tracert"]
 OPTIONAL_COMMANDS = ["iw", "nmcli", "netsh", "aireplay-ng", "rfkill", "hciconfig", "bluetoothctl", "busctl", "powershell", "pwsh", "wkhtmltoimage", "chromium", "chromium-browser", "google-chrome"]
@@ -215,18 +216,7 @@ def _display_package_names(system):
     return OPTIONAL_PACKAGES
 
 
-def _busctl_bluez_available(busctl):
-    try:
-        result = subprocess.run(
-            [busctl, "tree", "org.bluez"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
+_busctl_bluez_available = bluez_service_available
 
 
 def _bluetooth_actions_available(commands):

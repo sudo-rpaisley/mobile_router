@@ -3,6 +3,7 @@ import platform
 import shutil
 import subprocess
 from pathlib import Path
+from scripts.bluetooth_support import project_helper_candidates
 
 
 DATA_FEATURES = {"contacts", "call_history", "messages"}
@@ -92,28 +93,7 @@ def _command_details(command_lookup=None):
     return details
 
 
-def _project_helper_candidates(system, *, python_only=False, native_only=False):
-    root = Path(__file__).resolve().parents[1]
-    extension = ".exe" if system == "Windows" else ""
-    native_names = (
-        f"mobile-router-bluetooth-helper{extension}",
-        f"bluetooth-phone-helper{extension}",
-    )
-    python_names = (
-        "mobile-router-bluetooth-helper.py",
-        "bluetooth-phone-helper.py",
-    )
-    names = python_names if python_only else native_names if native_only else (*native_names, *python_names)
-    folders = (
-        root,
-        root / "bin",
-        root / "helpers",
-        root / "helpers" / "bluetooth",
-        root / "helpers" / system.lower(),
-    )
-    for folder in folders:
-        for name in names:
-            yield folder / name
+_project_helper_candidates = project_helper_candidates
 
 
 def _helper_status(environment):
