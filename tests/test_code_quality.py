@@ -43,3 +43,20 @@ def test_discovery_parsers_are_extracted():
     app_path = Path('app.py')
     assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 3750
     assert Path('app_support/network_discovery.py').is_file()
+
+def test_social_routes_are_split_by_responsibility():
+    app_path = Path('app.py')
+    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 3200
+
+    route_modules = {
+        Path('routes/social_auth.py'),
+        Path('routes/social_profiles.py'),
+        Path('routes/social_profile_resources.py'),
+        Path('routes/social_profile_transfer.py')
+    }
+    assert all(path.is_file() for path in route_modules)
+    assert all(
+        len(path.read_text(encoding='utf-8').splitlines()) <= 330
+        for path in route_modules
+    )
+
