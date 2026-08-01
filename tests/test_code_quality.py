@@ -39,3 +39,7 @@ def test_app_is_split_into_manageable_modules():
     }
     assert all(path.is_file() for path in expected_modules)
 
+def test_discovery_parsers_are_extracted():
+    app_path = Path('app.py')
+    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 3750
+    assert Path('app_support/network_discovery.py').is_file()
