@@ -20,6 +20,8 @@ _dedupe_devices = _discovery._dedupe_devices
 _parse_proc_arp = _discovery._parse_proc_arp
 _parse_arp_command = _discovery._parse_arp_command
 _arp_cache_candidates = _discovery._arp_cache_candidates
+_get_mac_by_ip_impl = _discovery.get_mac_by_ip
+_get_ip_by_mac_impl = _discovery.get_ip_by_mac
 _normalize_mac = _classification._normalize_mac
 
 
@@ -62,12 +64,12 @@ def passive_scan(interface):
 
 def get_mac_by_ip(ip):
     _sync_discovery_hooks()
-    return _discovery.get_mac_by_ip(ip)
+    return _get_mac_by_ip_impl(ip)
 
 
 def get_ip_by_mac(mac):
     _sync_discovery_hooks()
-    return _discovery.get_ip_by_mac(mac)
+    return _get_ip_by_mac_impl(mac)
 
 
 __all__ = [
