@@ -1,17 +1,10 @@
 """Port scans, jobs, diagnostics, and service-discovery routes."""
 
-from functools import wraps
+from app_support.context import bind_context
 
 
 def register_diagnostic_routes(app, context_provider):
-    globals().update(context_provider())
-
-    def _refresh_context(view):
-        @wraps(view)
-        def wrapped(*args, **kwargs):
-            globals().update(context_provider())
-            return view(*args, **kwargs)
-        return wrapped
+    _refresh_context = bind_context(globals(), context_provider)
 
     @app.route('/port-scan')
     @_refresh_context

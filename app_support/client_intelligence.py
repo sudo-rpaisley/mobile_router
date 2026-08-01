@@ -1,6 +1,6 @@
 """Client identity, timeline, health, metadata, and relationship helpers."""
 
-from functools import wraps
+from app_support.context import context_refresher
 
 
 _CONTEXT_PROVIDER = None
@@ -11,13 +11,7 @@ def configure_client_intelligence_context(provider):
     _CONTEXT_PROVIDER = provider
 
 
-def _refresh_context(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if _CONTEXT_PROVIDER is not None:
-            globals().update(_CONTEXT_PROVIDER())
-        return view(*args, **kwargs)
-    return wrapped
+_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
 
 
 @_refresh_context
