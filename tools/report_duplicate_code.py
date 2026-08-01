@@ -8,6 +8,7 @@ instructions to merge code automatically.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 from collections import defaultdict
 from dataclasses import dataclass
@@ -94,7 +95,9 @@ def function_records(path: Path) -> list[FunctionRecord]:
         if end - node.lineno + 1 < MIN_FUNCTION_LINES:
             continue
         exact_body = ast.Module(body=node.body, type_ignores=[])
-        shape_body = ShapeNormalizer().visit(ast.fix_missing_locations(ast.Module(body=node.body, type_ignores=[])))
+        shape_body = copy.deepcopy(exact_body)
+        shape_body = ShapeNormalizer().visit(shape_body)
+        shape_body = ast.fix_missing_locations(shape_body)
         records.append(
             FunctionRecord(
                 path=path.relative_to(ROOT),
