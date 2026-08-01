@@ -66,3 +66,13 @@ def test_stateful_support_domains_are_extracted():
     assert len(Path('app_support/client_services.py').read_text(encoding='utf-8').splitlines()) <= 330
     assert len(Path('app_support/passive_monitoring.py').read_text(encoding='utf-8').splitlines()) <= 300
 
+def test_app_entry_point_is_composition_focused():
+    app_source = Path('app.py').read_text(encoding='utf-8')
+    assert len(app_source.splitlines()) <= 1550
+    assert '@app.route' not in app_source
+    assert len(Path('routes/core_routes.py').read_text(encoding='utf-8').splitlines()) <= 380
+    assert len(Path('routes/client_routes.py').read_text(encoding='utf-8').splitlines()) <= 520
+    assert len(Path('routes/diagnostic_routes.py').read_text(encoding='utf-8').splitlines()) <= 420
+    assert len(Path('routes/interface_routes.py').read_text(encoding='utf-8').splitlines()) <= 480
+    assert len(Path('routes/lab_routes.py').read_text(encoding='utf-8').splitlines()) <= 400
+
