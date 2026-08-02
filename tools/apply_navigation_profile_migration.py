@@ -6,6 +6,7 @@ import zlib
 from pathlib import Path
 
 
+# This temporary runner removes itself after applying the atomic migration.
 def replace_once(source, old, new, label):
     if source.count(old) != 1:
         raise RuntimeError(f"Expected exactly one {label} block, found {source.count(old)}")
