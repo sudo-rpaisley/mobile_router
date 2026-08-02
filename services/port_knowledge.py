@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 SCHEMA = "mobile-router-port-knowledge-v1"
 _GENERIC = {"", "unknown", "unknown service", "tcpwrapped", "unassigned", "model-specific service"}
+_GENERIC_MODELS = {"", "unknown", "unidentified network device", "client", "gateway/router", "network infrastructure", "nas/file server", "media/tv device", "printer", "camera/nvr", "home automation/iot", "windows computer", "linux/unix computer", "mqtt/iot device", "web appliance", "remote admin host", "service endpoint"}
 _MAX_DOWNLOAD = 1_048_576
 
 
@@ -35,7 +36,7 @@ def identity(device, manufacturer=None, model=None):
     model = clean(model or device.get("model") or assessment.get("model") or assessment.get("likely_device"), 200)
     if key(manufacturer) == "unknown":
         manufacturer = ""
-    if key(model) in {"", "unknown", "unidentified network device", "client"}:
+    if key(model) in _GENERIC_MODELS:
         model = ""
     return {"manufacturer": manufacturer, "model": model, "manufacturer_key": key(manufacturer), "model_key": key(model)}
 
@@ -291,7 +292,10 @@ def approve(path, candidate_id, verified_by="", source_url=""):
         row=db.execute("SELECT * FROM port_knowledge WHERE id=? AND status='candidate'",(int(candidate_id),)).fetchone()
     if not row:
         raise ValueError("Port knowledge candidate was not found")
-    return add_mapping(path,manufacturer=row["manufacturer"],model=row["model"],port=row["port"],protocol=row["protocol"],service=row["service"],description=row["description"],source_name=row["source_name"] or "Approved local observation",source_url=source_url or row["source_url"],verified_by=verified_by,observations=row["observations"],signatures=json.loads(row["signatures_json"] or "[]"))
+    mapping = add_mapping(path,manufacturer=row["manufacturer"],model=row["model"],port=row["port"],protocol=row["protocol"],service=row["service"],description=row["description"],source_name=row["source_name"] or "Approved local observation",source_url=source_url or row["source_url"],verified_by=verified_by,observations=row["observations"],signatures=json.loads(row["signatures_json"] or "[]"))
+    with connect(path) as db:
+        db.execute("UPDATE port_knowledge SET status='approved-observation',updated_at=? WHERE id=?", (time.time(), int(candidate_id)))
+    return mapping
 
 
 def delete(path, mapping_id):
