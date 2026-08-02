@@ -1,0 +1,36 @@
+name: Apply refactor regression repair
+
+on:
+  push:
+    branches:
+      - agent/fix-merged-route-duplication
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-merged-route-duplication
+
+      - name: Restore refactored files
+        run: python tools/repair_refactor_regressions.py
+
+      - name: Validate repaired Python sources
+        run: python -m compileall -q app.py app_support routes services scripts tests tools
+
+      - name: Commit repaired sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py services/social_profiles.py services/social_profile/storage.py services/social_profile/relationships.py
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Restore refactored support files"
+            git push origin HEAD:agent/fix-merged-route-duplication
+          fi
