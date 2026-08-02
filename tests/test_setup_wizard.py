@@ -136,12 +136,11 @@ def test_setup_catalog_is_platform_aware():
 
 
 def test_setup_wizard_search_item_is_admin_only():
-    common = (None, (), ())
     admin_context = build_navigation_context(
-        '/', 'Home', *common, {'role': 'admin'}, (), ()
+        '/', 'Home', None, {'role': 'admin'}, (), ()
     )
     viewer_context = build_navigation_context(
-        '/', 'Home', *common, {'role': 'viewer'}, (), ()
+        '/', 'Home', None, {'role': 'viewer'}, (), ()
     )
 
     assert any(item['url'] == '/setup-wizard' for item in admin_context['search_items'])
