@@ -99,6 +99,8 @@ def merge_profiles(primary_id, duplicate_id, store, lock, now=None):
             'credentials',
             'relationships',
             'attachments',
+            'identity_documents',
+            'signatures',
             'custom_fields',
         ):
             existing = {

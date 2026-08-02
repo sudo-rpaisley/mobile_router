@@ -38,6 +38,8 @@ def _normalize_profile(profile):
     profile.setdefault('profile_status', 'active')
     profile.setdefault('relationships', [])
     profile.setdefault('attachments', [])
+    profile.setdefault('identity_documents', [])
+    profile.setdefault('signatures', [])
     profile.setdefault('custom_fields', [])
     profile.setdefault('retention_until', '')
     profile.setdefault('review_date', '')

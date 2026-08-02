@@ -112,7 +112,7 @@ SOCIAL_PROFILE_PHOTO_DIR = os.path.join(app.instance_path, 'social_profile_photo
 SOCIAL_PROFILE_ATTACHMENT_DIR = os.path.join(app.instance_path, 'social_profile_attachments')
 SOCIAL_PROFILE_ID_DIR = os.path.join(app.instance_path, 'social_profile_ids')
 SOCIAL_PROFILE_SIGNATURE_DIR = os.path.join(app.instance_path, 'social_profile_signatures')
-MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
+from app_support.identifiers import MAC_RE, inventory_key, normalize_mac
 
 
 runtime_state_lock = threading.Lock()
