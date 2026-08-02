@@ -9,15 +9,24 @@ from services import setup_wizard as setup_wizard_service
 _PERSISTED_RESULT_FIELDS = {
     'component', 'dependency', 'package', 'installed', 'message', 'path', 'count'
 }
+_MAX_INSTALL_MESSAGE = 1000
+
+
+def _bounded_message(value):
+    message = str(value or '').strip()
+    return message[:_MAX_INSTALL_MESSAGE]
 
 
 def _persistable_result(result):
     """Exclude pip and package-manager command output from durable user state."""
-    return {
+    summary = {
         key: value
         for key, value in (result or {}).items()
         if key in _PERSISTED_RESULT_FIELDS
     }
+    if 'message' in summary:
+        summary['message'] = _bounded_message(summary['message'])
+    return summary
 
 
 def register_setup_wizard_routes(app, context_provider):
@@ -54,35 +63,37 @@ def register_setup_wizard_routes(app, context_provider):
             return json_error('Choose a setup component.', 400)
         try:
             result = setup_wizard_service.install_component(component_id)
+            safe_result = _persistable_result(result)
             setup_wizard_service.record_component_result(
                 username,
                 component_id,
                 'installed' if result.get('installed') else 'warning',
-                result.get('message'),
-                _persistable_result(result),
+                safe_result.get('message'),
+                safe_result,
                 social_users,
                 social_users_lock,
             )
         except ValueError as exc:
-            return json_error(str(exc), 400)
+            return json_error(_bounded_message(exc), 400)
         except Exception as exc:
+            message = _bounded_message(exc)
             setup_wizard_service.record_component_result(
                 username,
                 component_id,
                 'failed',
-                str(exc),
+                message,
                 {},
                 social_users,
                 social_users_lock,
             )
             record_social_audit(
-                'setup.component.failed', detail=f'{component_id}:{exc}'
+                'setup.component.failed', detail=f'{component_id}:{message}'
             )
             save_runtime_state('setup-component-failed')
-            return json_error(str(exc), 500)
+            return json_error(message, 500)
         record_social_audit('setup.component.install', detail=component_id)
         save_runtime_state('setup-component-install')
-        return json_success(result=result)
+        return json_success(result=safe_result)
 
     @app.route('/setup-wizard/complete', methods=['POST'])
     @social_login_required({'admin'})
