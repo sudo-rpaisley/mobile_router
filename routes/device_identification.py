@@ -158,7 +158,7 @@ def create_device_identification_blueprint(context_provider):
         )
         app_module.record_social_audit(
             "device.identify",
-            target=str(identifier),
+            profile_id=str(identifier),
             detail=(
                 f"stage={stage}; likely={assessment['likely_device']}; "
                 f"confidence={assessment['confidence']}; score={assessment['score']}"
