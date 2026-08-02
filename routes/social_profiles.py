@@ -152,6 +152,14 @@ def register_social_profile_routes(app, context_provider):
             attachment_path = os.path.join(SOCIAL_PROFILE_ATTACHMENT_DIR, attachment.get('filename', ''))
             if os.path.isfile(attachment_path):
                 os.unlink(attachment_path)
+        for collection, directory in (
+            (profile.get('identity_documents', []), SOCIAL_PROFILE_ID_DIR),
+            (profile.get('signatures', []), SOCIAL_PROFILE_SIGNATURE_DIR),
+        ):
+            for item in collection:
+                path = os.path.join(directory, item.get('filename', ''))
+                if os.path.isfile(path):
+                    os.unlink(path)
         record_social_audit('profile.delete', profile_id)
         save_runtime_state('social-profile-delete')
         return redirect(url_for('social_engineering_page'))
