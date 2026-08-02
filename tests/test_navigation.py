@@ -41,7 +41,8 @@ def test_navigation_groups_interfaces_status_and_account_utilities():
 
     assert 'navbar-expand-lg' in navigation
     assert navigation.count('data-navigation-toggle="dropdown"') == 8
-    assert '>Interfaces<' in navigation
+    assert 'id="interfaces-menu"' in navigation
+    assert 'Interfaces' in navigation
     assert '/ethernet/eth0' in navigation
     assert '/wireless/wlan0' in navigation
     assert '/loopback' not in navigation
