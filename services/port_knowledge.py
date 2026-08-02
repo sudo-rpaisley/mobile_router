@@ -87,10 +87,20 @@ def valid_url(value):
     return value[:1000]
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Commit or roll back, then deterministically release the SQLite file."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect(path=None):
     path = Path(path or database_path())
     path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path, timeout=10)
+    db = sqlite3.connect(path, timeout=10, factory=_ClosingConnection)
     db.row_factory = sqlite3.Row
     db.executescript("""
       CREATE TABLE IF NOT EXISTS port_knowledge (
