@@ -35,9 +35,9 @@ No matches found.
 
 ### Structural group: 3 functions, 15 total lines
 
-- `services/automotive.py:732-736` — `delete_vehicle_identifier` (5 lines)
-- `services/automotive.py:769-773` — `delete_vehicle_module` (5 lines)
-- `services/automotive.py:881-885` — `delete_vehicle_person` (5 lines)
+- `services/automotive.py:743-747` — `delete_vehicle_identifier` (5 lines)
+- `services/automotive.py:780-784` — `delete_vehicle_module` (5 lines)
+- `services/automotive.py:892-896` — `delete_vehicle_person` (5 lines)
 
 ### Structural group: 2 functions, 14 total lines
 
@@ -66,8 +66,8 @@ No matches found.
 
 ### Structural group: 2 functions, 10 total lines
 
-- `services/automotive.py:707-711` — `vehicle_identifiers` (5 lines)
-- `services/automotive.py:858-862` — `vehicle_people` (5 lines)
+- `services/automotive.py:718-722` — `vehicle_identifiers` (5 lines)
+- `services/automotive.py:869-873` — `vehicle_people` (5 lines)
 
 ## Repeated six-line source blocks
 
