@@ -119,10 +119,11 @@ def _section_items(path):
     return items
 
 
-def _search_items(interfaces, technologies, favourites):
+def _search_items(interfaces, technologies, favourites, include_admin=False):
     items = [
         {'label': label, 'url': url, 'keywords': keywords, 'favourite': False}
         for label, url, keywords in STATIC_SEARCH_ITEMS
+        if include_admin or url != '/setup-wizard'
     ]
     for technology in sorted((str(item) for item in technologies if str(item).casefold() != 'loopback'), key=str.casefold):
         items.append({
@@ -179,7 +180,12 @@ def build_navigation_context(path, title, endpoint, user, network_technologies, 
     return {
         'breadcrumbs': _breadcrumb_items(current_path, title, technologies),
         'section_items': _section_items(current_path),
-        'search_items': _search_items(interfaces, technologies, favourites),
+        'search_items': _search_items(
+            interfaces,
+            technologies,
+            favourites,
+            include_admin=user.get('role') == 'admin',
+        ),
         'favourites': favourites,
         'current_url': current_path,
         'current_label': str(title or 'Current page'),
