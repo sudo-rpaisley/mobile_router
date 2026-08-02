@@ -1,28 +1,61 @@
-{% for technology in networkTechnologies %}
-  {% if technology != 'Loopback' %}
-    <div class="nav-item dropdown nav-compact-group">
-      <a href="/{{ technology | lower }}" class="nav-link {% if title == technology or (interface is defined and interface.interface_type == technology) %}active{% endif %}" data-toggle="dropdown">{{ technology }}</a>
-      <div class="dropdown-menu">
-        {% for interface in interfaces %}
-          {% if interface.interface_type == technology %}
-            <a href="/{{ technology | lower }}/{{ interface.name }}" class="dropdown-item {% if title == interface.name %}active{% endif %}">{{ interface.name }}</a>
-          {% endif %}
-        {% endfor %}
-      </div>
-    </div>
-  {% endif %}
-{% endfor %}
+<div class="nav-item dropdown nav-compact-group">
+  <a href="#"
+     id="interfaces-menu"
+     class="nav-link dropdown-toggle {% if title == 'Home' or title in networkTechnologies or interface is defined %}active{% endif %}"
+     data-toggle="dropdown"
+     role="button"
+     aria-haspopup="true"
+     aria-expanded="false">
+    Interfaces
+  </a>
+  <div class="dropdown-menu navigation-menu navigation-menu-interfaces" aria-labelledby="interfaces-menu">
+    <a href="/" class="dropdown-item navigation-overview-link {% if title == 'Home' %}active{% endif %}">
+      <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+      <span>All interfaces</span>
+    </a>
+    <div class="dropdown-divider"></div>
+    {% for technology in networkTechnologies %}
+      {% if technology != 'Loopback' %}
+        <div class="navigation-interface-group">
+          <a href="/{{ technology | lower }}"
+             class="dropdown-item navigation-interface-heading {% if title == technology %}active{% endif %}">
+            {{ technology }}
+          </a>
+          {% for adapter in interfaces %}
+            {% if adapter.interface_type == technology %}
+              <a href="/{{ technology | lower }}/{{ adapter.name }}"
+                 class="dropdown-item navigation-interface-link {% if title == adapter.name %}active{% endif %}">
+                <i class="fa-solid fa-circle" aria-hidden="true"></i>
+                <span>{{ adapter.name }}</span>
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Service Discovery', 'Port Scan', 'Traceroute', 'Diagnostics', 'Advanced Diagnostics', 'Automotive', 'VIN Lookup', 'Code Lookup', 'Workshop Report', 'Red Team', 'Minecraft Attack'] %}active{% endif %}" data-toggle="dropdown">Tools</a>
-  <div class="dropdown-menu">
+  <a href="#"
+     id="tools-menu"
+     class="nav-link dropdown-toggle {% if title in ['Service Discovery', 'Port Scan', 'Traceroute', 'Diagnostics', 'Advanced Diagnostics', 'Automotive', 'VIN Lookup', 'Code Lookup', 'Workshop Report', 'Red Team', 'Minecraft Attack', 'Train Controller'] %}active{% endif %}"
+     data-toggle="dropdown"
+     role="button"
+     aria-haspopup="true"
+     aria-expanded="false">
+    Tools
+  </a>
+  <div class="dropdown-menu navigation-menu" aria-labelledby="tools-menu">
+    <h6 class="dropdown-header">Network tools</h6>
     <a href="/service-discovery" class="dropdown-item {% if title == 'Service Discovery' %}active{% endif %}">Service Discovery</a>
     <a href="/port-scan" class="dropdown-item {% if title == 'Port Scan' %}active{% endif %}">Port Scan</a>
     <a href="/traceroute" class="dropdown-item {% if title == 'Traceroute' %}active{% endif %}">Traceroute</a>
     <a href="/diagnostics" class="dropdown-item {% if title == 'Diagnostics' %}active{% endif %}">Diagnostics</a>
     <a href="/advanced-diagnostics" class="dropdown-item {% if title == 'Advanced Diagnostics' %}active{% endif %}">Advanced Diagnostics</a>
-    <a href="/automotive" class="dropdown-item {% if title in ['Automotive', 'VIN Lookup', 'Code Lookup', 'Workshop Report'] %}active{% endif %}">Automotive</a>
     <div class="dropdown-divider"></div>
+    <h6 class="dropdown-header">Specialist workspaces</h6>
+    <a href="/automotive" class="dropdown-item {% if title in ['Automotive', 'VIN Lookup', 'Code Lookup', 'Workshop Report'] %}active{% endif %}">Automotive</a>
     <a href="/red-team" class="dropdown-item {% if title == 'Red Team' %}active{% endif %}">Red Team</a>
     <a href="/minecraft-attack" class="dropdown-item {% if title == 'Minecraft Attack' %}active{% endif %}">Minecraft Attack</a>
     <a href="/train-controller" class="dropdown-item {% if title == 'Train Controller' %}active{% endif %}">Train Controller</a>
@@ -30,8 +63,16 @@
 </div>
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Device Inventory', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] %}active{% endif %}" data-toggle="dropdown">Records</a>
-  <div class="dropdown-menu">
+  <a href="#"
+     id="records-menu"
+     class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] %}active{% endif %}"
+     data-toggle="dropdown"
+     role="button"
+     aria-haspopup="true"
+     aria-expanded="false">
+    Records
+  </a>
+  <div class="dropdown-menu navigation-menu" aria-labelledby="records-menu">
     <a href="/inventory" class="dropdown-item {% if title == 'Device Inventory' %}active{% endif %}">Inventory</a>
     <a href="/alerts" class="dropdown-item {% if title == 'Alerts' %}active{% endif %}">Alerts</a>
     <a href="/reports" class="dropdown-item {% if title == 'Reports' %}active{% endif %}">Reports</a>
@@ -41,10 +82,17 @@
 </div>
 
 <div class="nav-item dropdown nav-compact-group">
-  <a href="#" class="nav-link {% if title in ['Capabilities', 'Roadmap', 'User Management'] %}active{% endif %}" data-toggle="dropdown">System</a>
-  <div class="dropdown-menu dropdown-menu-right">
+  <a href="#"
+     id="system-menu"
+     class="nav-link dropdown-toggle {% if title in ['Capabilities', 'Roadmap'] %}active{% endif %}"
+     data-toggle="dropdown"
+     role="button"
+     aria-haspopup="true"
+     aria-expanded="false">
+    System
+  </a>
+  <div class="dropdown-menu navigation-menu" aria-labelledby="system-menu">
     <a href="/capabilities" class="dropdown-item {% if title == 'Capabilities' %}active{% endif %}">Capabilities</a>
     <a href="/roadmap" class="dropdown-item {% if title == 'Roadmap' %}active{% endif %}">Roadmap</a>
-    {% if app_user and app_user.role == 'admin' %}<a href="/users" class="dropdown-item {% if title == 'User Management' %}active{% endif %}">User Management</a>{% endif %}
   </div>
 </div>
