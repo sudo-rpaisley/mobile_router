@@ -2,6 +2,7 @@
 
 from app_support import navigation as navigation_service
 from app_support.context import bind_context
+from routes.setup_wizard import register_setup_wizard_routes
 from services import setup_wizard as setup_wizard_service
 
 
@@ -12,17 +13,11 @@ def register_social_auth_routes(app, context_provider):
     def inject_navigation_context():
         context = context_provider()
         record = current_user_record()
-        app_user = (
-            social_auth_service.public_user(record)
-            if record else current_app_user()
-        )
+        app_user = social_auth_service.public_user(record) if record else current_app_user()
 
         def app_navigation(title=''):
             return navigation_service.build_navigation_context(
-                request.path,
-                title,
-                request.endpoint,
-                app_user,
+                request.path, title, request.endpoint, app_user,
                 context.get('networkTechnologies', ()),
                 context.get('network_interfaces', ()),
             )
@@ -54,21 +49,6 @@ def register_social_auth_routes(app, context_provider):
         )
         return (response, status) if status != 200 else response
 
-    def setup_wizard_response(error=None, status=200):
-        record = current_user_record() or {}
-        state = setup_wizard_service.setup_state(record)
-        response = render_template(
-            'setup_wizard.html',
-            title='Setup Wizard',
-            components=setup_wizard_service.component_catalog(),
-            setup_state=state,
-            first_run=setup_wizard_service.setup_required(record),
-            error=error,
-            csrf_token=social_csrf_token(),
-            **current_context(),
-        )
-        return (response, status) if status != 200 else response
-
     @app.route('/setup', methods=['GET', 'POST'])
     @_refresh_context
     def social_auth_setup():
@@ -82,11 +62,8 @@ def register_social_auth_routes(app, context_provider):
                 return json_error('Invalid or expired form token.', 400)
             try:
                 user = social_auth_service.create_user(
-                    request.form.get('username'),
-                    request.form.get('password'),
-                    'admin',
-                    social_users,
-                    social_users_lock,
+                    request.form.get('username'), request.form.get('password'),
+                    'admin', social_users, social_users_lock,
                 )
                 setup_wizard_service.begin_setup(
                     user['username'], social_users, social_users_lock
@@ -132,10 +109,8 @@ def register_social_auth_routes(app, context_provider):
             ):
                 return json_error('Invalid or expired form token.', 400)
             user = social_auth_service.authenticate(
-                request.form.get('username'),
-                request.form.get('password'),
-                social_users,
-                social_users_lock,
+                request.form.get('username'), request.form.get('password'),
+                social_users, social_users_lock,
             )
             if not user:
                 return render_template(
@@ -177,72 +152,6 @@ def register_social_auth_routes(app, context_provider):
         save_runtime_state('social-auth-logout')
         session.pop('social_user', None)
         return redirect(url_for('social_auth_login'))
-
-    @app.route('/setup-wizard')
-    @social_login_required({'admin'})
-    @_refresh_context
-    def setup_wizard_page():
-        return setup_wizard_response()
-
-    @app.route('/setup-wizard/install', methods=['POST'])
-    @social_login_required({'admin'})
-    @_refresh_context
-    def install_setup_component():
-        username = (current_app_user() or {}).get('username')
-        component_id = request.form.get('component')
-        if not component_id:
-            return json_error('Choose a setup component.', 400)
-        try:
-            result = setup_wizard_service.install_component(component_id)
-            setup_wizard_service.record_component_result(
-                username,
-                component_id,
-                'installed' if result.get('installed') else 'warning',
-                result.get('message'),
-                result,
-                social_users,
-                social_users_lock,
-            )
-        except ValueError as exc:
-            return json_error(str(exc), 400)
-        except Exception as exc:
-            setup_wizard_service.record_component_result(
-                username,
-                component_id,
-                'failed',
-                str(exc),
-                {},
-                social_users,
-                social_users_lock,
-            )
-            record_social_audit(
-                'setup.component.failed', detail=f'{component_id}:{exc}'
-            )
-            save_runtime_state('setup-component-failed')
-            return json_error(str(exc), 500)
-        record_social_audit('setup.component.install', detail=component_id)
-        save_runtime_state('setup-component-install')
-        return json_success(result=result)
-
-    @app.route('/setup-wizard/complete', methods=['POST'])
-    @social_login_required({'admin'})
-    @_refresh_context
-    def complete_setup_wizard():
-        username = (current_app_user() or {}).get('username')
-        mode = request.form.get('mode') or 'completed'
-        try:
-            state = setup_wizard_service.complete_setup(
-                username, mode, social_users, social_users_lock
-            )
-        except ValueError as exc:
-            return json_error(str(exc), 400)
-        record_social_audit('setup.complete', detail=mode)
-        save_runtime_state('setup-wizard-complete')
-        record = current_user_record() or {}
-        destination = social_auth_service.default_landing_page(record)
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_success(state=state, redirect=destination)
-        return redirect(destination)
 
     @app.route('/account')
     @social_login_required()
@@ -338,7 +247,10 @@ def register_social_auth_routes(app, context_provider):
     @_refresh_context
     def application_users_page():
         with social_users_lock:
-            users = [social_auth_service.public_user(user) for user in social_users.values()]
+            users = [
+                social_auth_service.public_user(user)
+                for user in social_users.values()
+            ]
         return render_template(
             'application_users.html',
             title='User Management',
@@ -379,13 +291,10 @@ def register_social_auth_routes(app, context_provider):
         save_runtime_state('application-user-create')
         return redirect(url_for('application_users_page'))
 
-    return {
+    routes = {
         'social_auth_setup': social_auth_setup,
         'social_auth_login': social_auth_login,
         'social_auth_logout': social_auth_logout,
-        'setup_wizard_page': setup_wizard_page,
-        'install_setup_component': install_setup_component,
-        'complete_setup_wizard': complete_setup_wizard,
         'application_account_page': application_account_page,
         'update_application_account': update_application_account,
         'change_application_password': change_application_password,
@@ -395,3 +304,5 @@ def register_social_auth_routes(app, context_provider):
         'application_users_page': application_users_page,
         'create_application_user': create_application_user,
     }
+    routes.update(register_setup_wizard_routes(app, context_provider))
+    return routes
