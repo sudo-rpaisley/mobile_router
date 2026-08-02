@@ -1,7 +1,5 @@
 """Combined active, passive, neighbor, and service discovery."""
 
-import os
-
 from app_support.passive_monitoring_dependencies import (
     passive_monitoring_dependencies,
 )
@@ -40,7 +38,7 @@ def comprehensive_network_device_scan(
             ))
         except Exception as exc:
             errors.append(f'passive scan: {exc}')
-    if os.name != 'nt':
+    if deps.os.name != 'nt':
         neigh = deps._run_text_command(
             ['ip', 'neigh', 'show', 'dev', selected_interface],
             timeout=5,
