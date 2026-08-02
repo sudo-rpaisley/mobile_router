@@ -6,6 +6,20 @@ from app_support.context import bind_context
 from services import setup_wizard as setup_wizard_service
 
 
+_PERSISTED_RESULT_FIELDS = {
+    'component', 'dependency', 'package', 'installed', 'message', 'path', 'count'
+}
+
+
+def _persistable_result(result):
+    """Exclude pip and package-manager command output from durable user state."""
+    return {
+        key: value
+        for key, value in (result or {}).items()
+        if key in _PERSISTED_RESULT_FIELDS
+    }
+
+
 def register_setup_wizard_routes(app, context_provider):
     _refresh_context = bind_context(globals(), context_provider)
 
@@ -45,7 +59,7 @@ def register_setup_wizard_routes(app, context_provider):
                 component_id,
                 'installed' if result.get('installed') else 'warning',
                 result.get('message'),
-                result,
+                _persistable_result(result),
                 social_users,
                 social_users_lock,
             )
