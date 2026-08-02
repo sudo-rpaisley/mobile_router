@@ -5,6 +5,10 @@ from pathlib import Path
 import app as app_module
 
 
+def line_count(path):
+    return len(Path(path).read_text(encoding='utf-8').splitlines())
+
+
 def test_app_has_no_duplicate_top_level_definitions():
     tree = ast.parse(Path('app.py').read_text(encoding='utf-8'))
     names = [
@@ -80,9 +84,7 @@ def test_header_references_only_the_retained_bootstrap_builds():
 
 
 def test_app_is_split_into_manageable_modules():
-    app_path = Path('app.py')
-    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 1550
-
+    assert line_count('app.py') <= 1550
     expected_modules = {
         Path('app_support/roadmap.py'),
         Path('app_support/bluetooth_actions.py'),
@@ -92,15 +94,12 @@ def test_app_is_split_into_manageable_modules():
 
 
 def test_discovery_parsers_are_extracted():
-    app_path = Path('app.py')
-    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 1550
+    assert line_count('app.py') <= 1550
     assert Path('app_support/network_discovery.py').is_file()
 
 
 def test_social_routes_are_split_by_responsibility():
-    app_path = Path('app.py')
-    assert len(app_path.read_text(encoding='utf-8').splitlines()) <= 1550
-
+    assert line_count('app.py') <= 1550
     route_modules = {
         Path('routes/social_auth.py'),
         Path('routes/social_profiles.py'),
@@ -108,29 +107,27 @@ def test_social_routes_are_split_by_responsibility():
         Path('routes/social_profile_transfer.py'),
     }
     assert all(path.is_file() for path in route_modules)
-    assert all(
-        len(path.read_text(encoding='utf-8').splitlines()) <= 330
-        for path in route_modules
-    )
+    assert all(line_count(path) <= 330 for path in route_modules)
 
 
 def test_stateful_support_domains_are_extracted():
-    assert len(Path('app.py').read_text(encoding='utf-8').splitlines()) <= 1550
-    assert len(
-        Path('app_support/client_intelligence.py')
-        .read_text(encoding='utf-8')
-        .splitlines()
-    ) <= 430
-    assert len(
-        Path('app_support/client_services.py')
-        .read_text(encoding='utf-8')
-        .splitlines()
-    ) <= 330
-    assert len(
-        Path('app_support/passive_monitoring.py')
-        .read_text(encoding='utf-8')
-        .splitlines()
-    ) <= 300
+    assert line_count('app.py') <= 1550
+    limits = {
+        'app_support/client_intelligence.py': 80,
+        'app_support/client_intelligence_dependencies.py': 100,
+        'app_support/client_identity.py': 220,
+        'app_support/client_metadata.py': 180,
+        'app_support/client_profile.py': 340,
+        'app_support/client_services.py': 330,
+        'app_support/passive_monitoring.py': 80,
+        'app_support/passive_monitoring_dependencies.py': 100,
+        'app_support/passive_analytics.py': 220,
+        'app_support/passive_monitor_control.py': 220,
+        'app_support/comprehensive_scan.py': 220,
+    }
+    for path, maximum in limits.items():
+        assert Path(path).is_file(), path
+        assert line_count(path) <= maximum, f'{path} has grown beyond {maximum} lines'
     assert all(
         Path(path).is_file()
         for path in (
@@ -145,36 +142,48 @@ def test_app_entry_point_is_composition_focused():
     app_source = Path('app.py').read_text(encoding='utf-8')
     assert len(app_source.splitlines()) <= 1550
     assert '@app.route' not in app_source
-    assert len(
-        Path('routes/core_routes.py').read_text(encoding='utf-8').splitlines()
-    ) <= 380
-    assert len(
-        Path('routes/client_routes.py').read_text(encoding='utf-8').splitlines()
-    ) <= 520
-    assert len(
-        Path('routes/diagnostic_routes.py').read_text(encoding='utf-8').splitlines()
-    ) <= 420
-    assert len(
-        Path('routes/interface_routes.py').read_text(encoding='utf-8').splitlines()
-    ) <= 480
-    assert len(
-        Path('routes/lab_routes.py').read_text(encoding='utf-8').splitlines()
-    ) <= 400
+    limits = {
+        'routes/core_routes.py': 380,
+        'routes/client_routes.py': 520,
+        'routes/diagnostic_routes.py': 420,
+        'routes/interface_routes.py': 480,
+        'routes/lab_routes.py': 400,
+    }
+    for path, maximum in limits.items():
+        assert line_count(path) <= maximum
 
 
 def test_migrated_modules_use_non_mutating_dependency_access():
+    migrated_paths = (
+        'routes/core_routes.py',
+        'app_support/client_services.py',
+        'app_support/client_intelligence.py',
+        'app_support/client_intelligence_dependencies.py',
+        'app_support/client_identity.py',
+        'app_support/client_metadata.py',
+        'app_support/client_profile.py',
+        'app_support/passive_monitoring.py',
+        'app_support/passive_monitoring_dependencies.py',
+        'app_support/passive_analytics.py',
+        'app_support/passive_monitor_control.py',
+        'app_support/comprehensive_scan.py',
+    )
     migrated_sources = {
-        'core routes': Path('routes/core_routes.py').read_text(encoding='utf-8'),
-        'client services': Path('app_support/client_services.py').read_text(
-            encoding='utf-8'
-        ),
+        path: Path(path).read_text(encoding='utf-8')
+        for path in migrated_paths
     }
-    for source in migrated_sources.values():
-        assert 'globals().update' not in source
-        assert 'bind_context' not in source
-        assert 'context_refresher' not in source
+    for path, source in migrated_sources.items():
+        assert 'globals().update' not in source, path
+        assert 'bind_context' not in source, path
+        assert 'context_refresher' not in source, path
 
-    assert 'dependency_proxy' in migrated_sources['core routes']
+    assert 'dependency_proxy' in migrated_sources['routes/core_routes.py']
+    assert 'dependency_proxy' in migrated_sources[
+        'app_support/client_intelligence_dependencies.py'
+    ]
+    assert 'dependency_proxy' in migrated_sources[
+        'app_support/passive_monitoring_dependencies.py'
+    ]
     assert 'client_service_dependencies' in Path(
         'app_support/client_service_http.py'
     ).read_text(encoding='utf-8')

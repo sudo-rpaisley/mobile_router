@@ -1,6 +1,6 @@
 # Duplicate Python code report
 
-Scanned **78 Python files** and **691 non-trivial functions**.
+Scanned **86 Python files** and **696 non-trivial functions**.
 
 Exact groups are high-confidence consolidation candidates. Structural groups only share control-flow shape and require manual review.
 
@@ -28,10 +28,22 @@ No matches found.
 - `routes/social_profile_identity.py:136-148` — `identity_document_image` (13 lines)
 - `routes/social_profile_identity.py:210-222` — `profile_signature_image` (13 lines)
 
+### Structural group: 3 functions, 24 total lines
+
+- `app_support/client_intelligence_dependencies.py:36-43` — `configure_client_intelligence_context` (8 lines)
+- `app_support/client_service_dependencies.py:35-42` — `configure_client_services_context` (8 lines)
+- `app_support/passive_monitoring_dependencies.py:33-40` — `configure_passive_monitoring_context` (8 lines)
+
 ### Structural group: 2 functions, 23 total lines
 
 - `services/evidence.py:64-79` — `evidence_as_csv` (16 lines)
 - `services/labs.py:263-269` — `handshake_records_csv` (7 lines)
+
+### Structural group: 3 functions, 15 total lines
+
+- `app_support/client_intelligence_dependencies.py:46-50` — `client_intelligence_dependencies` (5 lines)
+- `app_support/client_service_dependencies.py:45-49` — `client_service_dependencies` (5 lines)
+- `app_support/passive_monitoring_dependencies.py:43-47` — `passive_monitoring_dependencies` (5 lines)
 
 ### Structural group: 3 functions, 15 total lines
 
@@ -73,6 +85,21 @@ No matches found.
 
 ### Block 1: 3 occurrences
 
+- `app_support/client_identity.py:6`
+- `app_support/client_metadata.py:4`
+- `app_support/client_profile.py:4`
+
+```python
+
+from app_support.client_intelligence_dependencies import (
+client_intelligence_dependencies,
+)
+
+
+```
+
+### Block 2: 3 occurrences
+
 - `scripts/bluetooth_phone.py:272`
 - `scripts/bluetooth_phone.py:428`
 - `scripts/bluetooth_phone_bluez.py:95`
@@ -86,49 +113,50 @@ check=False,
 except (OSError, subprocess.TimeoutExpired) as exc:
 ```
 
-### Block 2: 2 occurrences
+### Block 3: 3 occurrences
 
-- `app_support/client_intelligence.py:12`
-- `app_support/passive_monitoring.py:12`
-
-```python
-
-
-_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
-
-
-@_refresh_context
-```
-
-### Block 3: 2 occurrences
-
-- `app_support/client_intelligence.py:2`
-- `app_support/passive_monitoring.py:2`
+- `app_support/client_identity.py:5`
+- `app_support/client_metadata.py:3`
+- `app_support/client_profile.py:3`
 
 ```python
+import time
 
-from app_support.context import context_refresher
-
-
-_CONTEXT_PROVIDER = None
+from app_support.client_intelligence_dependencies import (
+client_intelligence_dependencies,
+)
 
 ```
 
 ### Block 4: 2 occurrences
 
-- `app_support/client_intelligence.py:11`
-- `app_support/passive_monitoring.py:11`
+- `app_support/comprehensive_scan.py:2`
+- `app_support/passive_analytics.py:4`
 
 ```python
-_CONTEXT_PROVIDER = provider
 
-
-_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
+from app_support.passive_monitoring_dependencies import (
+passive_monitoring_dependencies,
+)
 
 
 ```
 
 ### Block 5: 2 occurrences
+
+- `app_support/client_metadata.py:2`
+- `app_support/client_profile.py:2`
+
+```python
+
+import time
+
+from app_support.client_intelligence_dependencies import (
+client_intelligence_dependencies,
+)
+```
+
+### Block 6: 2 occurrences
 
 - `app_support/bluetooth_actions.py:56`
 - `scripts/bluetooth_phone.py:388`
@@ -142,7 +170,7 @@ check=False,
 if result.returncode != 0:
 ```
 
-### Block 6: 2 occurrences
+### Block 7: 2 occurrences
 
 - `scripts/interfaceTools.py:689`
 - `scripts/network/discovery.py:70`
@@ -156,35 +184,7 @@ return unique
 
 ```
 
-### Block 7: 2 occurrences
-
-- `app_support/client_intelligence.py:3`
-- `app_support/passive_monitoring.py:3`
-
-```python
-from app_support.context import context_refresher
-
-
-_CONTEXT_PROVIDER = None
-
-
-```
-
 ### Block 8: 2 occurrences
-
-- `app_support/client_intelligence.py:10`
-- `app_support/passive_monitoring.py:10`
-
-```python
-global _CONTEXT_PROVIDER
-_CONTEXT_PROVIDER = provider
-
-
-_refresh_context = context_refresher(globals(), lambda: _CONTEXT_PROVIDER)
-
-```
-
-### Block 9: 2 occurrences
 
 - `scripts/interfaceTools.py:688`
 - `scripts/network/discovery.py:69`
@@ -196,4 +196,32 @@ seen.add(key)
 unique.append(device)
 return unique
 
+```
+
+### Block 9: 2 occurrences
+
+- `app.py:801`
+- `app_support/comprehensive_scan.py:92`
+
+```python
+{
+'ip': device.get('ip'),
+'name': device.get('friendly_name'),
+'manufacturer': device.get('manufacturer'),
+'device_type': device.get('role'),
+'service_metadata': device,
+```
+
+### Block 10: 2 occurrences
+
+- `app.py:758`
+- `app_support/comprehensive_scan.py:77`
+
+```python
+{
+'ip': service.get('ip'),
+'hostname': service.get('hostname'),
+'name': service.get('name'),
+'device_type': service.get('role'),
+'service_metadata': service,
 ```
