@@ -1,0 +1,36 @@
+name: Apply Windows hardening fixes
+
+on:
+  push:
+    branches:
+      - agent/post-merge-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/post-merge-hardening
+
+      - name: Apply cross-platform fixes
+        run: python tools/apply_windows_hardening.py
+
+      - name: Validate patched sources
+        run: python -m compileall -q app.py app_support routes services scripts tests tools
+
+      - name: Commit permanent fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/automotive.py tests/test_bluetooth_phone.py tests/test_routes.py
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Fix Windows resource and portability issues"
+            git push origin HEAD:agent/post-merge-hardening
+          fi
