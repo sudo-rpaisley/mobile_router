@@ -102,6 +102,10 @@ def test_setup_component_install_is_allow_listed_and_recorded(isolated_users):
         }, headers={'X-Requested-With': 'XMLHttpRequest'})
 
     assert response.status_code == 200
+    response_result = response.get_json()['result']
+    assert response_result['count'] == 35000
+    assert 'output' not in response_result
+    assert 'commands' not in response_result
     recorded = app_module.social_users['setup-admin']['setup_wizard']['components']['oui-database']
     assert recorded['status'] == 'installed'
     assert '35,000' in recorded['message']
