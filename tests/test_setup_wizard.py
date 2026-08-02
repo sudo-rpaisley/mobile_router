@@ -89,6 +89,9 @@ def test_setup_component_install_is_allow_listed_and_recorded(isolated_users):
         'component': 'oui-database',
         'installed': True,
         'message': 'Downloaded 35,000 IEEE OUI entries.',
+        'count': 35000,
+        'output': 'verbose installer output that must not enter user state',
+        'commands': [{'command': 'package-manager install'}],
     }
 
     with patch('routes.setup_wizard.setup_wizard_service.install_component', return_value=result), \
@@ -102,6 +105,9 @@ def test_setup_component_install_is_allow_listed_and_recorded(isolated_users):
     recorded = app_module.social_users['setup-admin']['setup_wizard']['components']['oui-database']
     assert recorded['status'] == 'installed'
     assert '35,000' in recorded['message']
+    assert recorded['details']['count'] == 35000
+    assert 'output' not in recorded['details']
+    assert 'commands' not in recorded['details']
     save_state.assert_called_once_with('setup-component-install')
 
 
