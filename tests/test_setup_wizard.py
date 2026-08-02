@@ -5,6 +5,7 @@ import pytest
 
 import app as app_module
 from app import app
+from app_support.navigation import build_navigation_context
 from services import setup_wizard
 
 
@@ -90,7 +91,7 @@ def test_setup_component_install_is_allow_listed_and_recorded(isolated_users):
         'message': 'Downloaded 35,000 IEEE OUI entries.',
     }
 
-    with patch('routes.social_auth.setup_wizard_service.install_component', return_value=result), \
+    with patch('routes.setup_wizard.setup_wizard_service.install_component', return_value=result), \
             patch('app.save_runtime_state') as save_state:
         response = client.post('/setup-wizard/install', data={
             'component': 'oui-database',
@@ -132,6 +133,19 @@ def test_setup_catalog_is_platform_aware():
     assert 'python-pywifi' not in linux_components
     assert 'python-pywifi' in windows_components
     assert 'browser-screenshot' not in windows_components
+
+
+def test_setup_wizard_search_item_is_admin_only():
+    common = (None, (), ())
+    admin_context = build_navigation_context(
+        '/', 'Home', *common, {'role': 'admin'}, (), ()
+    )
+    viewer_context = build_navigation_context(
+        '/', 'Home', *common, {'role': 'viewer'}, (), ()
+    )
+
+    assert any(item['url'] == '/setup-wizard' for item in admin_context['search_items'])
+    assert all(item['url'] != '/setup-wizard' for item in viewer_context['search_items'])
 
 
 def test_unknown_setup_components_are_rejected():
