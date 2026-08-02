@@ -28,6 +28,8 @@ def test_profile_update_preserves_credentials_and_saves_preferences():
         lock,
     )
 
+    assert updated['username'] == 'operator'
+    assert updated['role'] == 'editor'
     assert updated['display_name'] == 'Workshop Operator'
     assert updated['email'] == 'operator@example.test'
     assert updated['preferences']['default_landing_page'] == '/automotive'
