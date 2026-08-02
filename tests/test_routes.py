@@ -360,7 +360,7 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'id="theme-toggle"', response.data)
         self.assertIn(b'id="adapter-auto-update-status"', response.data)
         self.assertIn(b'Tools', response.data)
-        self.assertNotIn(b'href="/network-scan"', response.data)
+        self.assertIn(b'href="/network-scan"', response.data)
         self.assertNotIn(b'href="/bluetooth-phone"', response.data)
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
