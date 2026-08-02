@@ -75,15 +75,18 @@ class BoundedDeauthController:
 
     def startup_cleanup(self) -> bool:
         """Fail closed after restart and remove any stale active-job marker."""
-        self.emergency_flag.parent.mkdir(parents=True, exist_ok=True)
         stale = self.active_marker.exists()
-        self.emergency_flag.write_text(
-            f"startup-cleanup {os.getpid()} {self._time():.6f}\n",
-            encoding="utf-8",
-        )
+        try:
+            self.emergency_flag.parent.mkdir(parents=True, exist_ok=True)
+            self.emergency_flag.write_text(
+                f"startup-cleanup {os.getpid()} {self._time():.6f}\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
         try:
             self.active_marker.unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
         return stale
 
@@ -106,7 +109,7 @@ class BoundedDeauthController:
     def _clear_marker(self) -> None:
         try:
             self.active_marker.unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
 
     def _public(self, job: Optional[dict]) -> dict:
@@ -184,16 +187,21 @@ class BoundedDeauthController:
                 "_stop_event": threading.Event(),
             }
             self._active = job
-            self._write_marker(job)
-            thread = threading.Thread(
-                target=self._worker,
-                args=(job["id"], send_frame),
-                name=f"bounded-deauth-{job['id'][:8]}",
-                daemon=True,
-            )
-            job["_thread"] = thread
-            job["status"] = "running"
-            thread.start()
+            try:
+                self._write_marker(job)
+                thread = threading.Thread(
+                    target=self._worker,
+                    args=(job["id"], send_frame),
+                    name=f"bounded-deauth-{job['id'][:8]}",
+                    daemon=True,
+                )
+                job["_thread"] = thread
+                job["status"] = "running"
+                thread.start()
+            except Exception:
+                self._active = None
+                self._clear_marker()
+                raise
             return self._public(job)
 
     def heartbeat(self, job_id: str) -> dict:
