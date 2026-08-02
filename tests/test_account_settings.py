@@ -33,6 +33,7 @@ def test_profile_update_preserves_credentials_and_saves_preferences():
     assert updated['preferences']['default_landing_page'] == '/automotive'
     assert updated['preferences']['compact_layout'] is True
     assert updated['preferences']['reduced_motion'] is True
+    assert 'password_hash' not in updated
     assert store['operator']['password_hash'] == original_hash
 
 
