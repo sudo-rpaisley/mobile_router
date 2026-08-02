@@ -21,6 +21,7 @@ STATIC_SEARCH_ITEMS = (
     ('VIN Lookup', '/automotive/vin', 'vehicle vin lookup'),
     ('Code Lookup', '/automotive/codes', 'dtc diagnostic codes'),
     ('Diagnostic Sessions', '/automotive/sessions', 'automotive sessions'),
+    ('Setup Wizard', '/setup-wizard', 'first run configuration optional downloads'),
     ('Capabilities', '/capabilities', 'system capabilities'),
     ('Roadmap', '/roadmap', 'system roadmap'),
     ('My Account', '/account', 'profile password preferences'),
@@ -76,7 +77,7 @@ def _breadcrumb_items(path, title, technologies):
         items.append(_current_item('Records'))
     elif lower_path in {'/network-scan', '/service-discovery', '/port-scan', '/traceroute', '/diagnostics', '/advanced-diagnostics', '/jobs', '/red-team', '/minecraft-attack', '/train-controller'}:
         items.append(_current_item('Tools'))
-    elif lower_path in {'/capabilities', '/roadmap', '/users'}:
+    elif lower_path in {'/capabilities', '/roadmap', '/users', '/setup-wizard'}:
         items.append(_current_item('System'))
     elif lower_path.startswith('/account'):
         items.append(_current_item('Account'))
