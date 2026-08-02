@@ -1,16 +1,28 @@
-<div class="card m-3" style="width: 18rem;">
-  <h5 class="card-title">Student Deauth Lab</h5>
-  <p class="card-text">Send a small, rate-limited 802.11 deauth burst only on an isolated network you are authorized to test.</p>
-  <form class="form-inline" method="post" action="/deauth">
+<div class="card m-3 deauth-control-card" style="width: 18rem;">
+  <h5 class="card-title">Student Deauth Lab — Bounded Start/Stop</h5>
+  <p class="card-text">
+    Start a supervised 802.11 deauthentication stream only on an isolated network you are authorized to test.
+    The server stops it after 15 seconds, if the browser heartbeat is lost, or when an emergency stop is requested.
+  </p>
+  <form class="form-inline" id="Deauth-Control-Form">
+      <input type="hidden" id="Deauth-CSRF" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
       <input type="text" class="form-control mb-2" id="Deauth-AP" placeholder="Lab AP MAC (aa:bb:cc:dd:ee:ff)" name="ap">
       <input type="text" class="form-control mb-2" id="Deauth-Target" placeholder="Client MAC or broadcast" name="target">
-      <input type="number" class="form-control mb-2" id="Deauth-Frames" placeholder="1-5" min="1" max="5" name="frames">
       <label class="form-check deauth-lab-confirm">
         <input class="form-check-input" type="checkbox" id="Deauth-Authorized" name="authorized">
         <span class="form-check-label">I confirm this is an authorized isolated class lab.</span>
       </label>
       {% set selectId = 'Deauth' %}
       {% include '_adapters-list.html' %}
-      <button id="Deauth-Submit" class="btn btn-primary mb-2">Run Lab Burst</button>
+      <div class="btn-group mb-2" role="group" aria-label="Bounded deauth controls">
+        <button id="Deauth-Start" type="button" class="btn btn-primary">Start</button>
+        <button id="Deauth-Stop" type="button" class="btn btn-secondary" disabled>Stop</button>
+      </div>
+      <button id="Deauth-Emergency-Stop" type="button" class="btn btn-danger mb-2">Emergency Stop</button>
   </form>
+  <progress id="Deauth-Progress" max="15" value="0" class="w-100"></progress>
+  <p id="Deauth-Status" class="small mt-2" role="status" aria-live="polite">No bounded lab run is active.</p>
+  <p class="small text-muted">
+    Local kill command: <code>python -m scripts.wifi.deauth_emergency_stop</code>
+  </p>
 </div>
