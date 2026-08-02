@@ -2,11 +2,6 @@
 
 import time
 
-from app_support.client_identity import (
-    _dhcp_lease_display_name,
-    _ttl_os_hint,
-    enrich_ip_client_display_name,
-)
 from app_support.client_intelligence_dependencies import (
     client_intelligence_dependencies,
 )
@@ -117,7 +112,7 @@ def client_health_summary(device, ip=None):
 def client_intelligence_profile(identifier, active_probe=False):
     """Build a richer client intelligence snapshot from saved and safe probes."""
     deps = client_intelligence_dependencies()
-    device = enrich_ip_client_display_name(
+    device = deps.enrich_ip_client_display_name(
         identifier,
         deps.find_inventory_device(identifier) or {},
     )
@@ -134,7 +129,7 @@ def client_intelligence_profile(identifier, active_probe=False):
     reverse_name = deps._reverse_dns_display_name(host) if host else ''
     if reverse_name:
         detected_names.append(reverse_name)
-    dhcp_name = _dhcp_lease_display_name(host) if host else ''
+    dhcp_name = deps._dhcp_lease_display_name(host) if host else ''
     if dhcp_name:
         detected_names.append(dhcp_name)
     reachability = deps.client_reachability_history(host, limit=10)
@@ -192,7 +187,7 @@ def client_intelligence_profile(identifier, active_probe=False):
             'forward': deps._forward_dns_records(detected_names),
         },
         'dhcp': {'hostname': dhcp_name},
-        'os_hint': _ttl_os_hint(reachability),
+        'os_hint': deps._ttl_os_hint(reachability),
         'services': {
             'open_port_count': len(open_ports),
             'web_port_count': len(web_ports),
@@ -209,7 +204,7 @@ def client_intelligence_profile(identifier, active_probe=False):
                 + len(device.get('interfaces', []))
             ),
         },
-        'relationships': client_relationship_map(identifier),
+        'relationships': deps.client_relationship_map(identifier),
         'recommendations': recommendations[:8],
     }
 
@@ -230,10 +225,10 @@ def client_profile_export(identifier):
         'exported_at': time.time(),
         'host': host,
         'device': device,
-        'health': client_health_summary(device, host),
+        'health': deps.client_health_summary(device, host),
         'baseline': deps.client_baseline_diff(device),
         'reachability_history': deps.client_reachability_history(host, limit=25),
-        'timeline': client_timeline(host, device),
+        'timeline': deps.client_timeline(host, device),
         'evidence': related_evidence,
     }
 
@@ -261,7 +256,7 @@ def client_relationship_map(identifier):
             'type': 'service',
         })
         links.append({'source': f'client:{host}', 'target': node_id, 'label': 'exposes'})
-    for item in client_profile_export(identifier).get('evidence', [])[:8]:
+    for item in deps.client_profile_export(identifier).get('evidence', [])[:8]:
         node_id = f"evidence:{item.get('id')}"
         nodes.append({
             'id': node_id,

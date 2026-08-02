@@ -73,7 +73,7 @@ def enrich_ip_client_display_name(identifier, device=None):
     )
     if not ip:
         return device
-    existing = display_name_for_inventory_device(device, ip)
+    existing = deps.display_name_for_inventory_device(device, ip)
     if existing and existing not in {ip, device.get('mac'), device.get('id')}:
         device['display_name'] = existing
         return device
@@ -83,7 +83,7 @@ def enrich_ip_client_display_name(identifier, device=None):
     )
     source = 'inventory'
     if not detected:
-        detected = _dhcp_lease_display_name(ip)
+        detected = deps._dhcp_lease_display_name(ip)
         source = 'dhcp-lease'
     if not detected:
         detected = deps._reverse_dns_display_name(ip)

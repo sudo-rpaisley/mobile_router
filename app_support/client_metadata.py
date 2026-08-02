@@ -84,7 +84,7 @@ def save_client_baseline(identifier):
         'mac': device.get('mac'),
         'sources': list(device.get('sources', [])),
     }
-    updated = update_client_metadata(
+    updated = deps.update_client_metadata(
         target,
         {
             'expectedPorts': ','.join(
