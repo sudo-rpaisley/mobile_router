@@ -1,7 +1,9 @@
-"""Authentication and local application-user routes."""
+"""Authentication, first-run setup, and local application-user routes."""
 
 from app_support import navigation as navigation_service
 from app_support.context import bind_context
+from routes.setup_wizard import register_setup_wizard_routes
+from services import setup_wizard as setup_wizard_service
 
 
 def register_social_auth_routes(app, context_provider):
@@ -11,17 +13,11 @@ def register_social_auth_routes(app, context_provider):
     def inject_navigation_context():
         context = context_provider()
         record = current_user_record()
-        app_user = (
-            social_auth_service.public_user(record)
-            if record else current_app_user()
-        )
+        app_user = social_auth_service.public_user(record) if record else current_app_user()
 
         def app_navigation(title=''):
             return navigation_service.build_navigation_context(
-                request.path,
-                title,
-                request.endpoint,
-                app_user,
+                request.path, title, request.endpoint, app_user,
                 context.get('networkTechnologies', ()),
                 context.get('network_interfaces', ()),
             )
@@ -66,11 +62,11 @@ def register_social_auth_routes(app, context_provider):
                 return json_error('Invalid or expired form token.', 400)
             try:
                 user = social_auth_service.create_user(
-                    request.form.get('username'),
-                    request.form.get('password'),
-                    'admin',
-                    social_users,
-                    social_users_lock,
+                    request.form.get('username'), request.form.get('password'),
+                    'admin', social_users, social_users_lock,
+                )
+                setup_wizard_service.begin_setup(
+                    user['username'], social_users, social_users_lock
                 )
             except ValueError as exc:
                 return render_template(
@@ -91,11 +87,7 @@ def register_social_auth_routes(app, context_provider):
                     profile.setdefault('owner', user['username'])
             record_social_audit('auth.setup')
             save_runtime_state('social-auth-setup')
-            destination = (
-                login_destination(next_url)
-                if next_url else social_auth_service.default_landing_page(user)
-            )
-            return redirect(destination)
+            return redirect(url_for('setup_wizard_page'))
         return render_template(
             'social_auth.html',
             title='Social Profile Setup',
@@ -117,10 +109,8 @@ def register_social_auth_routes(app, context_provider):
             ):
                 return json_error('Invalid or expired form token.', 400)
             user = social_auth_service.authenticate(
-                request.form.get('username'),
-                request.form.get('password'),
-                social_users,
-                social_users_lock,
+                request.form.get('username'), request.form.get('password'),
+                social_users, social_users_lock,
             )
             if not user:
                 return render_template(
@@ -138,6 +128,8 @@ def register_social_auth_routes(app, context_provider):
             }
             record_social_audit('auth.login')
             save_runtime_state('social-auth-login')
+            if setup_wizard_service.setup_required(user):
+                return redirect(url_for('setup_wizard_page'))
             destination = (
                 login_destination(next_url)
                 if next_url else social_auth_service.default_landing_page(user)
@@ -255,7 +247,10 @@ def register_social_auth_routes(app, context_provider):
     @_refresh_context
     def application_users_page():
         with social_users_lock:
-            users = [social_auth_service.public_user(user) for user in social_users.values()]
+            users = [
+                social_auth_service.public_user(user)
+                for user in social_users.values()
+            ]
         return render_template(
             'application_users.html',
             title='User Management',
@@ -296,7 +291,7 @@ def register_social_auth_routes(app, context_provider):
         save_runtime_state('application-user-create')
         return redirect(url_for('application_users_page'))
 
-    return {
+    routes = {
         'social_auth_setup': social_auth_setup,
         'social_auth_login': social_auth_login,
         'social_auth_logout': social_auth_logout,
@@ -309,3 +304,5 @@ def register_social_auth_routes(app, context_provider):
         'application_users_page': application_users_page,
         'create_application_user': create_application_user,
     }
+    routes.update(register_setup_wizard_routes(app, context_provider))
+    return routes

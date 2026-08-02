@@ -21,6 +21,7 @@ STATIC_SEARCH_ITEMS = (
     ('VIN Lookup', '/automotive/vin', 'vehicle vin lookup'),
     ('Code Lookup', '/automotive/codes', 'dtc diagnostic codes'),
     ('Diagnostic Sessions', '/automotive/sessions', 'automotive sessions'),
+    ('Setup Wizard', '/setup-wizard', 'first run configuration optional downloads'),
     ('Capabilities', '/capabilities', 'system capabilities'),
     ('Roadmap', '/roadmap', 'system roadmap'),
     ('My Account', '/account', 'profile password preferences'),
@@ -76,7 +77,7 @@ def _breadcrumb_items(path, title, technologies):
         items.append(_current_item('Records'))
     elif lower_path in {'/network-scan', '/service-discovery', '/port-scan', '/traceroute', '/diagnostics', '/advanced-diagnostics', '/jobs', '/red-team', '/minecraft-attack', '/train-controller'}:
         items.append(_current_item('Tools'))
-    elif lower_path in {'/capabilities', '/roadmap', '/users'}:
+    elif lower_path in {'/capabilities', '/roadmap', '/users', '/setup-wizard'}:
         items.append(_current_item('System'))
     elif lower_path.startswith('/account'):
         items.append(_current_item('Account'))
@@ -118,10 +119,11 @@ def _section_items(path):
     return items
 
 
-def _search_items(interfaces, technologies, favourites):
+def _search_items(interfaces, technologies, favourites, include_admin=False):
     items = [
         {'label': label, 'url': url, 'keywords': keywords, 'favourite': False}
         for label, url, keywords in STATIC_SEARCH_ITEMS
+        if include_admin or url != '/setup-wizard'
     ]
     for technology in sorted((str(item) for item in technologies if str(item).casefold() != 'loopback'), key=str.casefold):
         items.append({
@@ -178,7 +180,12 @@ def build_navigation_context(path, title, endpoint, user, network_technologies, 
     return {
         'breadcrumbs': _breadcrumb_items(current_path, title, technologies),
         'section_items': _section_items(current_path),
-        'search_items': _search_items(interfaces, technologies, favourites),
+        'search_items': _search_items(
+            interfaces,
+            technologies,
+            favourites,
+            include_admin=user.get('role') == 'admin',
+        ),
         'favourites': favourites,
         'current_url': current_path,
         'current_label': str(title or 'Current page'),

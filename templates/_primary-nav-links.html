@@ -85,13 +85,17 @@
 <div class="nav-item dropdown nav-compact-group">
   <button type="button"
           id="system-menu"
-          class="nav-link dropdown-toggle {% if title in ['Capabilities', 'Roadmap'] %}active{% endif %}"
+          class="nav-link dropdown-toggle {% if title in ['Setup Wizard', 'Capabilities', 'Roadmap'] %}active{% endif %}"
           data-navigation-toggle="dropdown"
           aria-haspopup="true"
           aria-expanded="false">
     System
   </button>
   <div class="dropdown-menu navigation-menu" aria-labelledby="system-menu">
+    {% if app_user and app_user.role == 'admin' %}
+      <a href="/setup-wizard" class="dropdown-item {% if title == 'Setup Wizard' %}active{% endif %}" {% if title == 'Setup Wizard' %}aria-current="page"{% endif %}>Setup Wizard</a>
+      <div class="dropdown-divider"></div>
+    {% endif %}
     <a href="/capabilities" class="dropdown-item {% if title == 'Capabilities' %}active{% endif %}" {% if title == 'Capabilities' %}aria-current="page"{% endif %}>Capabilities</a>
     <a href="/roadmap" class="dropdown-item {% if title == 'Roadmap' %}active{% endif %}" {% if title == 'Roadmap' %}aria-current="page"{% endif %}>Roadmap</a>
   </div>
