@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block title %}Setup Wizard{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/setup-wizard.css') }}">
+
+<section class="page-hero setup-wizard-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">{{ 'First-run configuration' if first_run else 'System configuration' }}</p>
+    <h1 class="page-title">{{ 'Welcome to Mobile Router' if first_run else 'Setup Wizard' }}</h1>
+    <p class="page-subtitle">
+      {% if first_run %}
+        The core application is ready. Choose which optional data and integrations you would like to download before continuing.
+      {% else %}
+        Review optional components, install anything you skipped previously, or refresh local data.
+      {% endif %}
+    </p>
+  </div>
+  <div class="setup-wizard-progress-summary" aria-label="Setup progress">
+    <span class="setup-progress-step is-complete"><i class="fa-solid fa-check" aria-hidden="true"></i> Administrator</span>
+    <span class="setup-progress-step is-current"><i class="fa-solid fa-download" aria-hidden="true"></i> Optional downloads</span>
+    <span class="setup-progress-step"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Finish</span>
+  </div>
+</section>
+
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+
+<section class="setup-wizard-intro theme-card card">
+  <div class="card-body">
+    <div class="setup-intro-grid">
+      <div>
+        <h2 class="theme-section-title">Choose what to add</h2>
+        <p>Nothing on this page is required for the web interface, inventory, reports, or basic network tools. Each selection is installed only after you confirm it.</p>
+      </div>
+      <div class="setup-privacy-note">
+        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+        <span><strong>Local-first setup</strong><small>Downloaded data and packages remain on this device. No account or scan data is uploaded by the wizard.</small></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<form id="setup-wizard-form" class="setup-component-list" data-csrf-token="{{ csrf_token }}">
+  {% for component in components %}
+    {% set previous = setup_state.components.get(component.id) if setup_state.components else none %}
+    <article class="setup-component-card theme-card card {% if component.installed %}is-installed{% endif %}" data-setup-component="{{ component.id }}">
+      <div class="card-body">
+        <div class="setup-component-heading">
+          <div class="setup-component-icon">
+            {% if component.id == 'oui-database' %}<i class="fa-solid fa-database" aria-hidden="true"></i>
+            {% elif component.id == 'browser-screenshot' %}<i class="fa-solid fa-camera" aria-hidden="true"></i>
+            {% elif component.id == 'python-bleak' %}<i class="fa-brands fa-bluetooth-b" aria-hidden="true"></i>
+            {% elif component.id == 'python-scapy' %}<i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+            {% else %}<i class="fa-solid fa-wifi" aria-hidden="true"></i>{% endif %}
+          </div>
+          <div class="setup-component-title">
+            <span class="setup-component-category">{{ component.category }}</span>
+            <h2>{{ component.name }}</h2>
+          </div>
+          <span class="setup-component-status {% if component.installed %}is-success{% elif not component.installable %}is-manual{% endif %}" data-component-status>
+            {{ component.status_label }}
+          </span>
+        </div>
+
+        <p class="setup-component-question"><strong>{{ component.question }}</strong></p>
+        <p>{{ component.description }}</p>
+        <p class="setup-component-impact"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ component.impact }}</p>
+
+        {% if previous %}
+          <div class="setup-previous-result setup-result-{{ previous.status }}">
+            <strong>Previous result:</strong> {{ previous.message or previous.status }}
+          </div>
+        {% endif %}
+
+        <label class="setup-component-choice {% if component.installed or not component.installable %}is-disabled{% endif %}">
+          <input type="checkbox"
+                 name="components"
+                 value="{{ component.id }}"
+                 {% if component.recommended and not component.installed and component.installable %}checked{% endif %}
+                 {% if component.installed or not component.installable %}disabled{% endif %}>
+          <span>
+            {% if component.installed %}Already available
+            {% elif not component.installable %}Install manually from the Capabilities page
+            {% else %}Yes, install this optional component{% if component.recommended %} <em>Recommended</em>{% endif %}
+            {% endif %}
+          </span>
+        </label>
+        <div class="setup-component-live-result" data-component-result aria-live="polite"></div>
+      </div>
+    </article>
+  {% endfor %}
+
+  <section class="setup-wizard-actions theme-card card">
+    <div class="card-body">
+      <div id="setup-install-progress" class="setup-install-progress" hidden>
+        <div class="setup-progress-bar" aria-hidden="true"><span id="setup-progress-fill"></span></div>
+        <p id="setup-progress-label" role="status" aria-live="polite">Preparing optional downloads…</p>
+      </div>
+      <div id="setup-install-warning" class="alert alert-warning" hidden role="alert">
+        One or more optional components could not be installed. You can retry the failed items, finish without them, or install them later from this wizard.
+      </div>
+      <div class="setup-action-row">
+        <button id="install-selected-components" class="btn btn-primary btn-lg" type="submit">
+          <i class="fa-solid fa-download" aria-hidden="true"></i>
+          Install selected and finish
+        </button>
+        <button id="finish-setup-anyway" class="btn btn-outline-primary" type="button" hidden>
+          Finish without failed components
+        </button>
+      </div>
+    </div>
+  </section>
+</form>
+
+<form class="setup-skip-form" method="post" action="/setup-wizard/complete">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="mode" value="skipped">
+  <button class="btn btn-link" type="submit">
+    {{ 'Skip optional downloads and continue' if first_run else 'Close setup wizard without installing anything' }}
+  </button>
+</form>
+
+<script src="{{ url_for('static', filename='js/setup-wizard.js') }}"></script>
+{% endblock %}
