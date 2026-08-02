@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block title %}My Account{% endblock %}
+
+{% block content %}
+<section class="page-hero account-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Account settings</p>
+    <h1 class="page-title">{{ user.display_name or user.username }}</h1>
+    <p class="page-subtitle">Manage your profile, navigation preferences, saved favourites, and password.</p>
+  </div>
+  <div class="account-role-summary">
+    <span class="badge badge-primary">{{ user.role | replace('_', ' ') | title }}</span>
+    <span class="text-muted">@{{ user.username }}</span>
+  </div>
+</section>
+
+{% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endif %}
+{% if saved == 'profile' %}
+  <div class="alert alert-success" role="status">Profile and preferences updated.</div>
+{% elif saved == 'password' %}
+  <div class="alert alert-success" role="status">Password changed successfully.</div>
+{% elif saved == 'favourites' %}
+  <div class="alert alert-success" role="status">Navigation favourites updated.</div>
+{% endif %}
+
+<section id="profile" class="theme-card card account-settings-section">
+  <div class="card-body">
+    <div class="account-section-heading">
+      <div>
+        <p class="page-kicker">Identity</p>
+        <h2 class="theme-section-title">Profile details</h2>
+      </div>
+      <div class="account-avatar" aria-hidden="true">{{ (user.display_name or user.username)[:2] | upper }}</div>
+    </div>
+    <form class="theme-form" method="post" action="/account/profile">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-row">
+        <div class="form-group col-md-6">
+          <label for="account-display-name">Display name</label>
+          <input id="account-display-name" class="form-control" name="display_name" maxlength="80" required value="{{ user.display_name or user.username }}">
+          <small class="form-text text-muted">Shown in the account menu and activity records. Your login username remains unchanged.</small>
+        </div>
+        <div class="form-group col-md-6">
+          <label for="account-email">Email address</label>
+          <input id="account-email" class="form-control" name="email" type="email" maxlength="254" value="{{ user.email }}" placeholder="name@example.com">
+          <small class="form-text text-muted">Stored locally for account identification; no email is sent by the application.</small>
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">Save profile</button>
+    </form>
+  </div>
+</section>
+
+<section id="preferences" class="theme-card card account-settings-section">
+  <div class="card-body">
+    <p class="page-kicker">Interface</p>
+    <h2 class="theme-section-title">Navigation and layout</h2>
+    <form class="theme-form" method="post" action="/account/profile">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="display_name" value="{{ user.display_name or user.username }}">
+      <input type="hidden" name="email" value="{{ user.email }}">
+      <div class="form-group">
+        <label for="default-landing-page">Page shown after login</label>
+        <select id="default-landing-page" class="form-control" name="default_landing_page">
+          {% for label, url in landing_pages %}
+            <option value="{{ url }}" {% if user.preferences.default_landing_page == url %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="account-toggle-list">
+        <label class="account-toggle-row" for="compact-layout">
+          <span>
+            <strong>Compact layout</strong>
+            <small>Reduce page-header and card spacing to fit more information on screen.</small>
+          </span>
+          <input id="compact-layout" type="checkbox" name="compact_layout" {% if user.preferences.compact_layout %}checked{% endif %}>
+        </label>
+        <label class="account-toggle-row" for="reduced-motion">
+          <span>
+            <strong>Reduce motion</strong>
+            <small>Disable decorative transitions and animations, including spinning status indicators.</small>
+          </span>
+          <input id="reduced-motion" type="checkbox" name="reduced_motion" {% if user.preferences.reduced_motion %}checked{% endif %}>
+        </label>
+      </div>
+      <button class="btn btn-primary" type="submit">Save preferences</button>
+    </form>
+
+    <div class="account-favourites-panel">
+      <h3 class="theme-subsection-title">Saved navigation favourites</h3>
+      <p class="text-muted">Favourite pages appear in the star menu and at the top of navigation search.</p>
+      <div class="account-favourites-list">
+        {% for favourite in user.preferences.favourites %}
+          <div class="account-favourite-row">
+            <a href="{{ favourite.url }}">{{ favourite.label }}</a>
+            <button type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-favourite-action="remove"
+                    data-favourite-url="{{ favourite.url }}"
+                    data-favourite-label="{{ favourite.label }}">
+              Remove
+            </button>
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No favourites saved yet. Use the star menu on any page.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="security" class="theme-card card account-settings-section">
+  <div class="card-body">
+    <p class="page-kicker">Security</p>
+    <h2 class="theme-section-title">Change password</h2>
+    <p class="text-muted">Use at least ten characters and choose a password different from your current one.</p>
+    <form class="theme-form" method="post" action="/account/password">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group">
+        <label for="current-password">Current password</label>
+        <input id="current-password" class="form-control" type="password" name="current_password" autocomplete="current-password" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group col-md-6">
+          <label for="new-password">New password</label>
+          <input id="new-password" class="form-control" type="password" name="new_password" minlength="10" autocomplete="new-password" required>
+        </div>
+        <div class="form-group col-md-6">
+          <label for="confirm-password">Confirm new password</label>
+          <input id="confirm-password" class="form-control" type="password" name="confirm_password" minlength="10" autocomplete="new-password" required>
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">Change password</button>
+    </form>
+  </div>
+</section>
+
+<section class="theme-card card account-settings-section">
+  <div class="card-body">
+    <p class="page-kicker">Account record</p>
+    <h2 class="theme-section-title">Local account information</h2>
+    <dl class="interface-definition-list account-definition-list">
+      <div><dt>Username</dt><dd>{{ user.username }}</dd></div>
+      <div><dt>Role</dt><dd>{{ user.role | replace('_', ' ') | title }}</dd></div>
+      <div><dt>Created</dt><dd>{{ created_at_label }}</dd></div>
+      <div><dt>Password last changed</dt><dd>{{ password_changed_at_label }}</dd></div>
+    </dl>
+  </div>
+</section>
+{% endblock %}

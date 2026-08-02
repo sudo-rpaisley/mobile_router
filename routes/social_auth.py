@@ -1,10 +1,57 @@
 """Authentication and local application-user routes."""
 
+from app_support import navigation as navigation_service
 from app_support.context import bind_context
 
 
 def register_social_auth_routes(app, context_provider):
     _refresh_context = bind_context(globals(), context_provider)
+
+    @app.context_processor
+    def inject_navigation_context():
+        context = context_provider()
+        record = current_user_record()
+        app_user = (
+            social_auth_service.public_user(record)
+            if record else current_app_user()
+        )
+
+        def app_navigation(title=''):
+            return navigation_service.build_navigation_context(
+                request.path,
+                title,
+                request.endpoint,
+                app_user,
+                context.get('networkTechnologies', ()),
+                context.get('network_interfaces', ()),
+            )
+
+        return {'app_user': app_user, 'app_navigation': app_navigation}
+
+    def account_page_response(error=None, status=200):
+        record = current_user_record() or {}
+        user = social_auth_service.public_user(record) or {}
+        created_at = user.get('created_at')
+        password_changed_at = user.get('password_changed_at')
+        response = render_template(
+            'account_profile.html',
+            title='My Account',
+            user=user,
+            landing_pages=social_auth_service.LANDING_PAGES,
+            error=error,
+            saved=request.args.get('saved'),
+            created_at_label=(
+                time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at))
+                if created_at else 'Unknown'
+            ),
+            password_changed_at_label=(
+                time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(password_changed_at))
+                if password_changed_at else 'Not recorded'
+            ),
+            csrf_token=social_csrf_token(),
+            **current_context(),
+        )
+        return (response, status) if status != 200 else response
 
     @app.route('/setup', methods=['GET', 'POST'])
     @_refresh_context
@@ -44,7 +91,11 @@ def register_social_auth_routes(app, context_provider):
                     profile.setdefault('owner', user['username'])
             record_social_audit('auth.setup')
             save_runtime_state('social-auth-setup')
-            return redirect(login_destination(next_url))
+            destination = (
+                login_destination(next_url)
+                if next_url else social_auth_service.default_landing_page(user)
+            )
+            return redirect(destination)
         return render_template(
             'social_auth.html',
             title='Social Profile Setup',
@@ -87,7 +138,11 @@ def register_social_auth_routes(app, context_provider):
             }
             record_social_audit('auth.login')
             save_runtime_state('social-auth-login')
-            return redirect(login_destination(next_url))
+            destination = (
+                login_destination(next_url)
+                if next_url else social_auth_service.default_landing_page(user)
+            )
+            return redirect(destination)
         return render_template(
             'social_auth.html',
             title='Social Profile Login',
@@ -105,6 +160,81 @@ def register_social_auth_routes(app, context_provider):
         save_runtime_state('social-auth-logout')
         session.pop('social_user', None)
         return redirect(url_for('social_auth_login'))
+
+    @app.route('/account')
+    @social_login_required()
+    @_refresh_context
+    def application_account_page():
+        return account_page_response()
+
+    @app.route('/account/profile', methods=['POST'])
+    @social_login_required()
+    @_refresh_context
+    def update_application_account():
+        username = (current_app_user() or {}).get('username')
+        try:
+            social_auth_service.update_user_profile(
+                username,
+                request.form.get('display_name'),
+                request.form.get('email'),
+                request.form.get('default_landing_page'),
+                request.form.get('compact_layout'),
+                request.form.get('reduced_motion'),
+                social_users,
+                social_users_lock,
+            )
+        except ValueError as exc:
+            return account_page_response(str(exc), 400)
+        record_social_audit('account.profile.update')
+        save_runtime_state('account-profile-update')
+        return redirect(url_for('application_account_page', saved='profile'))
+
+    @app.route('/account/password', methods=['POST'])
+    @social_login_required()
+    @_refresh_context
+    def change_application_password():
+        username = (current_app_user() or {}).get('username')
+        try:
+            social_auth_service.change_password(
+                username,
+                request.form.get('current_password'),
+                request.form.get('new_password'),
+                request.form.get('confirm_password'),
+                social_users,
+                social_users_lock,
+            )
+        except ValueError as exc:
+            return account_page_response(str(exc), 400)
+        record_social_audit('account.password.change')
+        save_runtime_state('account-password-change')
+        return redirect(url_for('application_account_page', saved='password'))
+
+    @app.route('/account/favourites', methods=['POST'])
+    @social_login_required()
+    @_refresh_context
+    def update_application_favourites():
+        username = (current_app_user() or {}).get('username')
+        requested_url = request.form.get('url') or '/'
+        safe_url = login_destination(requested_url)
+        try:
+            favourites = social_auth_service.update_favourite(
+                username,
+                safe_url,
+                request.form.get('label'),
+                request.form.get('action'),
+                social_users,
+                social_users_lock,
+            )
+        except ValueError as exc:
+            return json_error(str(exc), 400)
+        record_social_audit(
+            'account.favourite.update',
+            detail=f"{request.form.get('action') or 'add'}:{safe_url}",
+        )
+        save_runtime_state('account-favourite-update')
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_success(favourites=favourites)
+        return redirect(url_for('application_account_page', saved='favourites'))
 
     @app.route('/social-engineering/setup')
     @_refresh_context
@@ -125,7 +255,7 @@ def register_social_auth_routes(app, context_provider):
     @_refresh_context
     def application_users_page():
         with social_users_lock:
-            users = [dict(user) for user in social_users.values()]
+            users = [social_auth_service.public_user(user) for user in social_users.values()]
         return render_template(
             'application_users.html',
             title='User Management',
@@ -148,7 +278,10 @@ def register_social_auth_routes(app, context_provider):
             )
         except ValueError as exc:
             with social_users_lock:
-                users = [dict(item) for item in social_users.values()]
+                users = [
+                    social_auth_service.public_user(item)
+                    for item in social_users.values()
+                ]
             return render_template(
                 'application_users.html',
                 title='User Management',
@@ -167,6 +300,10 @@ def register_social_auth_routes(app, context_provider):
         'social_auth_setup': social_auth_setup,
         'social_auth_login': social_auth_login,
         'social_auth_logout': social_auth_logout,
+        'application_account_page': application_account_page,
+        'update_application_account': update_application_account,
+        'change_application_password': change_application_password,
+        'update_application_favourites': update_application_favourites,
         'legacy_social_auth_setup': legacy_social_auth_setup,
         'legacy_social_auth_login': legacy_social_auth_login,
         'application_users_page': application_users_page,

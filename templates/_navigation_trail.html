@@ -1,0 +1,29 @@
+{% if navigation is defined and navigation.breadcrumbs %}
+<div class="navigation-context-shell">
+  <nav class="app-breadcrumbs" aria-label="Breadcrumb">
+    <ol>
+      {% for item in navigation.breadcrumbs %}
+        <li>
+          {% if item.url %}
+            <a href="{{ item.url }}">{{ item.label }}</a>
+          {% else %}
+            <span aria-current="page">{{ item.label }}</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </nav>
+
+  {% if navigation.section_items %}
+    <nav class="section-navigation" aria-label="Section navigation">
+      {% for item in navigation.section_items %}
+        <a href="{{ item.url }}"
+           class="section-navigation-link {% if item.active %}active{% endif %}"
+           {% if item.active %}aria-current="page"{% endif %}>
+          {{ item.label }}
+        </a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+</div>
+{% endif %}
