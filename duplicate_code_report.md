@@ -1,6 +1,6 @@
 # Duplicate Python code report
 
-Scanned **75 Python files** and **586 non-trivial functions**.
+Scanned **78 Python files** and **691 non-trivial functions**.
 
 Exact groups are high-confidence consolidation candidates. Structural groups only share control-flow shape and require manual review.
 
@@ -10,6 +10,11 @@ No matches found.
 
 ## Structurally similar function bodies
 
+### Structural group: 2 functions, 40 total lines
+
+- `routes/social_profile_identity.py:156-175` — `delete_identity_document` (20 lines)
+- `routes/social_profile_identity.py:230-249` — `delete_profile_signature` (20 lines)
+
 ### Structural group: 5 functions, 30 total lines
 
 - `routes/core_routes.py:92-97` — `red_team` (6 lines)
@@ -18,10 +23,21 @@ No matches found.
 - `routes/core_routes.py:296-301` — `service_discovery_page` (6 lines)
 - `routes/core_routes.py:304-309` — `advanced_diagnostics_page` (6 lines)
 
+### Structural group: 2 functions, 26 total lines
+
+- `routes/social_profile_identity.py:136-148` — `identity_document_image` (13 lines)
+- `routes/social_profile_identity.py:210-222` — `profile_signature_image` (13 lines)
+
 ### Structural group: 2 functions, 23 total lines
 
 - `services/evidence.py:64-79` — `evidence_as_csv` (16 lines)
 - `services/labs.py:263-269` — `handshake_records_csv` (7 lines)
+
+### Structural group: 3 functions, 15 total lines
+
+- `services/automotive.py:732-736` — `delete_vehicle_identifier` (5 lines)
+- `services/automotive.py:769-773` — `delete_vehicle_module` (5 lines)
+- `services/automotive.py:881-885` — `delete_vehicle_person` (5 lines)
 
 ### Structural group: 2 functions, 14 total lines
 
@@ -47,6 +63,11 @@ No matches found.
 
 - `scripts/capabilities.py:318-322` — `install_optional_package` (5 lines)
 - `scripts/capabilities.py:325-329` — `install_required_package` (5 lines)
+
+### Structural group: 2 functions, 10 total lines
+
+- `services/automotive.py:707-711` — `vehicle_identifiers` (5 lines)
+- `services/automotive.py:858-862` — `vehicle_people` (5 lines)
 
 ## Repeated six-line source blocks
 
