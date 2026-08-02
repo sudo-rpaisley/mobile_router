@@ -13,6 +13,7 @@ _REQUIRED_DEPENDENCIES = frozenset({
     'lookup_manufacturer',
     'merge_discovered_devices',
     'normalize_mac',
+    'os',
     'packet_passive_scan',
     'parse_int',
     'parse_neighbor_table',
