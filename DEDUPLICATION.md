@@ -31,6 +31,28 @@ The application-structure refactor and shared-code consolidation are now present
 
 This separates HTTP inspection and banner work from scheduled checks and watched-client alerts while retaining the established import surface.
 
+### Client intelligence modules
+
+`app_support/client_intelligence.py` is now a small compatibility façade over:
+
+- `app_support/client_intelligence_dependencies.py`;
+- `app_support/client_identity.py`;
+- `app_support/client_metadata.py`;
+- `app_support/client_profile.py`.
+
+Identity discovery, user-maintained metadata, baselines, health, timelines, exports, and relationship maps are separated while all established application imports remain available.
+
+### Passive monitoring modules
+
+`app_support/passive_monitoring.py` is now a small compatibility façade over:
+
+- `app_support/passive_monitoring_dependencies.py`;
+- `app_support/passive_analytics.py`;
+- `app_support/passive_monitor_control.py`;
+- `app_support/comprehensive_scan.py`.
+
+Passive observation analytics, worker lifecycle, and combined network discovery are separated without changing the public support API.
+
 ### Social profile services
 
 `services/social_profiles.py` remains a small compatibility façade over the focused validation, storage, relationship, credential, and device modules. Automotive identity documents and signatures are retained during normalization, profile merging, and deletion cleanup.
@@ -42,38 +64,34 @@ This separates HTTP inspection and banner work from scheduled checks and watched
 The following areas have been migrated away from dynamic namespace mutation:
 
 - `app_support.client_services` and its focused implementation modules;
+- `app_support.client_intelligence` and its focused implementation modules;
+- `app_support.passive_monitoring` and its focused implementation modules;
 - `routes.core_routes`.
 
-Architecture tests prevent those migrated modules from returning to `globals().update`, `bind_context`, or `context_refresher`.
+Request-time helper replacement remains supported through explicit provider resolution, preserving the existing tests and compatibility callers without mutating module globals. Architecture tests prevent migrated modules from returning to `globals().update`, `bind_context`, or `context_refresher`.
 
 ## Current audit result
 
-The latest validated audit scanned **78 Python files** and **691 non-trivial functions**. It found **no exact duplicate function bodies**.
+The latest validated audit scanned **86 Python files** and **696 non-trivial functions**. It found **no exact duplicate function bodies**.
 
-The remaining matches are structural similarities rather than interchangeable implementations. They include small page-rendering routes, image and deletion handlers with different storage semantics, CSV exports with different schemas, locked record snapshots, job-status handlers, small automotive domain wrappers, subprocess call syntax, and unique-list filtering.
+The former repeated context-refresh setup in client intelligence and passive monitoring is gone. Remaining matches are structural similarities rather than interchangeable implementations. They include small page-rendering routes, explicit dependency-provider setup, image and deletion handlers with different storage semantics, CSV exports with different schemas, locked record snapshots, job-status handlers, small automotive domain wrappers, subprocess call syntax, and unique-list filtering.
 
 The generated snapshot is stored in `duplicate_code_report.md`; every pull request also uploads an operating-system-specific report artifact.
 
 ## Remaining cleanup priorities
 
-### 1. Finish explicit dependency migration
+### 1. Continue explicit dependency migration
 
-Migrate these support modules next:
-
-- `app_support/client_intelligence.py`;
-- `app_support/passive_monitoring.py`.
-
-Then continue through the client, diagnostic, interface, laboratory, and social route families. Each migration should use a narrow dependency allow-list and retain dynamic resolution only where compatibility tests require it.
+Continue through the client, diagnostic, interface, laboratory, and social route families. Each migration should use a narrow dependency allow-list and retain dynamic resolution only where compatibility tests require it.
 
 ### 2. Continue complexity reduction
 
 The next valuable function families are:
 
-- client name resolution, health calculation, metadata, baselines, and relationship mapping;
-- passive-monitor worker control and analytics snapshots;
 - open-port recording and import validation in `services/inventory.py`;
 - device-role evidence rules in `services/device_intel.py::infer_device_role`;
-- platform parsing and command execution in `scripts/interfaceTools.py` and `scripts/wifi/utils.py`.
+- platform parsing and command execution in `scripts/interfaceTools.py` and `scripts/wifi/utils.py`;
+- remaining large route handlers after their dependency boundaries are explicit.
 
 ### 3. Reduce remaining application ownership
 
@@ -96,7 +114,8 @@ The test suite now enforces that:
 - expected extracted route registrars are called exactly once;
 - registered URL/method combinations are unique;
 - importing the application succeeds;
-- compatibility façades and focused modules remain within their size boundaries.
+- compatibility façades and focused modules remain within their size boundaries;
+- migrated support families do not use namespace mutation helpers.
 
 GitHub Actions validates the repository on both Linux and Windows.
 
