@@ -1,0 +1,33 @@
+name: Refresh support audit
+
+on:
+  push:
+    branches:
+      - agent/migrate-support-dependencies
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/migrate-support-dependencies
+
+      - name: Generate duplicate-code report
+        run: python tools/report_duplicate_code.py
+
+      - name: Commit generated audit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add duplicate_code_report.md
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Refresh support migration audit"
+            git push origin HEAD:agent/migrate-support-dependencies
+          fi
