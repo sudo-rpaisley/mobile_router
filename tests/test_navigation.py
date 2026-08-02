@@ -18,7 +18,7 @@ def render_navigation(**overrides):
         'app_csrf_token': 'test-token',
     }
     context.update(overrides)
-    with app.app_context():
+    with app.test_request_context('/'):
         return render_template('_navbar.html', **context)
 
 
