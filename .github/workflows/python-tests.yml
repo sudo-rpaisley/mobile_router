@@ -7,31 +7,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  update-navigation-route-test:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/navigation-cleanup' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out navigation branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/navigation-cleanup
-      - name: Update legacy navigation assertion
-        run: python tools/update_navigation_route_test.py
-      - name: Commit test update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "Align route smoke test with navigation"
-          git push origin HEAD:agent/navigation-cleanup
-
   test:
     name: test (${{ matrix.os }})
     strategy:
