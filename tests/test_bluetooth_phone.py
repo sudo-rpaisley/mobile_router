@@ -187,7 +187,10 @@ class BluetoothPhoneSettingsTest(unittest.TestCase):
 
         self.assertTrue(capability["available"])
         self.assertEqual(capability["tool"], "native-helper")
-        self.assertTrue(capability["path"].endswith("helpers/windows/mobile-router-bluetooth-helper.py"))
+        helper_path = Path(capability['path'])
+        self.assertEqual(helper_path.name, 'mobile-router-bluetooth-helper.py')
+        self.assertEqual(helper_path.parent.name, 'windows')
+        self.assertEqual(helper_path.parent.parent.name, 'helpers')
         self.assertIn("app-scoped", capability["message"])
 
     def test_windows_pairing_message_uses_app_scoped_native_helper(self):

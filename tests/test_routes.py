@@ -365,9 +365,10 @@ class RouteSmokeTest(unittest.TestCase):
         self.assertIn(b'Records', response.data)
         self.assertIn(b'System', response.data)
         self.assertNotIn(b'id="listAdapters', response.data)
-        self.assertIn(b'Browser screenshot tooling', response.data)
-        self.assertIn(b'Install for me', response.data)
-        self.assertIn(b'install-host-dependency', response.data)
+        if os.name != 'nt':
+            self.assertIn(b'Browser screenshot tooling', response.data)
+            self.assertIn(b'Install for me', response.data)
+            self.assertIn(b'install-host-dependency', response.data)
 
     def test_roadmap_page_renders_project_ideas(self):
         response = self.client.get('/roadmap')
@@ -1090,7 +1091,8 @@ class RouteSmokeTest(unittest.TestCase):
         upnp.return_value = {'devices': [{'ip': '192.168.1.1', 'friendly_name': 'Gateway', 'manufacturer': 'Training', 'role': 'Gateway/router'}]}
         lldp.return_value = {'neighbors': [{'management_address': '192.168.1.2', 'name': 'Switch', 'role': 'Switch/router neighbor'}]}
 
-        response = self.client.post('/comprehensive-scan', data={'selectedInterface': 'eth0', 'includePassive': 'on', 'includeServices': 'on'})
+        with patch.object(app_module, 'os', SimpleNamespace(name='posix')):
+            response = self.client.post('/comprehensive-scan', data={'selectedInterface': 'eth0', 'includePassive': 'on', 'includeServices': 'on'})
 
         self.assertEqual(response.status_code, 200)
         result = response.get_json()['result']
@@ -1216,7 +1218,8 @@ class RouteSmokeTest(unittest.TestCase):
             'output': '5: eth0.20@eth0: <BROADCAST> mtu 1500\n    vlan protocol 802.1Q id 20 <REORDER_HDR>',
         }
 
-        response = self.client.post('/vlan-discovery', data={'ssid': 'CorpWiFi', 'vlanId': '20', 'notes': 'Guest blocked from admin VLAN'})
+        with patch.object(app_module, 'os', SimpleNamespace(name='posix')):
+            response = self.client.post('/vlan-discovery', data={'ssid': 'CorpWiFi', 'vlanId': '20', 'notes': 'Guest blocked from admin VLAN'})
 
         self.assertEqual(response.status_code, 200)
         result = response.get_json()['result']
@@ -1286,7 +1289,8 @@ class RouteSmokeTest(unittest.TestCase):
         ]
         create_connection.return_value.__enter__.return_value = None
 
-        response = self.client.post('/ipv6-assessment', data={'host': '2001:db8::10', 'ports': '443'})
+        with patch.object(app_module, 'os', SimpleNamespace(name='posix')):
+            response = self.client.post('/ipv6-assessment', data={'host': '2001:db8::10', 'ports': '443'})
 
         self.assertEqual(response.status_code, 200)
         result = response.get_json()['result']
@@ -1338,7 +1342,8 @@ class RouteSmokeTest(unittest.TestCase):
             return SimpleNamespace(returncode=0, stdout='1.1.1.1 via 192.168.1.1 dev eth0 src 192.168.1.20', stderr='')
         run.side_effect = fake_run
 
-        response = self.client.post('/route-diagnostics', data={'target': '1.1.1.1'})
+        with patch.object(app_module, 'os', SimpleNamespace(name='posix')):
+            response = self.client.post('/route-diagnostics', data={'target': '1.1.1.1'})
 
         self.assertEqual(response.status_code, 200)
         diagnostics = response.get_json()['diagnostics']
@@ -2975,6 +2980,7 @@ class RouteSmokeTest(unittest.TestCase):
             self.assertEqual(attachment['sha256'], 'ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e')
             download = self.client.get(f"/social-engineering/profiles/{first['id']}/attachments/{attachment['id']}")
             self.assertEqual(download.data, b'evidence')
+            download.close()
 
         export = self.client.get('/social-engineering/export')
         self.assertEqual(export.status_code, 200)

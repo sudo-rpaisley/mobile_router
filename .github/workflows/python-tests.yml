@@ -11,7 +11,14 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,13 +35,16 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q app.py app_support routes services scripts tests tools
 
+      - name: Import application
+        run: python -c "import app; print('Application imported successfully')"
+
       - name: Generate duplicate-code report
         run: python tools/report_duplicate_code.py
 
       - name: Upload duplicate-code report
         uses: actions/upload-artifact@v4
         with:
-          name: duplicate-code-report
+          name: duplicate-code-report-${{ runner.os }}
           path: duplicate_code_report.md
 
       - name: Run tests

@@ -8,6 +8,7 @@ import re
 import sqlite3
 import time
 import hashlib
+from contextlib import contextmanager
 from datetime import datetime
 
 
@@ -33,12 +34,22 @@ class AutomotiveStore:
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         self._initialize()
 
+    @contextmanager
     def connect(self):
+        """Yield a transaction-scoped connection and always release its file handle."""
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute('PRAGMA foreign_keys = ON')
         connection.execute('PRAGMA busy_timeout = 5000')
-        return connection
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
 
     def _initialize(self):
         with self.connect() as db:
