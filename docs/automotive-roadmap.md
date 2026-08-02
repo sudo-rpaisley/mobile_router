@@ -15,8 +15,13 @@ larger automotive milestones.
 - Add a diagnostics workspace for connection state, scans, saved sessions, and
   report creation.
 
-Initial manual/simulator-ready immutable session persistence and viewing are now
-implemented. Transport connectors and the live diagnostics workspace remain.
+The SQLite schema and manual/simulator-ready service methods can already store
+and display diagnostic-session records. The canonical **Immutable diagnostic
+sessions** milestone remains open until the application enforces immutability
+through the complete create/view/report workflow and the simulator exercises
+that boundary. Transport connectors and the live diagnostics workspace also
+remain open.
+
 - Extend the saved vehicle identity inventory with canonical VIN, chassis/frame,
   body, engine and transmission serials, registration/fleet identifiers, and
   per-ECU part, serial, hardware, software, calibration, CVN, and reported-VIN
