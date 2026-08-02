@@ -1,4 +1,5 @@
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -37,6 +38,14 @@ def test_profile_update_preserves_credentials_and_saves_preferences():
     assert updated['preferences']['reduced_motion'] is True
     assert 'password_hash' not in updated
     assert store['operator']['password_hash'] == original_hash
+
+
+def test_profile_form_preserves_saved_preferences():
+    template = Path('templates/account_profile.html').read_text(encoding='utf-8')
+
+    assert 'type="hidden" name="default_landing_page"' in template
+    assert 'type="hidden" name="compact_layout"' in template
+    assert 'type="hidden" name="reduced_motion"' in template
 
 
 def test_password_change_requires_current_password_and_confirmation():
