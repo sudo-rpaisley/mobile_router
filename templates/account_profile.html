@@ -37,6 +37,9 @@
     </div>
     <form class="theme-form" method="post" action="/account/profile">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="default_landing_page" value="{{ user.preferences.default_landing_page }}">
+      <input type="hidden" name="compact_layout" value="{{ 'on' if user.preferences.compact_layout else '' }}">
+      <input type="hidden" name="reduced_motion" value="{{ 'on' if user.preferences.reduced_motion else '' }}">
       <div class="form-row">
         <div class="form-group col-md-6">
           <label for="account-display-name">Display name</label>
