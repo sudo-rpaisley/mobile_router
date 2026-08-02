@@ -102,4 +102,4 @@ GitHub Actions validates the repository on both Linux and Windows.
 
 ## Validation requirement
 
-Every cleanup pass must compile, import the application, produce a duplicate audit with no exact duplicate bodies, and pass the complete pytest suite on both supported CI operating systems. The latest pre-hardening merge validation completed with **311 tests passed and 1 skipped**.
+Every cleanup pass must compile, import the application, produce a duplicate audit with no exact duplicate bodies, and pass the complete pytest suite on both supported CI operating systems. The latest cross-platform validation completed with **314 tests passed and 1 skipped** on both Linux and Windows.
