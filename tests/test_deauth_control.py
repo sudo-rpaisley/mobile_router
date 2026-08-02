@@ -43,7 +43,7 @@ class BoundedDeauthControllerTest(unittest.TestCase):
         self.fail("Bounded deauth controller did not stop")
 
     def test_startup_cleanup_fails_closed_and_removes_stale_marker(self):
-        self.marker.parent.mkdir(parents=True)
+        self.marker.parent.mkdir(parents=True, exist_ok=True)
         self.marker.write_text('{"id": "stale"}', encoding="utf-8")
         controller = self.make_controller()
 
