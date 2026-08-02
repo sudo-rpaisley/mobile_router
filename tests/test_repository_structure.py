@@ -30,5 +30,8 @@ def test_extracted_modules_remain_focused():
         assert line_count(path) <= maximum, f'{path} has grown beyond {maximum} lines'
 
 
-def test_application_monolith_does_not_grow_during_migration():
-    assert line_count('app.py') <= 4400
+def test_application_entry_point_remains_composition_focused():
+    app_source = Path('app.py').read_text(encoding='utf-8')
+
+    assert line_count('app.py') <= 1550
+    assert '@app.route' not in app_source
