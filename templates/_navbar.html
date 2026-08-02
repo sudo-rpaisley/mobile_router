@@ -1,31 +1,93 @@
 <link rel="stylesheet" href="/static/css/navbar.css">
 <script src="/static/js/navbar.js"></script>
 
-<nav class="navbar navbar-expand-sm navbar-dark bg-dark">
-  <a href="/" class="navbar-brand">Honours</a>
-  <button type="button" class="navbar-toggler" data-toggle="collapse" data-target="#navbarCollapse">
-      <span class="navbar-toggler-icon"></span>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark app-navbar">
+  <a href="/" class="navbar-brand app-navbar-brand">
+    <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
+    <span>Honours</span>
+  </a>
+  <button type="button"
+          class="navbar-toggler"
+          data-toggle="collapse"
+          data-target="#navbarCollapse"
+          aria-controls="navbarCollapse"
+          aria-expanded="false"
+          aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
   </button>
 
   <div class="collapse navbar-collapse" id="navbarCollapse">
     <div id="primary-nav-links" class="navbar-nav">
       {% include '_primary-nav-links.html' %}
     </div>
+
     <div class="navbar-nav ml-auto nav-tools">
-      {% if app_user %}
-      <span class="navbar-text mr-2"><i class="fas fa-user-shield" aria-hidden="true"></i> {{ app_user.username }}</span>
-      <form method="post" action="/logout" class="form-inline mr-2"><input type="hidden" name="csrf_token" value="{{ app_csrf_token }}"><button class="btn btn-sm btn-outline-light" type="submit">Sign out</button></form>
-      {% endif %}
-      <a id="job-activity-indicator" class="job-activity-indicator" href="/jobs" title="View background jobs" aria-label="View background jobs">
-        <span class="job-activity-dial"><span id="job-activity-count">0</span></span>
+      <a id="job-activity-indicator"
+         class="nav-icon-link job-activity-indicator"
+         href="/jobs"
+         title="View background jobs"
+         aria-label="View background jobs">
+        <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+        <span id="job-activity-count" class="nav-indicator-count">0</span>
       </a>
-      <a id="new-device-alert-indicator" class="new-device-alert-indicator" href="/alerts" title="View new device alerts">
-        <i class="fa-solid fa-bell"></i> <span id="new-device-alert-count">0</span>
+
+      <a id="new-device-alert-indicator"
+         class="nav-icon-link new-device-alert-indicator"
+         href="/alerts"
+         title="View new device alerts"
+         aria-label="View new device alerts">
+        <i class="fa-solid fa-bell" aria-hidden="true"></i>
+        <span id="new-device-alert-count" class="nav-indicator-count">0</span>
       </a>
-      <span id="adapter-auto-update-status" class="navbar-text auto-update-status">Auto updating</span>
-      <button id="theme-toggle" type="button" class="btn btn-sm btn-outline-light theme-toggle" aria-pressed="false" title="Switch theme">
-        <i class="fa-solid fa-moon"></i> Dark
-      </button>
+
+      <span id="adapter-auto-update-status" class="sr-only" aria-live="polite">Auto updating</span>
+
+      <div class="nav-item dropdown account-menu">
+        <a href="#"
+           id="account-menu"
+           class="nav-link dropdown-toggle account-menu-toggle {% if title == 'User Management' %}active{% endif %}"
+           data-toggle="dropdown"
+           role="button"
+           aria-haspopup="true"
+           aria-expanded="false">
+          <i class="fa-solid {{ 'fa-user-shield' if app_user else 'fa-gear' }}" aria-hidden="true"></i>
+          <span class="account-menu-label">{{ app_user.username if app_user else 'Display' }}</span>
+        </a>
+        <div class="dropdown-menu dropdown-menu-right account-dropdown" aria-labelledby="account-menu">
+          {% if app_user %}
+            <div class="dropdown-header account-summary">
+              <strong>{{ app_user.username }}</strong>
+              <span>{{ app_user.role | title }}</span>
+            </div>
+            {% if app_user.role == 'admin' %}
+              <a href="/users" class="dropdown-item {% if title == 'User Management' %}active{% endif %}">
+                <i class="fa-solid fa-users-gear" aria-hidden="true"></i>
+                User management
+              </a>
+            {% endif %}
+          {% endif %}
+
+          <button id="theme-toggle"
+                  type="button"
+                  class="dropdown-item"
+                  aria-pressed="false"
+                  title="Switch theme">
+            <i class="fa-solid fa-moon" aria-hidden="true"></i>
+            Dark
+          </button>
+
+          {% if app_user %}
+            <div class="dropdown-divider"></div>
+            <form method="post" action="/logout" class="account-signout-form">
+              <input type="hidden" name="csrf_token" value="{{ app_csrf_token }}">
+              <button class="dropdown-item account-signout" type="submit">
+                <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                Sign out
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 </nav>
