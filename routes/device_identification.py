@@ -1,11 +1,12 @@
 """Authenticated routes for explainable passive and active device identification."""
 
 from functools import wraps
+from pathlib import Path
 import secrets
 
 from flask import Blueprint, current_app, jsonify, request, session
 
-from services import device_identification
+from services import device_identification, port_knowledge
 
 
 IDENTIFICATION_STAGES = {"passive", "safe", "deep"}
@@ -71,9 +72,31 @@ def _persist_assessment(app_module, identifier, assessment, stage):
                 item["identity_signature_tokens"] = assessment.get("signature_tokens", [])
                 item["identity_identification_stage"] = stage
                 item["identity_assessed_at"] = now
+                if assessment.get("manufacturer"):
+                    item["manufacturer"] = assessment["manufacturer"]
+                if assessment.get("model"):
+                    item["model"] = assessment["model"]
+                    item["model_source"] = assessment.get("model_source")
                 updated = dict(item)
                 break
     return updated
+
+
+def _persist_device(app_module, identifier, device):
+    with app_module.device_inventory_lock:
+        normalized = app_module.normalize_mac(identifier)
+        for key, item in app_module.device_inventory.items():
+            matches = {
+                str(key),
+                str(item.get("id") or ""),
+                str(item.get("ip") or ""),
+                str(item.get("mac") or ""),
+                str(item.get("address") or ""),
+            }
+            if str(identifier) in matches or (normalized and normalized in matches):
+                app_module.device_inventory[key] = dict(device)
+                return dict(app_module.device_inventory[key])
+    return None
 
 
 def create_device_identification_blueprint(context_provider):
@@ -140,6 +163,14 @@ def create_device_identification_blueprint(context_provider):
                 deep_probe=deep_probe,
                 passive_summary=_passive_summary(device),
             )
+            model_identity = port_knowledge.extract_identity(
+                device,
+                safe_probes=safe_probes,
+                assessment=assessment,
+            )
+            assessment["manufacturer"] = model_identity["manufacturer"]
+            assessment["model"] = model_identity["model"]
+            assessment["model_source"] = model_identity["source"]
         except ValueError as exc:
             return _error(exc)
         except Exception as exc:
@@ -147,12 +178,23 @@ def create_device_identification_blueprint(context_provider):
             return _error(f"Device identification failed: {exc}", 500)
 
         updated = _persist_assessment(app_module, identifier, assessment, stage)
+        knowledge_result = port_knowledge.process(
+            Path(current_app.instance_path) / "device_port_knowledge.sqlite3",
+            updated or device,
+            safe_probes=safe_probes,
+        )
+        updated = _persist_device(
+            app_module,
+            identifier,
+            knowledge_result["device"],
+        ) or knowledge_result["device"]
         app_module.append_client_timeline_event(
             host,
             "Device identified",
             (
                 f"Likely {assessment['likely_device']} with "
-                f"{assessment['confidence']} confidence ({assessment['score']}/100)."
+                f"{assessment['confidence']} confidence ({assessment['score']}/100). "
+                f"Model-port knowledge applied {len(knowledge_result['applied'])} mapping(s)."
             ),
             f"device-identification:{stage}",
         )
@@ -161,18 +203,22 @@ def create_device_identification_blueprint(context_provider):
             profile_id=str(identifier),
             detail=(
                 f"stage={stage}; likely={assessment['likely_device']}; "
+                f"model={assessment.get('model') or 'unknown'}; "
                 f"confidence={assessment['confidence']}; score={assessment['score']}"
             ),
         )
         app_module.save_runtime_state(f"device-identification:{stage}")
-        return jsonify({
-            "status": "success",
-            "stage": stage,
-            "identification": assessment,
-            "safe_probes": safe_probes,
-            "deep_probe": deep_probe,
-            "device": updated or device,
-        })
+        return jsonify(
+            {
+                "status": "success",
+                "stage": stage,
+                "identification": assessment,
+                "safe_probes": safe_probes,
+                "deep_probe": deep_probe,
+                "port_knowledge": knowledge_result,
+                "device": updated,
+            }
+        )
 
     @blueprint.get("/clients/<path:identifier>/identify")
     def saved_identification(identifier):
@@ -183,10 +229,12 @@ def create_device_identification_blueprint(context_provider):
         device = app_module.find_inventory_device(identifier) or {}
         if not device:
             return _error("Device was not found in inventory", 404)
-        return jsonify({
-            "status": "success",
-            "identification": device.get("identity_assessment"),
-            "stage": device.get("identity_identification_stage"),
-        })
+        return jsonify(
+            {
+                "status": "success",
+                "identification": device.get("identity_assessment"),
+                "stage": device.get("identity_identification_stage"),
+            }
+        )
 
     return blueprint
