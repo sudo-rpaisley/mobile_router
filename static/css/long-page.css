@@ -1,4 +1,4 @@
-.long-page-tools {
+.long-page-tabs-shell {
     position: sticky;
     top: 0.75rem;
     z-index: 1010;
@@ -12,15 +12,15 @@
     box-shadow: var(--theme-shadow);
 }
 
-.long-page-tools-header {
+.long-page-tabs-header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
 }
 
-.long-page-tools-header > div:first-child {
+.long-page-tabs-header > div:first-child {
     display: flex;
     align-items: baseline;
     gap: 0.65rem;
@@ -31,111 +31,104 @@
     font-size: 0.85rem;
 }
 
-.long-page-tools-actions {
+.long-page-tablist {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-}
-
-.long-page-section-search {
-    max-width: 24rem;
-}
-
-.long-page-nav {
-    display: flex;
-    gap: 0.45rem;
+    gap: 0.35rem;
     overflow-x: auto;
-    padding: 0.15rem 0 0.25rem;
+    padding: 0.1rem 0 0.35rem;
+    border-bottom: 1px solid var(--theme-border);
     scrollbar-width: thin;
 }
 
-.long-page-nav-link {
+.long-page-tab {
     flex: 0 0 auto;
-    border: 1px solid var(--theme-border);
-    border-radius: 999px;
-    background: var(--theme-surface-soft);
-    color: var(--theme-text);
+    min-height: 2.6rem;
+    border: 1px solid transparent;
+    border-bottom: 0.2rem solid transparent;
+    border-radius: 0.65rem 0.65rem 0 0;
+    background: transparent;
+    color: var(--theme-muted);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 0.9rem;
     font-weight: 700;
     line-height: 1.2;
-    padding: 0.5rem 0.75rem;
+    padding: 0.65rem 0.85rem 0.55rem;
     transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
-.long-page-nav-link:hover,
-.long-page-nav-link:focus,
-.long-page-nav-link.active {
-    border-color: var(--theme-primary);
-    background: var(--theme-primary-soft);
-    color: var(--theme-primary);
+.long-page-tab:hover,
+.long-page-tab:focus {
+    border-color: var(--theme-border);
+    color: var(--theme-text);
     outline: none;
 }
 
-.long-page-section-heading {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
+.long-page-tab.active,
+.long-page-tab[aria-selected="true"] {
+    border-color: var(--theme-border);
+    border-bottom-color: var(--theme-primary);
+    background: var(--theme-primary-soft);
+    color: var(--theme-primary);
 }
 
-.long-page-section-heading .long-page-section-title {
-    margin-bottom: 0;
+.long-page-tab-select-group {
+    display: none;
 }
 
-.long-page-section-toggle {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+[data-long-page-tab-panel] {
+    scroll-margin-top: 10rem;
 }
 
-.long-page-section-content {
-    margin-top: 1rem;
+[data-long-page-tab-panel][hidden] {
+    display: none !important;
 }
 
-.long-page-section-collapsed {
-    scroll-margin-top: 9rem;
+.long-page-tab-panel-active {
+    animation: long-page-panel-enter 140ms ease-out;
 }
 
-.long-page-section-collapsed .card-body {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
-
-[data-long-page-section] {
-    scroll-margin-top: 9rem;
+@keyframes long-page-panel-enter {
+    from {
+        opacity: 0;
+        transform: translateY(0.25rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @media (max-width: 767.98px) {
-    .long-page-tools {
+    .long-page-tabs-shell {
         top: 0.35rem;
         margin-left: -0.25rem;
         margin-right: -0.25rem;
         padding: 0.85rem;
     }
 
-    .long-page-tools-header {
-        align-items: stretch;
-    }
-
-    .long-page-tools-actions,
-    .long-page-section-search {
-        width: 100%;
-        max-width: none;
-    }
-
-    .long-page-tools-actions .btn {
-        flex: 1 1 auto;
-    }
-
-    .long-page-section-toggle span {
+    .long-page-tabs-header small {
         display: none;
+    }
+
+    .long-page-tablist {
+        display: none;
+    }
+
+    .long-page-tab-select-group {
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .long-page-tab-select-group label {
+        color: var(--theme-muted);
+        font-size: 0.8rem;
+        font-weight: 700;
+        margin: 0;
     }
 }
 
-html.user-reduced-motion .long-page-nav-link,
-html.user-reduced-motion [data-long-page-section] {
+html.user-reduced-motion .long-page-tab,
+html.user-reduced-motion .long-page-tab-panel-active {
+    animation: none;
     transition: none;
-    scroll-behavior: auto;
 }
