@@ -11,27 +11,33 @@ def test_long_page_assets_are_loaded_globally():
     assert "js/long-page.js" in footer
 
 
-def test_long_page_controller_is_progressive_and_remembers_state():
+def test_long_page_controller_builds_accessible_remembered_tabs():
     source = Path("static/js/long-page.js").read_text(encoding="utf-8")
 
     assert "const MIN_SECTIONS = 5" in source
     assert "main.page-shell, main.theme-page, #main-content.content" in source
+    assert "mobile-router:long-page-tab" in source
     assert "window.localStorage" in source
-    assert "IntersectionObserver" in source
-    assert "Expand all" in source
-    assert "Collapse all" in source
-    assert "Essentials" in source
-    assert "Find a section" in source
-    assert "aria-expanded" in source
+    assert "role', 'tabpanel" in source
+    assert "role', 'tab" in source
+    assert "aria-selected" in source
+    assert "ArrowRight" in source
+    assert "ArrowLeft" in source
+    assert "Home" in source
+    assert "End" in source
+    assert "hashchange" in source
+    assert "Only the selected section is shown" in source
 
 
-def test_long_page_styles_include_sticky_mobile_navigation():
+def test_long_page_styles_include_tabs_and_mobile_selector():
     source = Path("static/css/long-page.css").read_text(encoding="utf-8")
 
-    assert ".long-page-tools" in source
+    assert ".long-page-tabs-shell" in source
     assert "position: sticky" in source
-    assert ".long-page-nav" in source
+    assert ".long-page-tablist" in source
     assert "overflow-x: auto" in source
+    assert ".long-page-tab-select-group" in source
+    assert "[data-long-page-tab-panel][hidden]" in source
     assert "@media (max-width: 767.98px)" in source
     assert "user-reduced-motion" in source
 
