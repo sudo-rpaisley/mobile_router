@@ -12,6 +12,7 @@ from .host_facts import create_host_facts_blueprint
 from .client_workspace import create_client_workspace_blueprint
 from .vlan_investigations import create_vlan_investigations_blueprint
 from .vlan_context import create_vlan_context_blueprint
+from .vlan_lookup import create_vlan_lookup_blueprint
 
 
 def register_blueprints(app, context_provider):
@@ -29,3 +30,4 @@ def register_blueprints(app, context_provider):
     app.register_blueprint(create_client_workspace_blueprint(context_provider))
     app.register_blueprint(create_vlan_investigations_blueprint(context_provider))
     app.register_blueprint(create_vlan_context_blueprint(context_provider))
+    app.register_blueprint(create_vlan_lookup_blueprint(context_provider))
