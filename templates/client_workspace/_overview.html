@@ -1,3 +1,4 @@
+{% set inventory_device = vlan_device(inventory_device) %}
 {% set identity = inventory_device.identity_assessment or {} %}
 {% set unexpected = baseline_diff.unexpected_ports or [] %}
 {% set missing = baseline_diff.missing_ports or [] %}
@@ -8,9 +9,12 @@
     <div>
       <p class="page-kicker mb-1">At a glance</p>
       <h2 id="workspace-overview-title" class="theme-section-title mb-1">Device overview</h2>
-      <p class="text-muted mb-0">Identity, service, security, and recent-change summaries for {{ display_name }}.</p>
+      <p class="text-muted mb-0">Identity, network, service, security, and recent-change summaries for {{ display_name }}.</p>
     </div>
-    <span class="badge badge-{{ health_summary.badge }} p-2">{{ health_summary.level }} · {{ health_summary.score }}/100</span>
+    <div class="d-flex align-items-center flex-wrap" style="gap: .5rem;">
+      {% include '_vlan_badge.html' %}
+      <span class="badge badge-{{ health_summary.badge }} p-2">{{ health_summary.level }} · {{ health_summary.score }}/100</span>
+    </div>
   </div>
 
   <div class="device-dashboard-grid mt-3">
@@ -23,8 +27,8 @@
     <button type="button" class="device-dashboard-card" data-workspace-open="network">
       <span class="device-dashboard-icon"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i></span>
       <strong>Network</strong>
-      <span>{{ (inventory_device.interfaces or [])|length }} interface link(s)</span>
-      <small>{{ (inventory_device.sources or [])|length }} discovery source(s)</small>
+      <span>{{ inventory_device.vlan_label or ((inventory_device.interfaces or [])|length ~ ' interface link(s)') }}</span>
+      <small>{% if inventory_device.vlan_subnet %}{{ inventory_device.vlan_subnet }}{% if inventory_device.vlan_gateway %} · gateway {{ inventory_device.vlan_gateway }}{% endif %}{% else %}{{ (inventory_device.sources or [])|length }} discovery source(s){% endif %}</small>
     </button>
     <button type="button" class="device-dashboard-card" data-workspace-open="services">
       <span class="device-dashboard-icon"><i class="fa-solid fa-server" aria-hidden="true"></i></span>
@@ -45,6 +49,9 @@
       <div class="card-body">
         <h3 class="theme-subsection-title">Recommended next actions</h3>
         <ol class="device-recommendation-list mb-0">
+          {% if not inventory_device.vlan_id %}
+            <li><a href="/vlans">Define the containing subnet or VLAN tag so this device's network boundary is explicit.</a></li>
+          {% endif %}
           {% if not identity %}
             <li><button type="button" class="btn btn-link p-0" data-ip-client-intelligence>Identify this device from saved evidence and safe service probes.</button></li>
           {% endif %}
@@ -75,19 +82,15 @@
         </div>
         <ol class="client-timeline device-activity-preview mt-3 mb-0">
           {% for event in client_timeline[:5] %}
-            <li>
-              <strong>{{ event.time_label }}</strong> — {{ event.type }}
-              <p class="mb-0">{{ event.message }}</p>
-            </li>
-          {% else %}
-            <li class="text-muted">No device activity has been recorded yet.</li>
-          {% endfor %}
+            <li><strong>{{ event.time_label }}</strong> — {{ event.type }}<p class="mb-0">{{ event.message }}</p></li>
+          {% else %}<li class="text-muted">No device activity has been recorded yet.</li>{% endfor %}
         </ol>
       </div>
     </article>
   </div>
 
   <div class="theme-actions mt-4">
+    {% if inventory_device.vlan_id %}<a class="btn btn-outline-info" href="/vlans/{{ inventory_device.vlan_id|urlencode }}">Open {{ inventory_device.vlan_label }}</a>{% endif %}
     <button type="button" class="btn btn-primary" data-workspace-open="services">Scan and review services</button>
     <button type="button" class="btn btn-outline-dark" data-ip-client-intelligence>Identify device</button>
     <a class="btn btn-outline-info" href="/clients/{{ ip|urlencode }}/host-facts">Host facts &amp; capabilities</a>
@@ -98,63 +101,25 @@
     <section class="theme-card card mt-4" aria-labelledby="noscript-client-actions">
       <div class="card-body">
         <h3 id="noscript-client-actions" class="theme-section-title">IP Client Actions</h3>
+        {% include '_vlan_badge.html' %}
         <p><strong>Client Health:</strong> {{ health_summary.level }} · {{ health_summary.score }}/100</p>
-        {% if unexpected or missing %}
-          <p><strong>Drift detected</strong>{% if unexpected %} · Unexpected {{ unexpected|join(', ') }}{% endif %}{% if missing %} · Missing {{ missing|join(', ') }}{% endif %}</p>
-        {% endif %}
-        <p>
-          <button type="button" class="btn btn-outline-warning">Watch this device</button>
-          <button type="button" class="btn btn-outline-primary">Save baseline</button>
-          <button type="button" data-port-scan-cancel hidden>Cancel scan</button>
-        </p>
+        {% if unexpected or missing %}<p><strong>Drift detected</strong>{% if unexpected %} · Unexpected {{ unexpected|join(', ') }}{% endif %}{% if missing %} · Missing {{ missing|join(', ') }}{% endif %}</p>{% endif %}
+        <p><button type="button" class="btn btn-outline-warning">Watch this device</button><button type="button" class="btn btn-outline-primary">Save baseline</button><button type="button" data-port-scan-cancel hidden>Cancel scan</button></p>
         <h4>Saved Service Profile</h4>
         <div class="port-service-grid">
           {% for port in open_port_details %}
             <div class="port-service-card" data-web-service-preview>
               <strong class="port-service-number">{% if port.web_url %}<a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>{% else %}{{ port.port }}/tcp{% endif %}</strong>
-              <a class="port-service-card-link" href="/clients/{{ ip|urlencode }}/services/{{ port.port }}">
-                <span>{{ port.service }}</span>
-                <small>{{ port.description }}</small>
-              </a>
-              {% if port.web_url %}
-                <div class="web-service-hover-preview">
-                  <strong>{{ port.http_title or port.web_url }}</strong>
-                  <span>Status: {{ port.http_status or 'not captured' }}{% if port.http_server %} · {{ port.http_server }}{% endif %}</span>
-                </div>
-              {% endif %}
+              <a class="port-service-card-link" href="/clients/{{ ip|urlencode }}/services/{{ port.port }}"><span>{{ port.service }}</span><small>{{ port.description }}</small></a>
+              {% if port.web_url %}<div class="web-service-hover-preview"><strong>{{ port.http_title or port.web_url }}</strong><span>Status: {{ port.http_status or 'not captured' }}{% if port.http_server %} · {{ port.http_server }}{% endif %}</span></div>{% endif %}
             </div>
-          {% else %}
-            <p class="text-muted">No saved services.</p>
-          {% endfor %}
+          {% else %}<p class="text-muted">No saved services.</p>{% endfor %}
         </div>
-        <h4 class="mt-3">Device Port Scan</h4>
-        <p><a href="/port-scan?host={{ ip|urlencode }}">Common ports · All ports · Open full port scan</a></p>
-        <p>Inspect web services · Fingerprint services</p>
-
-        <h4 class="mt-3">Client Profile Metadata</h4>
-        <p>Expected open ports: {{ (inventory_device.expected_open_ports or [])|join(', ') or 'Not configured' }}</p>
-        <p><a href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a> · <a href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a></p>
-
-        <h4>Client Relationship Map</h4>
-        <p>Open the Network workspace to review interfaces, discovery sources, paths, and linked services.</p>
-        <p>
-          <button type="button" data-ip-client-ping>Ping client</button>
-          <button type="button" data-ip-client-route>Route diagnostics</button>
-          <button type="button" data-ip-client-traceroute>Traceroute</button>
-        </p>
-
-        <h4>Scheduled Client Checks</h4>
-        <p>Open the Network workspace to create or run scheduled reachability and baseline checks.</p>
-        <button type="button">Save evidence note</button>
-
-        <h4>Client Timeline</h4>
-        <ol>
-          {% for event in client_timeline %}
-            <li>{{ event.time_label }} — {{ event.type }}: {{ event.message }}</li>
-          {% else %}
-            <li>No timeline events recorded.</li>
-          {% endfor %}
-        </ol>
+        <h4 class="mt-3">Device Port Scan</h4><p><a href="/port-scan?host={{ ip|urlencode }}">Common ports · All ports · Open full port scan</a></p><p>Inspect web services · Fingerprint services</p>
+        <h4 class="mt-3">Client Profile Metadata</h4><p>Expected open ports: {{ (inventory_device.expected_open_ports or [])|join(', ') or 'Not configured' }}</p><p><a href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a> · <a href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a></p>
+        <h4>Client Relationship Map</h4><p>Open the Network workspace to review interfaces, discovery sources, paths, and linked services.</p><p><button type="button" data-ip-client-ping>Ping client</button><button type="button" data-ip-client-route>Route diagnostics</button><button type="button" data-ip-client-traceroute>Traceroute</button></p>
+        <h4>Scheduled Client Checks</h4><p>Open the Network workspace to create or run scheduled reachability and baseline checks.</p><button type="button">Save evidence note</button>
+        <h4>Client Timeline</h4><ol>{% for event in client_timeline %}<li>{{ event.time_label }} — {{ event.type }}: {{ event.message }}</li>{% else %}<li>No timeline events recorded.</li>{% endfor %}</ol>
       </div>
     </section>
   </noscript>

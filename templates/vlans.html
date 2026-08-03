@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+
+{% block title %}VLAN Investigations{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">Segmentation visibility</p>
+    <h1 class="page-title">VLAN Investigations</h1>
+    <p class="page-subtitle">Define routed networks, make known 802.1Q tags visible throughout the inventory, investigate permitted subnets, and compare observed access with the intended segmentation policy.</p>
+  </div>
+  <div class="theme-actions">
+    <a class="btn btn-outline-secondary" href="/vlans/export.json">Export VLAN records</a>
+    <a class="btn btn-outline-primary" href="/inventory">Device inventory</a>
+  </div>
+</section>
+
+<div class="vlan-output" data-vlan-output aria-live="polite"></div>
+
+<section class="vlan-status-grid" aria-label="VLAN summary">
+  <article class="vlan-status-tile"><strong>{{ vlans|length }}</strong><span>Defined VLANs</span></article>
+  <article class="vlan-status-tile"><strong>{{ device_counts.values()|sum }}</strong><span>Assigned devices</span></article>
+  <article class="vlan-status-tile"><strong>{{ integrations|length }}</strong><span>Infrastructure integrations</span></article>
+  <article class="vlan-status-tile"><strong>{{ probes|length }}</strong><span>Remote probes</span></article>
+</section>
+
+<section class="theme-card card mt-4">
+  <div class="card-body">
+    <h2 class="theme-section-title">Defined networks</h2>
+    <p class="text-muted">A saved subnet automatically labels matching inventory devices. An explicit device assignment takes precedence over subnet inference.</p>
+    {% if vlans %}
+      <div class="vlan-card-grid">
+        {% for vlan in vlans %}
+          <article class="theme-card card vlan-card">
+            <div class="card-body">
+              <div class="vlan-card-title">
+                <h3>{{ vlan.name }}</h3>
+                {% include '_vlan_badge.html' %}
+              </div>
+              <dl class="vlan-definition-list">
+                <div><dt>Subnet</dt><dd><code>{{ vlan.subnet }}</code></dd></div>
+                <div><dt>Gateway</dt><dd>{{ vlan.gateway or 'Not recorded' }}</dd></div>
+                <div><dt>Interface</dt><dd>{{ vlan.interface_name or 'Not recorded' }}</dd></div>
+                <div><dt>Visibility</dt><dd>{{ vlan.probe_mode|replace('-', ' ')|title }}</dd></div>
+                <div><dt>Devices</dt><dd>{{ device_counts.get(vlan.id, 0) }}</dd></div>
+              </dl>
+              <div class="theme-actions mt-auto">
+                <a class="btn btn-primary btn-sm" href="/vlans/{{ vlan.id|urlencode }}">Open investigation</a>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="device-empty-state">
+        <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+        <h3>No VLAN definitions yet</h3>
+        <p>Add a tagged or untagged routed network below. Devices already in the inventory will be assigned when their IP falls within the saved subnet.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="theme-card card mt-4">
+  <div class="card-body">
+    <h2 class="theme-section-title">Add a VLAN or routed network</h2>
+    <form class="theme-form" action="/vlans" method="post" data-vlan-ajax data-vlan-refresh>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="vlan-form-grid">
+        <div><label for="vlan-name">Network name</label><input id="vlan-name" class="form-control" name="name" placeholder="Users" required></div>
+        <div><label for="vlan-tag">802.1Q tag</label><input id="vlan-tag" class="form-control" name="tag" type="number" min="1" max="4094" placeholder="20"></div>
+        <div><label for="vlan-subnet">IPv4 subnet</label><input id="vlan-subnet" class="form-control" name="subnet" placeholder="192.168.20.0/24" required></div>
+        <div><label for="vlan-gateway">Gateway</label><input id="vlan-gateway" class="form-control" name="gateway" placeholder="192.168.20.1"></div>
+        <div><label for="vlan-interface">Router interface</label><input id="vlan-interface" class="form-control" name="interface_name" placeholder="igb1.20"></div>
+        <div><label for="vlan-router">Router</label><input id="vlan-router" class="form-control" name="router_name" placeholder="pfSense"></div>
+        <div><label for="vlan-mode">Visibility method</label><select id="vlan-mode" class="form-control" name="probe_mode"><option value="routed">Routed from this host</option><option value="local">Locally attached</option><option value="infrastructure">Infrastructure records</option><option value="remote-agent">Remote probe</option></select></div>
+        <div><label for="vlan-source-ip">Optional local source IP</label><input id="vlan-source-ip" class="form-control" name="source_ip" placeholder="192.168.20.5"></div>
+        <div class="vlan-form-span"><label for="vlan-description">Notes</label><textarea id="vlan-description" class="form-control" name="description" rows="2" placeholder="Expected purpose, firewall boundary, DHCP source, or ownership notes."></textarea></div>
+      </div>
+      <div class="theme-actions"><button class="btn btn-primary" type="submit">Save network definition</button></div>
+    </form>
+  </div>
+</section>
+
+<section class="theme-card card mt-4">
+  <div class="card-body">
+    <h2 class="theme-section-title">pfSense read-only import</h2>
+    <p class="text-muted">Import a JSON export immediately, or configure explicit HTTPS JSON endpoints. Authentication secrets are read from an environment variable and are never saved in the application database.</p>
+    <div class="device-overview-columns">
+      <form class="theme-form" action="/vlans/pfsense/import" method="post" enctype="multipart/form-data" data-vlan-ajax data-vlan-refresh>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="pfsense-file">pfSense VLAN, interface, lease, or ARP JSON</label>
+        <input id="pfsense-file" class="form-control-file" type="file" name="pfsense_file" accept="application/json,.json" required>
+        <div class="theme-actions"><button class="btn btn-outline-primary" type="submit">Import read-only JSON</button></div>
+      </form>
+      <form class="theme-form" action="/vlans/pfsense/integrations" method="post" data-vlan-ajax data-vlan-refresh>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="pfsense-name">Integration name</label><input id="pfsense-name" class="form-control" name="name" value="pfSense">
+        <label class="mt-2" for="pfsense-url">HTTPS base URL</label><input id="pfsense-url" class="form-control" name="base_url" placeholder="https://pfsense.example.internal" required>
+        <label class="mt-2" for="pfsense-token-env">Token environment variable</label><input id="pfsense-token-env" class="form-control vlan-secret-reference" name="token_env" placeholder="MOBILE_ROUTER_PFSENSE_TOKEN">
+        <div class="form-check mt-2"><input id="pfsense-verify" class="form-check-input" type="checkbox" name="verify_tls" value="on" checked><label class="form-check-label" for="pfsense-verify">Verify the appliance TLS certificate</label></div>
+        <details class="mt-2"><summary>Endpoint paths</summary><label class="mt-2">VLANs path<input class="form-control" name="vlans_path" value="/api/v1/vlans"></label><label>DHCP leases path<input class="form-control" name="leases_path" value="/api/v1/services/dhcpd/leases"></label><label>ARP table path<input class="form-control" name="arp_path" value="/api/v1/diagnostics/arp_table"></label></details>
+        <div class="theme-actions"><button class="btn btn-outline-primary" type="submit">Save integration</button></div>
+      </form>
+    </div>
+    {% if integrations %}
+      <div class="table-responsive mt-3"><table class="table theme-table"><thead><tr><th>Name</th><th>URL</th><th>Secret</th><th>Last status</th><th>Action</th></tr></thead><tbody>{% for integration in integrations %}<tr><td>{{ integration.name }}</td><td>{{ integration.base_url or 'Import only' }}</td><td><code>{{ integration.token_env or 'None' }}</code> · {{ 'configured' if integration.token_configured else 'not set' }}</td><td>{{ integration.last_status or 'Never synchronised' }}</td><td><form action="/vlans/pfsense/integrations/{{ integration.id }}/sync" method="post" data-vlan-ajax data-vlan-refresh><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-success" type="submit">Synchronise</button></form></td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+  </div>
+</section>
+
+<script src="/static/js/vlans.js"></script>
+{% endblock %}
