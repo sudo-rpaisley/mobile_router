@@ -264,7 +264,9 @@ class VlanInvestigationRouteTest(unittest.TestCase):
     def test_vlan_page_requires_login_and_writes_require_csrf(self):
         with self.client.session_transaction() as flask_session:
             flask_session.pop("social_user", None)
-        self.assertEqual(self.client.get("/vlans").status_code, 401)
+        response = self.client.get("/vlans")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login", response.location)
         with self.client.session_transaction() as flask_session:
             flask_session["social_user"] = {"username": "vlan-admin", "role": "admin"}
         response = self.client.post(
