@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  // Stable hashes such as workspace-services are used for direct workspace links.
   const root = document.querySelector('[data-device-workspace]');
   if (!root) return;
 
