@@ -1,5 +1,6 @@
 """Read-only VLAN lookup for dynamically rendered device cards."""
 
+import ipaddress
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
@@ -23,21 +24,31 @@ def create_vlan_lookup_blueprint(_context_provider):
         if len(addresses) > 256:
             return jsonify({"status": "error", "message": "At most 256 addresses may be looked up"}), 400
         database_path = Path(current_app.instance_path) / "vlan_investigations.sqlite3"
+        networks = [
+            (ipaddress.ip_network(vlan["subnet"], strict=False), vlan)
+            for vlan in vlan_service.list_vlans(database_path)
+        ]
         results = {}
         for address in addresses:
-            vlan = vlan_service.vlan_for_ip(database_path, address)
-            if vlan:
-                results[address] = {
-                    "id": vlan["id"],
-                    "tag": vlan.get("tag"),
-                    "name": vlan["name"],
-                    "subnet": vlan["subnet"],
-                    "gateway": vlan.get("gateway"),
-                    "label": vlan["label"],
-                    "url": f"/vlans/{vlan['id']}",
-                    "source": "subnet-match",
-                    "confidence": "high",
-                }
+            try:
+                ip = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            matches = [item for item in networks if ip in item[0]]
+            if not matches:
+                continue
+            _network, vlan = max(matches, key=lambda item: item[0].prefixlen)
+            results[address] = {
+                "id": vlan["id"],
+                "tag": vlan.get("tag"),
+                "name": vlan["name"],
+                "subnet": vlan["subnet"],
+                "gateway": vlan.get("gateway"),
+                "label": vlan["label"],
+                "url": f"/vlans/{vlan['id']}",
+                "source": "subnet-match",
+                "confidence": "high",
+            }
         return jsonify({"status": "success", "vlans": results})
 
     return blueprint
