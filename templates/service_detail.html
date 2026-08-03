@@ -4,20 +4,168 @@
   <main class="theme-page container py-4">
     <section class="theme-card card">
       <div class="card-body">
-        <p class="interface-kicker mb-1">Saved Service</p>
+        <p class="interface-kicker mb-1">Saved Service Record</p>
         <h1 class="page-title">{{ host }}:{{ port }}</h1>
         {% if service %}
+          {% if request.args.get('saved') %}
+            <div class="alert alert-success" role="alert">
+              {% if request.args.get('cleared') %}
+                Manual service override removed. The scanner-detected value is shown again.
+              {% else %}
+                Saved service record updated.
+              {% endif %}
+            </div>
+          {% endif %}
+          {% if request.args.get('error') %}
+            <div class="alert alert-danger" role="alert">{{ request.args.get('error') }}</div>
+          {% endif %}
+          {% if request.args.get('model') == 'saved' %}
+            <div class="alert alert-success" role="alert">The mapping was also saved to the matched device-model profile.</div>
+          {% elif request.args.get('model') == 'conflict' %}
+            <div class="alert alert-warning" role="alert">The model profile already has a different mapping. A conflict was recorded for review rather than overwriting it silently.</div>
+          {% elif request.args.get('model') == 'no-profile' %}
+            <div class="alert alert-warning" role="alert">The device record was saved, but this device has no matched model profile to reuse the mapping against.</div>
+          {% elif request.args.get('model', '').startswith('error:') %}
+            <div class="alert alert-warning" role="alert">The device record was saved, but the reusable model rule failed: {{ request.args.get('model')[6:] }}</div>
+          {% endif %}
+
           <div class="theme-actions">
             {% if service.web_url %}<a class="btn btn-primary" href="{{ service.web_url }}" target="_blank" rel="noopener noreferrer">Open web service</a>{% endif %}
             <a class="btn btn-outline-secondary" href="/clients/{{ host|urlencode }}">Back to device</a>
           </div>
-          <dl class="interface-definition-list mt-3">
-            <div><dt>Service</dt><dd>{{ service.service or 'Unknown' }}</dd></div>
-            <div><dt>Description</dt><dd>{{ service.description or 'No service description saved.' }}</dd></div>
+
+          <div class="theme-grid mt-3">
+            <article class="port-service-card">
+              <strong>Scanner-detected service</strong>
+              <span>{{ service.detected_service or service.service or 'Unknown' }}</span>
+              <small>{{ service.detected_description or service.description or 'No scanner description captured.' }}</small>
+            </article>
+            <article class="port-service-card">
+              <strong>Current saved value</strong>
+              <span>{{ service.service or 'Unknown' }}</span>
+              <small>{% if service.service_manual_override %}Manual device override{% else %}Scanner/model-profile value{% endif %}</small>
+            </article>
+            <article class="port-service-card">
+              <strong>Protocol</strong>
+              <span>{{ (service.protocol or 'tcp')|upper }}</span>
+              <small>Port {{ port }}</small>
+            </article>
+          </div>
+
+          <form class="theme-form mt-4" method="post" action="/clients/{{ host|urlencode }}/services/{{ port }}" data-saved-service-editor>
+            <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+            <input type="hidden" name="protocol" value="{{ service.protocol or 'tcp' }}">
+
+            <h2 class="theme-section-title">Edit this device’s saved service</h2>
+            <p class="text-muted">Manual values are retained separately from scan evidence, so another port scan can refresh the detected result without erasing your edit.</p>
+
+            <div class="form-row">
+              <div class="col-md-5">
+                <label for="saved-service-name">Service name</label>
+                <input id="saved-service-name" class="form-control" name="service" maxlength="200" value="{{ service.service or '' }}" placeholder="Sky diagnostics, Chromecast service, vendor agent…" required>
+              </div>
+              <div class="col-md-7">
+                <label for="saved-service-description">Description</label>
+                <input id="saved-service-description" class="form-control" name="description" maxlength="2000" value="{{ service.description or '' }}" placeholder="What this service is used for">
+              </div>
+            </div>
+
+            <label class="mt-3" for="saved-service-notes">Device-specific notes</label>
+            <textarea id="saved-service-notes" class="form-control" name="notes" rows="3" maxlength="2000" placeholder="How this was identified, whether it is expected here, and any local configuration details.">{{ service.service_notes or '' }}</textarea>
+
+            <div class="form-row mt-3">
+              <div class="col-md-5">
+                <label for="saved-service-source-name">Research source</label>
+                <input id="saved-service-source-name" class="form-control" name="sourceName" maxlength="240" value="{{ service.service_source_name or '' }}" placeholder="Vendor manual, support article, packet capture…">
+              </div>
+              <div class="col-md-7">
+                <label for="saved-service-source-url">Source URL</label>
+                <input id="saved-service-source-url" class="form-control" type="url" name="sourceUrl" maxlength="1000" value="{{ service.service_source_url or '' }}" placeholder="https://…">
+              </div>
+            </div>
+
+            {% if device.model_profile_id or device.model_profile_manual_id %}
+              <details class="mt-4">
+                <summary><strong>Reuse this mapping for the matched device model</strong></summary>
+                <div class="mt-3">
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="applyToModel" id="apply-service-to-model">
+                    <span class="form-check-label">Also add or update port {{ port }} in model profile #{{ device.model_profile_id or device.model_profile_manual_id }}.</span>
+                  </label>
+                  <p class="text-muted small">Leave this unticked for a one-device override. Model reuse is suitable only when the service is genuinely associated with this model or firmware.</p>
+
+                  <div class="form-row">
+                    <div class="col-md-4">
+                      <label for="model-service-classification">Classification</label>
+                      <select id="model-service-classification" class="form-control" name="classification">
+                        <option value="investigate" selected>Investigate</option>
+                        <option value="optional">Optional</option>
+                        <option value="expected">Expected</option>
+                        <option value="firmware-specific">Firmware-specific</option>
+                        <option value="local-configuration">Local configuration</option>
+                        <option value="deprecated">Deprecated</option>
+                        <option value="unexpected">Unexpected</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label for="model-service-exposure">Expected exposure</label>
+                      <select id="model-service-exposure" class="form-control" name="exposure">
+                        <option value="unknown" selected>Unknown</option>
+                        <option value="lan-only">LAN only</option>
+                        <option value="management-network">Management network</option>
+                        <option value="localhost">Localhost only</option>
+                        <option value="wan">WAN/Internet</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label for="model-service-risk">Risk</label>
+                      <select id="model-service-risk" class="form-control" name="risk">
+                        <option value="info" selected>Informational</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <label class="mt-3" for="model-service-remediation">Recommended action</label>
+                  <textarea id="model-service-remediation" class="form-control" name="remediation" rows="2" maxlength="2000" placeholder="Restrict to LAN, disable when unused, verify firmware, etc."></textarea>
+
+                  <div class="form-row mt-3">
+                    <div class="col-md-4">
+                      <label for="model-source-reliability">Source reliability</label>
+                      <input id="model-source-reliability" class="form-control" type="number" name="sourceReliability" min="0" max="100" value="70">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                      <div>
+                        <label class="form-check mb-1"><input class="form-check-input" type="checkbox" name="authenticationExpected"><span class="form-check-label">Authentication expected</span></label>
+                        <label class="form-check mb-1"><input class="form-check-input" type="checkbox" name="encryptionExpected"><span class="form-check-label">Encryption expected</span></label>
+                        <label class="form-check"><input class="form-check-input" type="checkbox" name="replaceModelRule"><span class="form-check-label">Replace an existing matching rule rather than record a conflict</span></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            {% else %}
+              <div class="alert alert-info mt-4">This device does not yet have a matched model profile. The edit will be saved for this device only. Use the Device Model Profile section on the device page to assign or create a reusable profile.</div>
+            {% endif %}
+
+            <div class="theme-actions mt-4">
+              <button class="btn btn-primary" type="submit">Save service record</button>
+              {% if service.service_manual_override %}
+                <button class="btn btn-outline-danger" type="submit" name="clearOverride" value="on">Remove manual override</button>
+              {% endif %}
+              <a class="btn btn-link" href="/clients/{{ host|urlencode }}">Cancel</a>
+            </div>
+          </form>
+
+          <dl class="interface-definition-list mt-4">
             <div><dt>HTTP Status</dt><dd>{{ service.http_status or 'Not captured' }}</dd></div>
             <div><dt>HTTP Title</dt><dd>{{ service.http_title or 'Not captured' }}</dd></div>
             <div><dt>Server Header</dt><dd>{{ service.http_server or 'Not captured' }}</dd></div>
             <div><dt>URL</dt><dd>{% if service.web_url %}<a href="{{ service.web_url }}" target="_blank" rel="noopener noreferrer">{{ service.web_url }}</a>{% else %}No web URL saved{% endif %}</dd></div>
+            {% if service.service_updated_by %}<div><dt>Last manually edited by</dt><dd>{{ service.service_updated_by }}</dd></div>{% endif %}
           </dl>
           {% if service.http_thumbnail_url %}
             <img class="web-service-preview-image mt-3" src="{{ service.http_thumbnail_url }}" alt="Preview of {{ service.web_url }}">
