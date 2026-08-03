@@ -1,0 +1,141 @@
+.long-page-tools {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 1010;
+    display: grid;
+    gap: 0.75rem;
+    margin: 0 0 1.25rem;
+    padding: 1rem;
+    background: var(--theme-surface);
+    border: 1px solid var(--theme-border);
+    border-radius: var(--theme-radius);
+    box-shadow: var(--theme-shadow);
+}
+
+.long-page-tools-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.long-page-tools-header > div:first-child {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+}
+
+.long-page-section-count {
+    color: var(--theme-muted);
+    font-size: 0.85rem;
+}
+
+.long-page-tools-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.long-page-section-search {
+    max-width: 24rem;
+}
+
+.long-page-nav {
+    display: flex;
+    gap: 0.45rem;
+    overflow-x: auto;
+    padding: 0.15rem 0 0.25rem;
+    scrollbar-width: thin;
+}
+
+.long-page-nav-link {
+    flex: 0 0 auto;
+    border: 1px solid var(--theme-border);
+    border-radius: 999px;
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0.5rem 0.75rem;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.long-page-nav-link:hover,
+.long-page-nav-link:focus,
+.long-page-nav-link.active {
+    border-color: var(--theme-primary);
+    background: var(--theme-primary-soft);
+    color: var(--theme-primary);
+    outline: none;
+}
+
+.long-page-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.long-page-section-heading .long-page-section-title {
+    margin-bottom: 0;
+}
+
+.long-page-section-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.long-page-section-content {
+    margin-top: 1rem;
+}
+
+.long-page-section-collapsed {
+    scroll-margin-top: 9rem;
+}
+
+.long-page-section-collapsed .card-body {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+[data-long-page-section] {
+    scroll-margin-top: 9rem;
+}
+
+@media (max-width: 767.98px) {
+    .long-page-tools {
+        top: 0.35rem;
+        margin-left: -0.25rem;
+        margin-right: -0.25rem;
+        padding: 0.85rem;
+    }
+
+    .long-page-tools-header {
+        align-items: stretch;
+    }
+
+    .long-page-tools-actions,
+    .long-page-section-search {
+        width: 100%;
+        max-width: none;
+    }
+
+    .long-page-tools-actions .btn {
+        flex: 1 1 auto;
+    }
+
+    .long-page-section-toggle span {
+        display: none;
+    }
+}
+
+html.user-reduced-motion .long-page-nav-link,
+html.user-reduced-motion [data-long-page-section] {
+    transition: none;
+    scroll-behavior: auto;
+}
