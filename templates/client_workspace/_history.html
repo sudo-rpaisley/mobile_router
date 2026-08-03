@@ -1,0 +1,69 @@
+<section aria-labelledby="workspace-history-title">
+  <div class="device-workspace-section-heading">
+    <div>
+      <p class="page-kicker mb-1">History</p>
+      <h2 id="workspace-history-title" class="theme-section-title mb-1">Timeline, reachability, and exports</h2>
+      <p class="text-muted mb-0">Review how the device profile, services, and reachability have changed over time.</p>
+    </div>
+    <div class="theme-actions mt-0">
+      <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a>
+      <a class="btn btn-outline-secondary" href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a>
+      <a class="btn btn-outline-info" href="/clients/{{ ip|urlencode }}/host-facts.json">Host facts JSON</a>
+    </div>
+  </div>
+
+  <div class="device-overview-columns mt-3">
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Reachability history</h3>
+        {% if reachability_history %}
+          <div class="theme-grid">
+            {% for item in reachability_history[-12:] %}
+              <div class="port-service-card">
+                <strong>{{ item.time_label or item.timestamp or 'Check' }}</strong>
+                <span class="{{ 'text-success' if item.reachable else 'text-danger' }}">{{ 'Reachable' if item.reachable else 'Unreachable' }}</span>
+                <small>{{ item.packet_loss_percent }}% loss{% if item.avg_latency_ms is not none %} · {{ item.avg_latency_ms }} ms avg{% endif %}</small>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="device-empty-state">
+            <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+            <h4>No reachability history</h4>
+            <p>Run a ping from the Network workspace to begin recording availability and latency.</p>
+            <button type="button" class="btn btn-outline-primary" data-workspace-open="network">Open Network</button>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Saved history counts</h3>
+        <dl class="interface-definition-list">
+          <div><dt>Timeline events</dt><dd>{{ client_timeline|length }}</dd></div>
+          <div><dt>Reachability checks</dt><dd>{{ reachability_history|length }}</dd></div>
+          <div><dt>Host fact runs</dt><dd>{{ (inventory_device.host_fact_runs or [])|length }}</dd></div>
+          <div><dt>Saved services</dt><dd>{{ (inventory_device.open_port_details or [])|length }}</dd></div>
+          <div><dt>Evidence records</dt><dd>{{ (inventory_device.evidence_records or [])|length }}</dd></div>
+        </dl>
+      </div>
+    </article>
+  </div>
+
+  <article class="theme-card card mt-4">
+    <div class="card-body">
+      <h3 class="theme-subsection-title">Client timeline</h3>
+      <ol class="client-timeline mb-0">
+        {% for event in client_timeline %}
+          <li>
+            <strong>{{ event.time_label }}</strong> — {{ event.type }}
+            <p class="mb-0">{{ event.message }}{% if event.source %} <span class="text-muted">({{ event.source }})</span>{% endif %}</p>
+          </li>
+        {% else %}
+          <li class="text-muted">No client timeline events have been recorded yet.</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </article>
+</section>
