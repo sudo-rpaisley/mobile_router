@@ -67,7 +67,7 @@
 <div class="nav-item dropdown nav-compact-group">
   <button type="button"
           id="records-menu"
-          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] or title[:7] == 'Client ' %}active{% endif %}"
+          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Device Model Library', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] or title[:7] == 'Client ' or title[:6] == 'Model ' %}active{% endif %}"
           data-navigation-toggle="dropdown"
           aria-haspopup="true"
           aria-expanded="false">
@@ -75,6 +75,7 @@
   </button>
   <div class="dropdown-menu navigation-menu" aria-labelledby="records-menu">
     <a href="/inventory" class="dropdown-item {% if title == 'Device Inventory' or title[:7] == 'Client ' %}active{% endif %}" {% if title == 'Device Inventory' or title[:7] == 'Client ' %}aria-current="page"{% endif %}>Inventory</a>
+    <a href="/models" class="dropdown-item {% if title == 'Device Model Library' or title[:6] == 'Model ' %}active{% endif %}" {% if title == 'Device Model Library' or title[:6] == 'Model ' %}aria-current="page"{% endif %}>Device Model Library</a>
     <a href="/alerts" class="dropdown-item {% if title == 'Alerts' %}active{% endif %}" {% if title == 'Alerts' %}aria-current="page"{% endif %}>Alerts</a>
     <a href="/reports" class="dropdown-item {% if title == 'Reports' %}active{% endif %}" {% if title == 'Reports' %}aria-current="page"{% endif %}>Reports</a>
     <a href="/evidence" class="dropdown-item {% if title == 'Evidence Vault' %}active{% endif %}" {% if title == 'Evidence Vault' %}aria-current="page"{% endif %}>Evidence Vault</a>

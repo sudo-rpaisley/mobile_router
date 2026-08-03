@@ -6,6 +6,7 @@ from .automotive import create_automotive_blueprint
 from .deauth_control import create_deauth_control_blueprint
 from .device_identification import create_device_identification_blueprint
 from .port_knowledge import create_port_knowledge_blueprint
+from .model_profiles import create_model_profiles_blueprint
 
 
 def register_blueprints(app, context_provider):
@@ -17,3 +18,4 @@ def register_blueprints(app, context_provider):
     app.register_blueprint(create_deauth_control_blueprint(context_provider))
     app.register_blueprint(create_device_identification_blueprint(context_provider))
     app.register_blueprint(create_port_knowledge_blueprint(context_provider))
+    app.register_blueprint(create_model_profiles_blueprint(context_provider))
