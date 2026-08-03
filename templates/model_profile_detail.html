@@ -1,0 +1,116 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+<body class="d-flex flex-column min-vh-100">
+  <main class="page-shell" data-model-profile-detail data-profile-id="{{ profile_id }}">
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Device Model Profile</p>
+        <h1 class="page-title">{% if profile %}{{ profile.manufacturer }} {{ profile.model or profile.family }}{% else %}Profile Not Found{% endif %}</h1>
+        <p class="page-subtitle">Canonical identity, inheritance, firmware and hardware applicability, expected ports, fleet drift, conflicts, risk guidance, and revision history.</p>
+      </div>
+      {% if profile %}
+      <div class="theme-actions">
+        <a class="btn btn-outline-secondary" href="/models">Back to Library</a>
+        <a class="btn btn-outline-success" href="/api/model-profiles/{{ profile_id }}/contribution.json">Export Contribution</a>
+      </div>
+      {% endif %}
+    </section>
+
+    {% if profile %}
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Identity and Applicability</h2>
+        <form data-model-profile-update>
+          <div class="form-row">
+            <div class="col-md-3"><label>Scope</label><select class="form-control" name="scope"><option value="exact">Exact model</option><option value="family">Model family</option><option value="manufacturer">Manufacturer default</option></select></div>
+            <div class="col-md-3"><label>Manufacturer</label><input class="form-control" name="manufacturer"></div>
+            <div class="col-md-3"><label>Canonical model</label><input class="form-control" name="model"></div>
+            <div class="col-md-3"><label>Family</label><input class="form-control" name="family"></div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="col-md-4"><label>Hardware revision</label><input class="form-control" name="hardwareRevision"></div>
+            <div class="col-md-4"><label>Firmware from</label><input class="form-control" name="firmwareMin"></div>
+            <div class="col-md-4"><label>Firmware to</label><input class="form-control" name="firmwareMax"></div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="col-md-6"><label>Model aliases</label><input class="form-control" name="aliases"></div>
+            <div class="col-md-6"><label>Manufacturer aliases</label><input class="form-control" name="manufacturerAliases"></div>
+          </div>
+          <label class="mt-2">Notes</label><textarea class="form-control" rows="2" name="notes"></textarea>
+          <label class="mt-2">Risk notes</label><textarea class="form-control" rows="2" name="riskNotes"></textarea>
+          <div class="theme-actions"><button class="btn btn-primary" type="submit">Save Profile</button></div>
+        </form>
+        <div data-model-profile-status class="alert alert-light mt-3">Loading profile…</div>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap">
+          <div><h2 class="theme-section-title">Port and Service Rules</h2><p class="text-muted">Classify expected, optional, firmware-specific, deprecated, or investigative services and attach exposure, authentication, encryption, risk, remediation, and provenance.</p></div>
+          <button class="btn btn-primary" type="button" data-model-port-toggle>Add Port Rule</button>
+        </div>
+        <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Port</th><th>Service</th><th>Classification</th><th>Applicability</th><th>Risk</th><th>Source</th><th></th></tr></thead><tbody data-model-port-list></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="theme-card card d-none" data-model-port-panel>
+      <div class="card-body">
+        <h2 class="theme-section-title">Add or Update Port Rule</h2>
+        <form data-model-port-form>
+          <div class="form-row">
+            <div class="col-md-2"><label>Port</label><input type="number" min="1" max="65535" class="form-control" name="port" required></div>
+            <div class="col-md-2"><label>Protocol</label><select class="form-control" name="protocol"><option>tcp</option><option>udp</option></select></div>
+            <div class="col-md-4"><label>Service</label><input class="form-control" name="service" required></div>
+            <div class="col-md-4"><label>Classification</label><select class="form-control" name="classification"><option>expected</option><option>optional</option><option>firmware-specific</option><option>local-configuration</option><option>investigate</option><option>deprecated</option><option>unexpected</option></select></div>
+          </div>
+          <label class="mt-2">Description</label><textarea class="form-control" rows="2" name="description"></textarea>
+          <div class="form-row mt-2">
+            <div class="col-md-3"><label>Exposure</label><select class="form-control" name="exposure"><option>unknown</option><option>lan-only</option><option>management</option><option>local-host</option><option>wan-optional</option><option>wan</option></select></div>
+            <div class="col-md-3"><label>Risk</label><select class="form-control" name="risk"><option>info</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select></div>
+            <div class="col-md-3"><label>Hardware revision</label><input class="form-control" name="hardwareRevision"></div>
+            <div class="col-md-3"><label>Source reliability</label><input type="number" min="0" max="100" value="60" class="form-control" name="sourceReliability"></div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="col-md-3"><label>Firmware from</label><input class="form-control" name="firmwareMin"></div>
+            <div class="col-md-3"><label>Firmware to</label><input class="form-control" name="firmwareMax"></div>
+            <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="authenticationExpected"><span class="form-check-label">Authentication expected</span></label></div>
+            <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="encryptionExpected"><span class="form-check-label">Encryption expected</span></label></div>
+          </div>
+          <label class="mt-2">Recommended remediation</label><textarea class="form-control" rows="2" name="remediation"></textarea>
+          <div class="form-row mt-2">
+            <div class="col-md-4"><label>Source name</label><input class="form-control" name="sourceName"></div>
+            <div class="col-md-8"><label>Source URL</label><input class="form-control" name="sourceUrl" placeholder="https://..."></div>
+          </div>
+          <label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="replace"><span class="form-check-label">Replace an existing rule with the same applicability instead of recording a conflict</span></label>
+          <div class="theme-actions"><button class="btn btn-primary" type="submit">Save Port Rule</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Fleet Comparison and Drift</h2>
+        <div data-model-fleet><p class="text-muted">Loading matching devices…</p></div>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Conflicts</h2>
+        <p class="text-muted">Conflicting sources are retained until a reviewer selects the preferred interpretation.</p>
+        <div data-model-conflicts></div>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Revision History and Rollback</h2>
+        <div data-model-history></div>
+      </div>
+    </section>
+    {% endif %}
+  </main>
+</body>
+{% include '_footer.html' %}
+</html>
