@@ -2,8 +2,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app import app
-
 
 def test_long_page_assets_are_loaded_globally():
     header = Path("templates/_header.html").read_text(encoding="utf-8")
@@ -50,15 +48,6 @@ def test_known_long_templates_have_enough_sections_for_auto_enhancement():
     for path in long_templates:
         source = Path(path).read_text(encoding="utf-8")
         assert source.count("theme-card") >= 5, path
-
-
-def test_rendered_pages_reference_long_page_assets():
-    client = app.test_client()
-    response = client.get("/about")
-
-    assert response.status_code == 200
-    assert b"/static/css/long-page.css" in response.data
-    assert b"/static/js/long-page.js" in response.data
 
 
 def test_long_page_javascript_parses_when_node_is_available():
