@@ -13,6 +13,7 @@ STATIC_SEARCH_ITEMS = (
     ('Advanced Diagnostics', '/advanced-diagnostics', 'advanced troubleshooting'),
     ('Jobs', '/jobs', 'background jobs scans'),
     ('Device Inventory', '/inventory', 'devices clients records'),
+    ('VLAN Investigations', '/vlans', 'vlan tags subnets segmentation pfsense probes'),
     ('Alerts', '/alerts', 'notifications devices'),
     ('Reports', '/reports', 'reports exports'),
     ('Evidence Vault', '/evidence', 'evidence notes artifacts'),
@@ -73,6 +74,8 @@ def _breadcrumb_items(path, title, technologies):
         items.append(_current_item('Automotive', None if path == '/automotive' else '/automotive'))
     elif lower_path.startswith('/clients/'):
         items.extend((_current_item('Records'), _current_item('Device Inventory', '/inventory')))
+    elif lower_path.startswith('/vlans'):
+        items.extend((_current_item('Records'), _current_item('VLAN Investigations', None if path == '/vlans' else '/vlans')))
     elif lower_path in {'/inventory', '/alerts', '/reports', '/evidence', '/social-engineering'}:
         items.append(_current_item('Records'))
     elif lower_path in {'/network-scan', '/service-discovery', '/port-scan', '/traceroute', '/diagnostics', '/advanced-diagnostics', '/jobs', '/red-team', '/minecraft-attack', '/train-controller'}:
