@@ -1,0 +1,17 @@
+{% set vlan_record = vlan if vlan is defined and vlan else device if device is defined and device else {} %}
+{% set vlan_identifier = vlan_record.id if vlan_record.id is defined else vlan_record.vlan_id %}
+{% set vlan_label = vlan_record.label if vlan_record.label is defined else vlan_record.vlan_label %}
+{% set vlan_tag = vlan_record.tag if vlan_record.tag is defined else vlan_record.vlan_tag %}
+{% set vlan_name = vlan_record.name if vlan_record.name is defined else vlan_record.vlan_name %}
+{% set vlan_subnet = vlan_record.subnet if vlan_record.subnet is defined else vlan_record.vlan_subnet %}
+{% if vlan_identifier and vlan_label %}
+  <a class="vlan-tag-badge" href="/vlans/{{ vlan_identifier|urlencode }}" title="{{ vlan_subnet or vlan_label }}" data-vlan-tag="{{ vlan_tag if vlan_tag is not none else '' }}">
+    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+    <span>{{ vlan_label }}</span>
+  </a>
+{% elif vlan_tag is not none or vlan_name or vlan_subnet %}
+  <span class="vlan-tag-badge vlan-tag-badge-unlinked" title="VLAN mapping is present but no saved VLAN definition is linked">
+    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+    <span>{% if vlan_tag is not none %}VLAN {{ vlan_tag }}{% if vlan_name %} · {{ vlan_name }}{% endif %}{% else %}{{ vlan_name or vlan_subnet }}{% endif %}</span>
+  </span>
+{% endif %}
