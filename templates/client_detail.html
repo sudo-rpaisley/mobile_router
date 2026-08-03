@@ -2,7 +2,7 @@
 <link rel="stylesheet" href="/static/css/interface.css">
 <link rel="stylesheet" href="/static/css/device-workspace.css">
 <body class="d-flex flex-column min-vh-100">
-  <main class="page-shell" data-long-page-disabled {% if not is_bluetooth %}data-device-workspace data-host="{{ ip }}"{% endif %}>
+  <main class="page-shell" data-long-page-disabled {% if ip and not is_bluetooth %}data-device-workspace data-host="{{ ip }}"{% endif %}>
     <section class="page-hero">
       <div class="page-hero-copy">
         <p class="page-kicker">{{ 'Bluetooth Device' if is_bluetooth else 'Client' }}</p>
@@ -135,11 +135,27 @@
       <section id="device-panel-history" class="device-workspace-panel" role="tabpanel" aria-labelledby="device-tab-history" data-device-workspace-panel="history" data-workspace-url="/clients/{{ ip|urlencode }}/workspace/history" hidden>
         <div class="device-workspace-loading"><div class="spinner-border text-primary" role="status" aria-hidden="true"></div><p>Loading history workspace…</p></div>
       </section>
+    {% else %}
+      <section class="theme-card card">
+        <div class="card-body">
+          <h2 class="theme-section-title">Observed identity</h2>
+          <p class="text-muted">This inventory record has a hardware address but no current IP address. Network tools will become available when an address is learned.</p>
+          <dl class="interface-definition-list">
+            <div><dt>MAC Address</dt><dd>{{ mac or 'Unknown' }}</dd></div>
+            <div><dt>Manufacturer</dt><dd>{{ manufacturer or 'Unknown' }}</dd></div>
+            <div><dt>Display name</dt><dd>{{ display_name }}</dd></div>
+            <div><dt>Discovery sources</dt><dd>{{ (inventory_device.sources or [])|join(', ') or 'Unknown' }}</dd></div>
+          </dl>
+          <div class="theme-actions">
+            <a class="btn btn-outline-secondary" href="/inventory">Return to inventory</a>
+          </div>
+        </div>
+      </section>
     {% endif %}
   </main>
 {% if is_bluetooth %}
 <script src="/static/js/bluetooth-scan.js"></script>
-{% else %}
+{% elif ip %}
 <script src="/static/js/port_scan_live.js"></script>
 <script src="/static/js/ip_client.js"></script>
 <script src="/static/js/device-workspace.js"></script>
