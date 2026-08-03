@@ -1,0 +1,206 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+<body class="d-flex flex-column min-vh-100">
+  <main class="theme-page container py-4">
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Host Intelligence</p>
+        <h1 class="page-title">Host Facts &amp; Capabilities</h1>
+        <p class="page-subtitle">
+          {% if device %}
+            Explainable observations for {{ device.display_name or device.name or device.ip or identifier }}. Every fact records its source, confidence, history, baseline state, and sensitivity.
+          {% else %}
+            The requested device is not available in inventory.
+          {% endif %}
+        </p>
+      </div>
+      {% if device %}
+        <div class="theme-actions">
+          <a class="btn btn-outline-secondary" href="/clients/{{ (device.ip or identifier)|urlencode }}">Back to device</a>
+          <a class="btn btn-outline-primary" href="/clients/{{ identifier|urlencode }}/host-facts.json">Export JSON</a>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if error %}<div class="alert alert-danger mt-3" role="alert">{{ error }}</div>{% endif %}
+    {% if message %}<div class="alert alert-success mt-3" role="alert">{{ message }}</div>{% endif %}
+
+    {% if device %}
+      <section class="theme-card card mt-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap">
+            <div>
+              <h2 class="theme-section-title">Acquisition levels</h2>
+              <p class="text-muted">Begin passively, then opt into bounded protocol negotiation or administrator-only deep identification when appropriate.</p>
+            </div>
+            {% if device.host_fact_baseline.saved_at_label %}
+              <span class="badge badge-info p-2">Baseline {{ device.host_fact_baseline.saved_at_label }}</span>
+            {% else %}
+              <span class="badge badge-light border p-2">No fact baseline</span>
+            {% endif %}
+          </div>
+
+          <div class="theme-grid">
+            <article class="port-service-card">
+              <strong>1. Passive facts</strong>
+              <span>No packets sent</span>
+              <small>Names, addresses, model data, role inference, observation window, relationships, and passive-presence history.</small>
+              <form method="post" action="/clients/{{ identifier|urlencode }}/host-facts/collect" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+                <input type="hidden" name="mode" value="passive">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Collect passive facts</button>
+              </form>
+            </article>
+
+            <article class="port-service-card">
+              <strong>2. Safe negotiation</strong>
+              <span>Saved open ports only</span>
+              <small>HTTP/TLS, SSH keys and algorithms, SMB posture, IPP/web evidence, NTP, DNS, RTSP, MQTT, UPnP, and IPv6 reachability.</small>
+              <form method="post" action="/clients/{{ identifier|urlencode }}/host-facts/collect" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+                <input type="hidden" name="mode" value="safe">
+                <label class="form-check small">
+                  <input class="form-check-input" type="checkbox" name="authorized" required>
+                  <span class="form-check-label">I am authorised to negotiate services on this host.</span>
+                </label>
+                <button class="btn btn-outline-success btn-sm" type="submit">Run safe negotiation</button>
+              </form>
+            </article>
+
+            <article class="port-service-card">
+              <strong>3. Deep identification</strong>
+              <span>Administrator only</span>
+              <small>Bounded Nmap OS/service identification and optional read-only SNMP system information.</small>
+              {% if app_user and app_user.role == 'admin' %}
+                <form method="post" action="/clients/{{ identifier|urlencode }}/host-facts/collect" class="mt-2">
+                  <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+                  <input type="hidden" name="mode" value="deep">
+                  <label for="host-fact-credential">Credential reference</label>
+                  <select id="host-fact-credential" class="form-control form-control-sm mb-2" name="credentialProfile">
+                    <option value="">No credential profile</option>
+                    {% for profile in credential_profiles %}
+                      <option value="{{ profile.id }}">{{ profile.name }} · {{ profile.kind }} · {{ profile.secret_env }}</option>
+                    {% endfor %}
+                  </select>
+                  <label class="form-check small">
+                    <input class="form-check-input" type="checkbox" name="authorized" required>
+                    <span class="form-check-label">I am authorised to run bounded deep identification.</span>
+                  </label>
+                  <button class="btn btn-outline-danger btn-sm" type="submit">Run deep identification</button>
+                </form>
+              {% else %}
+                <small class="text-muted">Sign in as an administrator to run deep identification.</small>
+              {% endif %}
+            </article>
+
+            <article class="port-service-card">
+              <strong>4. Authenticated sources</strong>
+              <span>Secret references only</span>
+              <small>{{ capabilities.credential_policy }}</small>
+              {% if app_user and app_user.role == 'admin' %}
+                <a class="btn btn-outline-secondary btn-sm mt-2" href="#credential-references">Manage references</a>
+              {% endif %}
+            </article>
+          </div>
+
+          <div class="theme-actions mt-3">
+            <form method="post" action="/clients/{{ identifier|urlencode }}/host-facts/baseline">
+              <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+              <button class="btn btn-primary" type="submit" {% if not facts %}disabled{% endif %}>Save current facts as baseline</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="theme-card card mt-3">
+        <div class="card-body">
+          <h2 class="theme-section-title">Current summary</h2>
+          <div class="theme-grid">
+            <article class="port-service-card"><strong>{{ summary.total }}</strong><span>Facts retained</span><small>Across passive, safe, and deep sources.</small></article>
+            <article class="port-service-card"><strong>{{ summary.high_confidence }}</strong><span>High-confidence facts</span><small>High or very-high confidence.</small></article>
+            <article class="port-service-card"><strong>{{ summary.changed }}</strong><span>Changed from baseline</span><small>Value differs from the saved host-facts baseline.</small></article>
+            <article class="port-service-card"><strong>{{ summary.sensitive }}</strong><span>Sensitive facts</span><small>Keys, certificates, serials, or management metadata.</small></article>
+          </div>
+          <div class="network-device-tags mt-3">
+            <span class="badge badge-{{ 'success' if capabilities.nmap else 'secondary' }}">Nmap {{ 'available' if capabilities.nmap else 'missing' }}</span>
+            <span class="badge badge-{{ 'success' if capabilities.ssh_keyscan else 'secondary' }}">ssh-keyscan {{ 'available' if capabilities.ssh_keyscan else 'missing' }}</span>
+            <span class="badge badge-{{ 'success' if capabilities.snmpwalk else 'secondary' }}">snmpwalk {{ 'available' if capabilities.snmpwalk else 'missing' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="theme-card card mt-3">
+        <div class="card-body">
+          <h2 class="theme-section-title">Facts</h2>
+          <p class="text-muted">A changed marker means the current value differs from the explicitly saved host-facts baseline, not merely from the previous scan.</p>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead><tr><th>Fact</th><th>Value</th><th>Source</th><th>Confidence</th><th>History</th></tr></thead>
+              <tbody>
+                {% for item in facts %}
+                  <tr class="{{ 'table-warning' if item.changed_since_baseline else '' }}">
+                    <td>
+                      <strong>{{ item.label }}</strong><br>
+                      <small>{{ item.category }} · {{ item.sensitivity }}</small>
+                      {% if item.changed_since_baseline %}<span class="badge badge-warning">Changed</span>{% endif %}
+                    </td>
+                    <td><pre class="interface-pre mb-0">{{ item.value_text }}</pre></td>
+                    <td>{{ item.source }}</td>
+                    <td><span class="badge badge-{{ 'success' if item.confidence in ['high', 'very-high'] else 'warning' if item.confidence == 'medium' else 'secondary' }}">{{ item.confidence }}</span></td>
+                    <td><small>First {{ item.first_seen_label }}<br>Last {{ item.last_seen_label }}</small></td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="text-muted">No host facts have been collected yet. Passive collection is the safest starting point.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="theme-card card mt-3">
+        <div class="card-body">
+          <h2 class="theme-section-title">Collection history</h2>
+          <ol class="client-timeline">
+            {% for run in device.host_fact_runs %}
+              <li><strong>{{ run.time_label }}</strong> — {{ run.mode }} collection by {{ run.actor }}<p class="mb-0">{{ run.fact_count }} fact(s) collected; {{ run.changed_count }} currently differ from baseline.</p></li>
+            {% else %}
+              <li class="text-muted">No host-facts collection runs have been recorded.</li>
+            {% endfor %}
+          </ol>
+        </div>
+      </section>
+
+      {% if app_user and app_user.role == 'admin' %}
+        <section class="theme-card card mt-3" id="credential-references">
+          <div class="card-body">
+            <h2 class="theme-section-title">Credential references</h2>
+            <p class="text-muted">Only an environment-variable name is persisted. The secret value stays outside inventory, exports, logs, and this JSON reference file.</p>
+            <form class="theme-form" method="post" action="/clients/{{ identifier|urlencode }}/host-facts/credential-references">
+              <input type="hidden" name="csrf_token" value="{{ session.get('social_csrf_token', '') }}">
+              <div class="form-row">
+                <div class="col-md-4"><label for="credential-name">Profile name</label><input id="credential-name" class="form-control" name="name" maxlength="160" required placeholder="Lab router SNMP"></div>
+                <div class="col-md-3"><label for="credential-kind">Type</label><select id="credential-kind" class="form-control" name="kind"><option value="snmp-v2c">SNMP v2c</option><option value="ssh">SSH</option><option value="http-basic">HTTP Basic</option><option value="api-token">API token</option></select></div>
+                <div class="col-md-5"><label for="credential-secret-env">Secret environment variable</label><input id="credential-secret-env" class="form-control" name="secretEnv" required placeholder="MOBILE_ROUTER_SKY_SNMP_COMMUNITY"></div>
+              </div>
+              <div class="form-row mt-2">
+                <div class="col-md-4"><label for="credential-username">Username, when applicable</label><input id="credential-username" class="form-control" name="username"></div>
+                <div class="col-md-8"><label for="credential-notes">Notes</label><input id="credential-notes" class="form-control" name="notes" placeholder="Read-only account; lab VLAN only"></div>
+              </div>
+              <div class="theme-actions"><button class="btn btn-primary" type="submit">Save credential reference</button></div>
+            </form>
+            <div class="theme-grid mt-3">
+              {% for profile in credential_profiles %}
+                <article class="port-service-card"><strong>{{ profile.name }}</strong><span>{{ profile.kind }}</span><small>Secret: {{ profile.secret_env }}{% if profile.username %} · User: {{ profile.username }}{% endif %}</small></article>
+              {% else %}
+                <p class="text-muted">No credential references are configured.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+    {% endif %}
+  </main>
+  {% include '_footer.html' %}
+</body>
+</html>
