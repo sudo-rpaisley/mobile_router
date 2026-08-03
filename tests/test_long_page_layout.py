@@ -42,9 +42,8 @@ def test_long_page_styles_include_tabs_and_mobile_selector():
     assert "user-reduced-motion" in source
 
 
-def test_known_long_templates_have_enough_sections_for_auto_enhancement():
+def test_known_generic_long_templates_have_enough_sections_for_auto_enhancement():
     long_templates = (
-        "templates/client_detail.html",
         "templates/host_facts.html",
         "templates/model_profile_detail.html",
         "templates/automotive_vehicle.html",
@@ -54,6 +53,16 @@ def test_known_long_templates_have_enough_sections_for_auto_enhancement():
     for path in long_templates:
         source = Path(path).read_text(encoding="utf-8")
         assert source.count("theme-card") >= 5, path
+
+
+def test_client_detail_uses_the_purpose_built_device_workspace():
+    source = Path("templates/client_detail.html").read_text(encoding="utf-8")
+
+    assert "data-long-page-disabled" in source
+    assert "data-device-workspace" in source
+    assert "data-device-workspace-tab=\"overview\"" in source
+    assert "data-device-workspace-tab=\"history\"" in source
+    assert "device-workspace.js" in source
 
 
 def test_long_page_javascript_parses_when_node_is_available():

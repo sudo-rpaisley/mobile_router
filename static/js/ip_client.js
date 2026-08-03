@@ -9,11 +9,22 @@ $(document).ready(function () {
   }
 
   function clientHost() {
-    return $('[data-ip-client-tools]').data('host') || '';
+    return $('[data-device-workspace]').attr('data-host')
+      || $('[data-ip-client-tools]').first().data('host')
+      || '';
   }
 
   function output(html) {
-    $('[data-ip-client-output]').html(html);
+    const $target = $('[data-ip-client-global-output]').first().length
+      ? $('[data-ip-client-global-output]').first()
+      : $('[data-ip-client-output]').first();
+    $target.html(html);
+  }
+
+  function notifyFormSaved(form) {
+    document.dispatchEvent(new CustomEvent('device-workspace:form-saved', {
+      detail: { form: form },
+    }));
   }
 
   function renderPing(result) {
@@ -49,7 +60,7 @@ $(document).ready(function () {
     if (!results || !results.length) return '<div class="alert alert-warning">No saved services are available to fingerprint.</div>';
     return `<div class="alert alert-info"><strong>Service fingerprints</strong></div><div class="port-service-grid">${results.map((item) => {
       const web = item.http ? ` · ${item.http.title || item.http.server || item.http.status || item.http.error || 'HTTP checked'}` : '';
-      const note = (item.banner || (item.notes || []).join('; ') || 'No additional fingerprint data');
+      const note = item.banner || (item.notes || []).join('; ') || 'No additional fingerprint data';
       return `<div class="port-service-card">
         <strong>${escapeHtml(item.port)}/tcp ${escapeHtml(item.service)}</strong>
         <span>Confidence: ${escapeHtml(item.confidence)}${escapeHtml(web)}</span>
@@ -75,172 +86,156 @@ $(document).ready(function () {
       <ul>${recommendations}</ul>`;
   }
 
-  $('[data-ip-client-ping]').on('click', function () {
+  $(document).on('click', '[data-ip-client-ping]', function () {
     const host = clientHost();
     output('<p class="text-muted">Pinging client...</p>');
     $.ajax({
-      url: '/ping',
-      method: 'POST',
-      data: { host: host, count: 4, timeout: 2 },
+      url: '/ping', method: 'POST', data: { host: host, count: 4, timeout: 2 },
       success: function (resp) { output(renderPing(resp.result || {})); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Ping failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-route]').on('click', function () {
+  $(document).on('click', '[data-ip-client-route]', function () {
     const host = clientHost();
     output('<p class="text-muted">Checking route context...</p>');
     $.ajax({
-      url: '/route-diagnostics',
-      method: 'POST',
-      data: { target: host },
+      url: '/route-diagnostics', method: 'POST', data: { target: host },
       success: function (resp) { output(renderRoute(resp.diagnostics || {})); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Route diagnostics failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-traceroute]').on('click', function () {
+  $(document).on('click', '[data-ip-client-traceroute]', function () {
     const host = clientHost();
     output('<p class="text-muted">Running traceroute...</p>');
     $.ajax({
-      url: '/traceroute',
-      method: 'POST',
-      data: { host: host },
+      url: '/traceroute', method: 'POST', data: { host: host },
       success: function (resp) { output(renderTraceroute(resp.hops || [])); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Traceroute failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-evidence-form]').on('submit', function (event) {
+  $(document).on('submit', '[data-ip-client-evidence-form]', function (event) {
     event.preventDefault();
+    const form = this;
     const host = clientHost();
-    const notes = $('[data-ip-client-evidence-notes]').val();
+    const notes = $(form).find('[data-ip-client-evidence-notes]').val();
     output('<p class="text-muted">Saving evidence note...</p>');
     $.ajax({
-      url: '/evidence',
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      data: {
-        title: `IP client note for ${host}`,
-        category: 'note',
-        source: 'client-detail',
-        device: host,
-        notes: notes,
-        content: notes
-      },
+      url: '/evidence', method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      data: { title: `IP client note for ${host}`, category: 'note', source: 'client-detail', device: host, notes: notes, content: notes },
       success: function (resp) {
-        $('[data-ip-client-evidence-notes]').val('');
+        $(form).find('[data-ip-client-evidence-notes]').val('');
+        notifyFormSaved(form);
         output(`<div class="alert alert-success">Evidence note saved for ${escapeHtml(resp.evidence?.device || host)}.</div>`);
       },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Evidence note failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-watch]').on('click', function () {
-    const button = $(this);
+  $(document).on('click', '[data-ip-client-watch]', function () {
     const host = clientHost();
-    const nextWatch = button.attr('data-watched') !== 'true';
+    const nextWatch = $(this).attr('data-watched') !== 'true';
     output('<p class="text-muted">Updating client watch...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/watch`,
-      method: 'POST',
-      data: { watch: nextWatch ? 'on' : '' },
+      url: `/clients/${encodeURIComponent(host)}/watch`, method: 'POST', data: { watch: nextWatch ? 'on' : '' },
       success: function (resp) {
-        button.attr('data-watched', resp.watched ? 'true' : 'false');
-        button.toggleClass('btn-warning', resp.watched).toggleClass('btn-outline-warning', !resp.watched);
-        button.text(resp.watched ? 'Watching client' : 'Watch this device');
+        const $buttons = $('[data-ip-client-watch]');
+        $buttons.attr('data-watched', resp.watched ? 'true' : 'false');
+        $buttons.toggleClass('btn-warning', resp.watched).toggleClass('btn-outline-warning', !resp.watched);
+        $buttons.each(function () { $(this).text(resp.watched ? ($(this).closest('.device-compact-actions').length ? 'Watching' : 'Watching client') : ($(this).closest('.device-compact-actions').length ? 'Watch' : 'Watch this device')); });
         output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client watch updated.')}</div>`);
       },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Client watch update failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-http-inspect]').on('click', function () {
+  $(document).on('click', '[data-ip-client-http-inspect]', function () {
     const host = clientHost();
     output('<p class="text-muted">Inspecting saved web-service candidates...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/http-inspect`,
-      method: 'POST',
+      url: `/clients/${encodeURIComponent(host)}/http-inspect`, method: 'POST',
       success: function (resp) { output(renderHttpInspect(resp.results || [])); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'HTTP inspection failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-fingerprint]').on('click', function () {
+  $(document).on('click', '[data-ip-client-fingerprint]', function () {
     const host = clientHost();
     output('<p class="text-muted">Fingerprinting saved service candidates...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/fingerprint`,
-      method: 'POST',
+      url: `/clients/${encodeURIComponent(host)}/fingerprint`, method: 'POST',
       success: function (resp) { output(renderFingerprints(resp.fingerprints || [])); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Service fingerprint failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-intelligence]').on('click', function () {
+  $(document).on('click', '[data-ip-client-intelligence]', function () {
     const host = clientHost();
     output('<p class="text-muted">Gathering device intelligence from saved profile data and safe service probes...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/intelligence`,
-      method: 'POST',
-      data: { activeProbe: 'on' },
+      url: `/clients/${encodeURIComponent(host)}/intelligence`, method: 'POST', data: { activeProbe: 'on' },
       success: function (resp) { output(renderIntelligence(resp.intelligence || {})); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Device intelligence failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-baseline]').on('click', function () {
+  $(document).on('click', '[data-ip-client-baseline]', function () {
     const host = clientHost();
     output('<p class="text-muted">Saving current device baseline...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/baseline`,
-      method: 'POST',
+      url: `/clients/${encodeURIComponent(host)}/baseline`, method: 'POST',
       success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client baseline saved.')}</div>`); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Baseline save failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-metadata-form]').on('submit', function (event) {
+  $(document).on('submit', '[data-ip-client-metadata-form]', function (event) {
     event.preventDefault();
+    const form = this;
     const host = clientHost();
+    const $form = $(form);
     output('<p class="text-muted">Saving client profile metadata...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/metadata`,
-      method: 'POST',
+      url: `/clients/${encodeURIComponent(host)}/metadata`, method: 'POST',
       data: {
-        tags: $('[data-ip-client-tags]').val(),
-        owner: $('[data-ip-client-owner]').val(),
-        location: $('[data-ip-client-location]').val(),
-        expectedPorts: $('[data-ip-client-expected-ports]').val(),
-        notes: $('[data-ip-client-notes]').val()
+        tags: $form.find('[data-ip-client-tags]').val(),
+        owner: $form.find('[data-ip-client-owner]').val(),
+        location: $form.find('[data-ip-client-location]').val(),
+        expectedPorts: $form.find('[data-ip-client-expected-ports]').val(),
+        notes: $form.find('[data-ip-client-notes]').val()
       },
-      success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client metadata saved.')}</div>`); },
+      success: function (resp) {
+        notifyFormSaved(form);
+        output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Client metadata saved.')}</div>`);
+      },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Client metadata save failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-scheduled-form]').on('submit', function (event) {
+  $(document).on('submit', '[data-ip-client-scheduled-form]', function (event) {
     event.preventDefault();
+    const form = this;
     const host = clientHost();
+    const $form = $(form);
     output('<p class="text-muted">Saving scheduled check plan...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/scheduled-check`,
-      method: 'POST',
-      data: {
-        intervalMinutes: $('[data-ip-client-check-interval]').val(),
-        checks: $('[data-ip-client-checks]').val()
+      url: `/clients/${encodeURIComponent(host)}/scheduled-check`, method: 'POST',
+      data: { intervalMinutes: $form.find('[data-ip-client-check-interval]').val(), checks: $form.find('[data-ip-client-checks]').val() },
+      success: function (resp) {
+        notifyFormSaved(form);
+        output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Scheduled check saved.')}</div>`);
       },
-      success: function (resp) { output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Scheduled check saved.')}</div>`); },
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Scheduled check save failed')}</div>`); }
     });
   });
 
-  $('[data-ip-client-run-scheduled]').on('click', function () {
+  $(document).on('click', '[data-ip-client-run-scheduled]', function () {
     const host = clientHost();
     output('<p class="text-muted">Running saved scheduled checks now...</p>');
     $.ajax({
-      url: `/clients/${encodeURIComponent(host)}/scheduled-check/run`,
-      method: 'POST',
+      url: `/clients/${encodeURIComponent(host)}/scheduled-check/run`, method: 'POST',
       success: function (resp) {
         const resultKeys = Object.keys((resp.plan || {}).last_result || {}).join(', ') || 'no checks';
         output(`<div class="alert alert-success">${escapeHtml(resp.message || 'Scheduled checks ran.')} Results: ${escapeHtml(resultKeys)}.</div>`);
@@ -248,5 +243,4 @@ $(document).ready(function () {
       error: function (xhr) { output(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.message || 'Scheduled check run failed')}</div>`); }
     });
   });
-
 });

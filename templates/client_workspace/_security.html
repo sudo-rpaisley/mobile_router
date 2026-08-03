@@ -1,0 +1,104 @@
+{% set unexpected = baseline_diff.unexpected_ports or [] %}
+{% set missing = baseline_diff.missing_ports or [] %}
+<section aria-labelledby="workspace-security-title">
+  <div class="device-workspace-section-heading">
+    <div>
+      <p class="page-kicker mb-1">Security</p>
+      <h2 id="workspace-security-title" class="theme-section-title mb-1">Security posture and drift</h2>
+      <p class="text-muted mb-0">Review health signals, service drift, changed host facts, and recommended remediation.</p>
+    </div>
+    <div class="theme-actions mt-0">
+      <button type="button" class="btn btn-outline-primary" data-ip-client-baseline>Save service baseline</button>
+      <a class="btn btn-outline-info" href="/clients/{{ ip|urlencode }}/host-facts">Host facts</a>
+    </div>
+  </div>
+
+  <div class="device-overview-columns mt-3">
+    <article class="theme-card card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap">
+          <div>
+            <h3 class="theme-subsection-title">Client health</h3>
+            <p class="text-muted">A profile score built from identity confidence, saved services, and exposure hints.</p>
+          </div>
+          <span class="badge badge-{{ health_summary.badge }} p-2">{{ health_summary.level }} · {{ health_summary.score }}/100</span>
+        </div>
+        <ul class="mb-0">
+          {% for flag in health_summary.flags %}
+            <li>{{ flag }}</li>
+          {% else %}
+            <li class="text-muted">No health flags are currently recorded.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </article>
+
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Service baseline drift</h3>
+        <p><strong>Status:</strong> {{ baseline_diff.status }}</p>
+        {% if unexpected %}<div class="alert alert-danger"><strong>Unexpected ports:</strong> {{ unexpected|join(', ') }}</div>{% endif %}
+        {% if missing %}<div class="alert alert-warning"><strong>Missing expected ports:</strong> {{ missing|join(', ') }}</div>{% endif %}
+        {% if not unexpected and not missing %}
+          <div class="alert alert-success mb-0">The saved service profile matches the current baseline.</div>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+
+  <div class="device-overview-columns mt-4">
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Host fact changes</h3>
+        {% if host_fact_changes %}
+          <ul class="mb-0">
+            {% for fact in host_fact_changes %}
+              <li><strong>{{ fact.label or fact.key }}</strong>: {{ fact.previous_value or 'Unknown' }} → {{ fact.value }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="device-empty-state">
+            <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+            <h4>No host-fact changes</h4>
+            <p>Collect host facts and save a baseline to detect changes in TLS, SSH, SMB, IPv6, uptime, and other capabilities.</p>
+            <a class="btn btn-outline-info" href="/clients/{{ ip|urlencode }}/host-facts">Open host facts</a>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Model profile drift</h3>
+        {% if model_drift %}
+          <dl class="interface-definition-list">
+            <div><dt>Status</dt><dd>{{ model_drift.status or model_drift.level or 'Recorded' }}</dd></div>
+            <div><dt>Score</dt><dd>{{ model_drift.score if model_drift.score is defined else 'Unknown' }}</dd></div>
+            <div><dt>Unexpected</dt><dd>{{ (model_drift.unexpected_ports or [])|join(', ') or 'None' }}</dd></div>
+            <div><dt>Missing</dt><dd>{{ (model_drift.missing_ports or [])|join(', ') or 'None' }}</dd></div>
+          </dl>
+        {% else %}
+          <div class="device-empty-state">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+            <h4>No model drift result</h4>
+            <p>Assign an exact device model profile to compare this host with expected, optional, deprecated, and firmware-specific services.</p>
+            <a class="btn btn-outline-secondary" href="/models">Open model library</a>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+
+  <article class="theme-card card mt-4">
+    <div class="card-body">
+      <h3 class="theme-subsection-title">Recommended remediation</h3>
+      <ol class="device-recommendation-list mb-0">
+        {% for flag in health_summary.flags %}<li>{{ flag }}</li>{% endfor %}
+        {% if unexpected %}<li>Investigate each unexpected service and either document it as a device override or remove the exposure.</li>{% endif %}
+        {% if missing %}<li>Confirm whether missing expected services are disabled intentionally, firmware-dependent, or unreachable because of segmentation.</li>{% endif %}
+        {% if host_fact_changes %}<li>Review changed host facts before accepting a new baseline.</li>{% endif %}
+        {% if not health_summary.flags and not unexpected and not missing and not host_fact_changes %}<li>No immediate remediation is suggested. Review the model profile and save a fresh baseline after intentional changes.</li>{% endif %}
+      </ol>
+    </div>
+  </article>
+</section>

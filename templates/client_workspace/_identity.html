@@ -1,0 +1,106 @@
+<section aria-labelledby="workspace-identity-title">
+  <div class="device-workspace-section-heading">
+    <div>
+      <p class="page-kicker mb-1">Identity</p>
+      <h2 id="workspace-identity-title" class="theme-section-title mb-1">Device identity and metadata</h2>
+      <p class="text-muted mb-0">Review discovered identity evidence and maintain the local profile without losing scanner-derived values.</p>
+    </div>
+    <div class="theme-actions mt-0">
+      <button type="button" class="btn btn-outline-dark" data-ip-client-intelligence>Identify device</button>
+      <a class="btn btn-outline-info" href="/clients/{{ ip|urlencode }}/host-facts">Host facts</a>
+      <a class="btn btn-outline-secondary" href="/models">Model library</a>
+    </div>
+  </div>
+
+  <div class="device-overview-columns mt-3">
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Observed identity</h3>
+        <dl class="interface-definition-list">
+          <div><dt>IP Address</dt><dd>{{ ip or 'Unknown' }}</dd></div>
+          <div><dt>MAC Address</dt><dd>{{ mac or 'Unknown' }}</dd></div>
+          <div><dt>Manufacturer</dt><dd>{{ manufacturer or 'Unknown' }}</dd></div>
+          <div>
+            <dt>Likely Role</dt>
+            <dd>{{ (inventory_device.device_role_guess or {}).role or 'Client' }} <span class="badge badge-light border">{{ (inventory_device.device_role_guess or {}).confidence or 'low' }} confidence</span></dd>
+          </div>
+          <div><dt>Model</dt><dd>{{ inventory_device.model or 'Not identified' }}</dd></div>
+          <div><dt>Firmware</dt><dd>{{ inventory_device.firmware or inventory_device.firmware_version or 'Unknown' }}</dd></div>
+          <div><dt>Hardware revision</dt><dd>{{ inventory_device.hardware_revision or 'Unknown' }}</dd></div>
+          <div><dt>MAC Privacy</dt><dd>{{ 'Likely randomized/private MAC' if inventory_device.likely_randomized_mac else 'Hardware/OUI MAC not flagged as randomized' }}</dd></div>
+        </dl>
+        {% if inventory_device.observed_names %}
+          <h4 class="theme-subsection-title mt-3">Names observed</h4>
+          <div class="network-device-tags">
+            {% for item in inventory_device.observed_names %}
+              <span class="badge badge-light border">{{ item.name }} · {{ item.source }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No DHCP, DNS, mDNS, NetBIOS, or user-maintained names have been recorded yet.</p>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="theme-card card">
+      <div class="card-body">
+        <h3 class="theme-subsection-title">Identification assessment</h3>
+        {% set assessment = inventory_device.identity_assessment or {} %}
+        {% if assessment %}
+          <dl class="interface-definition-list">
+            <div><dt>Likely device</dt><dd>{{ assessment.label or assessment.model or 'Unknown' }}</dd></div>
+            <div><dt>Confidence</dt><dd>{{ assessment.confidence or 'Unknown' }}</dd></div>
+            <div><dt>Stage</dt><dd>{{ inventory_device.identity_identification_stage or 'passive' }}</dd></div>
+            <div><dt>Identity signature</dt><dd><code>{{ (inventory_device.identity_signature or '')[:20] }}{% if inventory_device.identity_signature %}…{% endif %}</code></dd></div>
+          </dl>
+          {% if assessment.evidence %}
+            <ul class="mb-0">
+              {% for item in assessment.evidence[:8] %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+        {% else %}
+          <div class="device-empty-state">
+            <i class="fa-solid fa-fingerprint" aria-hidden="true"></i>
+            <h4>No identification assessment yet</h4>
+            <p>Run device identification to combine names, manufacturer, services, UPnP, TLS, SSH, and other saved evidence.</p>
+            <button type="button" class="btn btn-primary" data-ip-client-intelligence>Identify device</button>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+
+  <article class="theme-card card mt-4">
+    <div class="card-body">
+      <h3 class="theme-subsection-title">Client profile metadata</h3>
+      <form class="theme-form" data-ip-client-metadata-form data-workspace-form>
+        <div class="form-row">
+          <div class="col">
+            <label for="client-tags">Tags</label>
+            <input id="client-tags" class="form-control" data-ip-client-tags name="tags" value="{{ (inventory_device.client_tags or [])|join(', ') if inventory_device else '' }}" placeholder="trusted, printer, guest">
+          </div>
+          <div class="col">
+            <label for="client-owner">Owner</label>
+            <input id="client-owner" class="form-control" data-ip-client-owner name="owner" value="{{ inventory_device.client_owner if inventory_device else '' }}" placeholder="Team or person">
+          </div>
+        </div>
+        <div class="form-row mt-2">
+          <div class="col">
+            <label for="client-location">Location</label>
+            <input id="client-location" class="form-control" data-ip-client-location name="location" value="{{ inventory_device.client_location if inventory_device else '' }}" placeholder="Office, lab bench, garage">
+          </div>
+          <div class="col">
+            <label for="client-expected-ports">Expected open ports</label>
+            <input id="client-expected-ports" class="form-control" data-ip-client-expected-ports name="expectedPorts" value="{{ (inventory_device.expected_open_ports or [])|join(', ') if inventory_device else '' }}" placeholder="22, 80, 443">
+          </div>
+        </div>
+        <label class="mt-2" for="client-notes">Profile notes</label>
+        <textarea id="client-notes" class="form-control" data-ip-client-notes name="notes" rows="3" placeholder="Expected purpose, owner context, or remediation notes.">{{ inventory_device.client_notes if inventory_device else '' }}</textarea>
+        <div class="theme-actions">
+          <button type="submit" class="btn btn-primary">Save client metadata</button>
+          <span class="workspace-form-status text-muted" data-workspace-form-status>Saved</span>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
