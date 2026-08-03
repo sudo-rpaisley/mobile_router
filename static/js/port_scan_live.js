@@ -10,9 +10,7 @@ $(document).ready(function () {
 
   function detailByPort(job) {
     const details = {};
-    (job.open_port_details || []).forEach(function (item) {
-      details[item.port] = item;
-    });
+    (job.open_port_details || []).forEach(function (item) { details[item.port] = item; });
     return details;
   }
 
@@ -24,7 +22,6 @@ $(document).ready(function () {
       $list.html('<p class="text-muted mb-0">No open ports discovered yet.</p>');
       return;
     }
-
     let html = '<div class="port-service-grid">';
     ports.forEach(function (port) {
       const info = details[port] || { service: 'Unknown', description: 'No common service mapping found' };
@@ -51,10 +48,7 @@ $(document).ready(function () {
     const canCancel = Boolean(job.cancelable && !job.cancel_requested);
     $panel.data('currentJobId', job.id || $panel.data('currentJobId'));
     $panel.find('[data-port-scan-cancel]').toggle(canCancel).prop('disabled', !canCancel);
-
-    $panel.find('[data-port-scan-status]').html(
-      `<div class="alert alert-${statusClass}" role="status"><strong>${escapeHtml(job.status)}</strong>: ${escapeHtml(job.message || '')}${current}</div>`
-    );
+    $panel.find('[data-port-scan-status]').html(`<div class="alert alert-${statusClass}" role="status"><strong>${escapeHtml(job.status)}</strong>: ${escapeHtml(job.message || '')}${current}</div>`);
     $panel.find('[data-port-scan-progress-bar]').css('width', `${progress}%`).attr('aria-valuenow', progress).text(`${progress}%`);
     $panel.find('[data-port-scan-progress-text]').text(`${scanned} of ${total} ports checked`);
     renderOpenPorts($panel, job, previousPorts);
@@ -95,11 +89,8 @@ $(document).ready(function () {
     $panel.find('[data-port-scan-progress-bar]').css('width', '0%').attr('aria-valuenow', 0).text('0%');
     $panel.find('[data-port-scan-progress-text]').text('0 ports checked');
     $panel.find('[data-port-scan-open-ports]').html('<p class="text-muted mb-0">Waiting for open ports...</p>');
-
     $.ajax({
-      url: '/port-scan-jobs',
-      method: 'POST',
-      data: { host: host, start: start, end: end, label: label },
+      url: '/port-scan-jobs', method: 'POST', data: { host: host, start: start, end: end, label: label },
       success: function (resp) {
         $panel.data('currentJobId', resp.job.id);
         renderJob($panel, resp.job, new Set());
@@ -114,7 +105,6 @@ $(document).ready(function () {
     });
   }
 
-
   function cancelScan($panel) {
     const jobId = $panel.data('currentJobId');
     if (!jobId) {
@@ -123,8 +113,7 @@ $(document).ready(function () {
     }
     $panel.find('[data-port-scan-cancel]').prop('disabled', true).text('Cancelling...');
     $.ajax({
-      url: `/jobs/${encodeURIComponent(jobId)}/cancel`,
-      method: 'POST',
+      url: `/jobs/${encodeURIComponent(jobId)}/cancel`, method: 'POST',
       success: function (resp) {
         renderJob($panel, resp.job, new Set(resp.job.open_ports || []));
         $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
@@ -135,41 +124,45 @@ $(document).ready(function () {
         $panel.find('[data-port-scan-status]').html(`<div class="alert alert-danger">${escapeHtml(message)}</div>`);
         $panel.find('[data-port-scan-cancel]').prop('disabled', false).text('Cancel scan');
       },
-      complete: function () {
-        $panel.find('[data-port-scan-cancel]').text('Cancel scan');
-      }
+      complete: function () { $panel.find('[data-port-scan-cancel]').text('Cancel scan'); }
     });
   }
 
-  $('.port-scan-panel').each(function () {
-    const $panel = $(this);
+  function initialisePanel(panelElement) {
+    if (!panelElement || panelElement.dataset.portScanInitialized === 'true') return;
+    panelElement.dataset.portScanInitialized = 'true';
+    const $panel = $(panelElement);
     const params = new URLSearchParams(window.location.search);
     const hostParam = params.get('host');
     const $hostInput = $panel.find('[data-port-scan-host]');
-    if (hostParam && $hostInput.length) {
-      $hostInput.val(hostParam);
-    }
+    if (hostParam && $hostInput.length) $hostInput.val(hostParam);
 
-    $panel.on('click', '[data-port-scan-start]', function (e) {
-      e.preventDefault();
+    $panel.on('click', '[data-port-scan-start]', function (event) {
+      event.preventDefault();
       const $button = $(this);
       const host = ($hostInput.val() || $panel.data('host') || '').trim();
       startScan($panel, host, $button.data('start'), $button.data('end'), $button.data('label') || 'port scan');
     });
-
     $panel.find('[data-port-scan-cancel]').hide().prop('disabled', true);
-
-    $panel.on('click', '[data-port-scan-cancel]', function (e) {
-      e.preventDefault();
+    $panel.on('click', '[data-port-scan-cancel]', function (event) {
+      event.preventDefault();
       cancelScan($panel);
     });
-
-    $panel.on('submit', '[data-port-scan-custom-form]', function (e) {
-      e.preventDefault();
+    $panel.on('submit', '[data-port-scan-custom-form]', function (event) {
+      event.preventDefault();
       const host = ($hostInput.val() || $panel.data('host') || '').trim();
-      const start = $panel.find('[data-port-scan-start-input]').val();
-      const end = $panel.find('[data-port-scan-end-input]').val();
-      startScan($panel, host, start, end, 'custom port scan');
+      startScan($panel, host, $panel.find('[data-port-scan-start-input]').val(), $panel.find('[data-port-scan-end-input]').val(), 'custom port scan');
     });
+  }
+
+  function initialisePanels(container) {
+    const root = container || document;
+    if (root.matches && root.matches('.port-scan-panel')) initialisePanel(root);
+    $(root).find('.port-scan-panel').each(function () { initialisePanel(this); });
+  }
+
+  initialisePanels(document);
+  document.addEventListener('device-workspace:loaded', function (event) {
+    initialisePanels(event.detail && event.detail.panel);
   });
 });
