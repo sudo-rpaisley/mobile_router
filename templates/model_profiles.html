@@ -1,0 +1,93 @@
+{% include '_header.html' %}
+<link rel="stylesheet" href="/static/css/interface.css">
+<body class="d-flex flex-column min-vh-100">
+  <main class="page-shell" data-model-library>
+    <section class="page-hero">
+      <div class="page-hero-copy">
+        <p class="page-kicker">Reusable Device Intelligence</p>
+        <h1 class="page-title">Device Model Library</h1>
+        <p class="page-subtitle">Maintain canonical model identities, aliases, firmware and hardware applicability, expected services, risk guidance, fleet drift, provenance, and signed registry updates.</p>
+      </div>
+      <div class="theme-actions">
+        <a class="btn btn-outline-secondary" href="/api/model-registry/export.json">Export Registry</a>
+        <button class="btn btn-outline-success" type="button" data-model-registry-sync>Sync Signed Registries</button>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap">
+          <div>
+            <h2 class="theme-section-title">Profiles</h2>
+            <p class="text-muted">Exact profiles override family profiles, which override manufacturer defaults. Device-specific overrides remain local to one device.</p>
+          </div>
+          <button class="btn btn-primary" type="button" data-model-new-toggle>Create Profile</button>
+        </div>
+        <div class="form-row mt-3">
+          <div class="col-md-8">
+            <input class="form-control" data-model-search placeholder="Search manufacturer, model, family, or alias">
+          </div>
+          <div class="col-md-4">
+            <select class="form-control" data-model-scope-filter>
+              <option value="">All profile scopes</option>
+              <option value="exact">Exact model</option>
+              <option value="family">Model family</option>
+              <option value="manufacturer">Manufacturer default</option>
+            </select>
+          </div>
+        </div>
+        <div data-model-library-status class="alert alert-light mt-3">Loading profiles…</div>
+        <div class="theme-grid" data-model-profile-list></div>
+      </div>
+    </section>
+
+    <section class="theme-card card d-none" data-model-new-panel>
+      <div class="card-body">
+        <h2 class="theme-section-title">Create Model Profile</h2>
+        <form data-model-profile-create>
+          <div class="form-row">
+            <div class="col-md-3">
+              <label>Scope</label>
+              <select class="form-control" name="scope">
+                <option value="exact">Exact model</option>
+                <option value="family">Model family</option>
+                <option value="manufacturer">Manufacturer default</option>
+              </select>
+            </div>
+            <div class="col-md-3"><label>Manufacturer</label><input class="form-control" name="manufacturer" required></div>
+            <div class="col-md-3"><label>Canonical model</label><input class="form-control" name="model"></div>
+            <div class="col-md-3"><label>Model family</label><input class="form-control" name="family"></div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="col-md-4"><label>Hardware revision</label><input class="form-control" name="hardwareRevision"></div>
+            <div class="col-md-4"><label>Firmware from</label><input class="form-control" name="firmwareMin"></div>
+            <div class="col-md-4"><label>Firmware to</label><input class="form-control" name="firmwareMax"></div>
+          </div>
+          <div class="form-row mt-2">
+            <div class="col-md-6"><label>Model aliases</label><input class="form-control" name="aliases" placeholder="Sky Broadband Hub, Sky SR203"></div>
+            <div class="col-md-6"><label>Manufacturer aliases</label><input class="form-control" name="manufacturerAliases" placeholder="Sky UK, Sky Broadband"></div>
+          </div>
+          <label class="mt-2">Profile notes</label><textarea class="form-control" rows="2" name="notes"></textarea>
+          <label class="mt-2">Security and risk notes</label><textarea class="form-control" rows="2" name="riskNotes"></textarea>
+          <div class="theme-actions"><button class="btn btn-primary" type="submit">Create Profile</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="theme-card card">
+      <div class="card-body">
+        <h2 class="theme-section-title">Registry Management</h2>
+        <p class="text-muted">Preview the manifest and profile list before importing. Signed registries use HMAC-SHA256 publisher keys configured by the administrator.</p>
+        <textarea class="form-control" rows="6" data-model-registry-json placeholder='{"schema":"mobile-router-model-profiles-v2","manifest":{},"profiles":[]}'></textarea>
+        <label class="form-check mt-2"><input class="form-check-input" type="checkbox" data-model-registry-require-signature checked><span class="form-check-label">Require a trusted signature</span></label>
+        <div class="theme-actions">
+          <button class="btn btn-outline-info" type="button" data-model-registry-preview>Preview Registry</button>
+          <button class="btn btn-outline-primary" type="button" data-model-registry-import>Import Registry</button>
+        </div>
+        <pre class="theme-results mt-3" data-model-registry-output>Nothing previewed yet.</pre>
+      </div>
+    </section>
+  </main>
+</body>
+{% include '_footer.html' %}
+</html>
