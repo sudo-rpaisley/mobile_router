@@ -102,14 +102,20 @@
         {% if unexpected or missing %}
           <p><strong>Drift detected</strong>{% if unexpected %} · Unexpected {{ unexpected|join(', ') }}{% endif %}{% if missing %} · Missing {{ missing|join(', ') }}{% endif %}</p>
         {% endif %}
-        <p><button type="button" class="btn btn-outline-warning">Watch this device</button></p>
+        <p>
+          <button type="button" class="btn btn-outline-warning">Watch this device</button>
+          <button type="button" class="btn btn-outline-primary">Save baseline</button>
+          <button type="button" data-port-scan-cancel hidden>Cancel scan</button>
+        </p>
         <h4>Saved Service Profile</h4>
         <div class="port-service-grid">
           {% for port in open_port_details %}
             <div class="port-service-card">
-              <strong>{% if port.web_url %}<a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>{% else %}{{ port.port }}/tcp{% endif %}</strong>
-              <span>{{ port.service }}</span>
-              <small>{{ port.description }}</small>
+              <strong class="port-service-number">{% if port.web_url %}<a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>{% else %}{{ port.port }}/tcp{% endif %}</strong>
+              <a class="port-service-card-link" href="/clients/{{ ip|urlencode }}/services/{{ port.port }}">
+                <span>{{ port.service }}</span>
+                <small>{{ port.description }}</small>
+              </a>
             </div>
           {% else %}
             <p class="text-muted">No saved services.</p>
