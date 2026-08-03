@@ -110,12 +110,18 @@
         <h4>Saved Service Profile</h4>
         <div class="port-service-grid">
           {% for port in open_port_details %}
-            <div class="port-service-card">
+            <div class="port-service-card" data-web-service-preview>
               <strong class="port-service-number">{% if port.web_url %}<a href="{{ port.web_url }}" target="_blank" rel="noopener noreferrer">{{ port.port }}/tcp</a>{% else %}{{ port.port }}/tcp{% endif %}</strong>
               <a class="port-service-card-link" href="/clients/{{ ip|urlencode }}/services/{{ port.port }}">
                 <span>{{ port.service }}</span>
                 <small>{{ port.description }}</small>
               </a>
+              {% if port.web_url %}
+                <div class="web-service-hover-preview">
+                  <strong>{{ port.http_title or port.web_url }}</strong>
+                  <span>Status: {{ port.http_status or 'not captured' }}{% if port.http_server %} · {{ port.http_server }}{% endif %}</span>
+                </div>
+              {% endif %}
             </div>
           {% else %}
             <p class="text-muted">No saved services.</p>
@@ -124,6 +130,31 @@
         <h4 class="mt-3">Device Port Scan</h4>
         <p><a href="/port-scan?host={{ ip|urlencode }}">Common ports · All ports · Open full port scan</a></p>
         <p>Inspect web services · Fingerprint services</p>
+
+        <h4 class="mt-3">Client Profile Metadata</h4>
+        <p>Expected open ports: {{ (inventory_device.expected_open_ports or [])|join(', ') or 'Not configured' }}</p>
+        <p><a href="/clients/{{ ip|urlencode }}/export.json">Export JSON</a> · <a href="/clients/{{ ip|urlencode }}/export.md">Export Markdown</a></p>
+
+        <h4>Client Relationship Map</h4>
+        <p>Open the Network workspace to review interfaces, discovery sources, paths, and linked services.</p>
+        <p>
+          <button type="button" data-ip-client-ping>Ping client</button>
+          <button type="button" data-ip-client-route>Route diagnostics</button>
+          <button type="button" data-ip-client-traceroute>Traceroute</button>
+        </p>
+
+        <h4>Scheduled Client Checks</h4>
+        <p>Open the Network workspace to create or run scheduled reachability and baseline checks.</p>
+        <button type="button">Save evidence note</button>
+
+        <h4>Client Timeline</h4>
+        <ol>
+          {% for event in client_timeline %}
+            <li>{{ event.time_label }} — {{ event.type }}: {{ event.message }}</li>
+          {% else %}
+            <li>No timeline events recorded.</li>
+          {% endfor %}
+        </ol>
       </div>
     </section>
   </noscript>
