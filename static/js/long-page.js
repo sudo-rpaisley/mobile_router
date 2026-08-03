@@ -2,7 +2,6 @@
   'use strict';
 
   const MIN_SECTIONS = 5;
-  const DEFAULT_OPEN_SECTIONS = 2;
 
   function slugify(value) {
     return String(value || 'section')
@@ -14,23 +13,22 @@
   }
 
   function storageKey() {
-    return `mobile-router:long-page:${window.location.pathname}`;
+    return `mobile-router:long-page-tab:${window.location.pathname}`;
   }
 
-  function readState() {
+  function readActiveSection() {
     try {
-      const value = JSON.parse(window.localStorage.getItem(storageKey()) || '{}');
-      return value && typeof value === 'object' ? value : {};
+      return String(window.localStorage.getItem(storageKey()) || '');
     } catch (error) {
-      return {};
+      return '';
     }
   }
 
-  function writeState(state) {
+  function writeActiveSection(sectionId) {
     try {
-      window.localStorage.setItem(storageKey(), JSON.stringify(state));
+      window.localStorage.setItem(storageKey(), sectionId);
     } catch (error) {
-      // Page organisation must still work when storage is unavailable.
+      // Tabs remain usable when browser storage is disabled.
     }
   }
 
@@ -56,14 +54,6 @@
     };
   }
 
-  function directChildContaining(body, element) {
-    let current = element;
-    while (current && current.parentElement && current.parentElement !== body) {
-      current = current.parentElement;
-    }
-    return current && current.parentElement === body ? current : null;
-  }
-
   function uniqueSectionId(title, used) {
     const base = `section-${slugify(title)}`;
     let candidate = base;
@@ -76,190 +66,97 @@
     return candidate;
   }
 
-  function createToggle() {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn btn-sm btn-outline-secondary long-page-section-toggle';
-    button.innerHTML = '<i class="fa-solid fa-chevron-up" aria-hidden="true"></i><span>Collapse</span>';
-    return button;
-  }
-
-  function setCollapsed(section, collapsed, state, persist) {
-    section.card.classList.toggle('long-page-section-collapsed', collapsed);
-    section.content.hidden = collapsed;
-    section.toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    section.toggle.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${section.title}`);
-    section.toggle.querySelector('span').textContent = collapsed ? 'Expand' : 'Collapse';
-    section.toggle.querySelector('i').className = `fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}`;
-    section.nav.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    if (persist) {
-      state[section.id] = collapsed;
-      writeState(state);
-    }
-  }
-
-  function enhanceCard(card, index, usedIds, state, defaultOpen) {
+  function prepareSection(card, index, usedIds) {
     const titleInfo = sectionTitle(card, index);
     if (!titleInfo.heading) return null;
 
-    const body = titleInfo.heading.closest('.card-body') || card;
-    let header = directChildContaining(body, titleInfo.heading);
-    if (!header) return null;
+    const sectionId = card.id || uniqueSectionId(titleInfo.title, usedIds);
+    const tabId = `tab-${sectionId}`;
 
-    if (header === titleInfo.heading) {
-      const wrapper = document.createElement('div');
-      body.insertBefore(wrapper, titleInfo.heading);
-      wrapper.appendChild(titleInfo.heading);
-      header = wrapper;
-    }
-
-    header.classList.add('long-page-section-heading');
-    titleInfo.heading.classList.add('long-page-section-title');
-
-    const id = card.id || uniqueSectionId(titleInfo.title, usedIds);
-    card.id = id;
-    card.setAttribute('data-long-page-section', '');
+    card.id = sectionId;
+    card.setAttribute('data-long-page-tab-panel', '');
+    card.setAttribute('role', 'tabpanel');
+    card.setAttribute('aria-labelledby', tabId);
     card.setAttribute('tabindex', '-1');
 
-    const toggle = createToggle();
-    toggle.setAttribute('aria-controls', `${id}-content`);
-    header.appendChild(toggle);
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.id = tabId;
+    tab.className = 'long-page-tab';
+    tab.textContent = titleInfo.title;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', sectionId);
+    tab.setAttribute('aria-selected', 'false');
+    tab.setAttribute('tabindex', '-1');
 
-    const content = document.createElement('div');
-    content.id = `${id}-content`;
-    content.className = 'long-page-section-content';
-    while (header.nextSibling) {
-      content.appendChild(header.nextSibling);
-    }
-    body.appendChild(content);
+    const option = document.createElement('option');
+    option.value = sectionId;
+    option.textContent = titleInfo.title;
 
-    const nav = document.createElement('button');
-    nav.type = 'button';
-    nav.className = 'long-page-nav-link';
-    nav.textContent = titleInfo.title;
-    nav.setAttribute('aria-controls', id);
-
-    const section = {
+    return {
       card: card,
-      content: content,
-      id: id,
+      heading: titleInfo.heading,
+      id: sectionId,
       index: index,
-      nav: nav,
+      option: option,
+      tab: tab,
       title: titleInfo.title,
-      toggle: toggle,
     };
-
-    const hasSavedState = Object.prototype.hasOwnProperty.call(state, id);
-    const collapsed = hasSavedState ? Boolean(state[id]) : index >= defaultOpen;
-    setCollapsed(section, collapsed, state, false);
-
-    toggle.addEventListener('click', function () {
-      setCollapsed(section, !section.content.hidden, state, true);
-    });
-
-    nav.addEventListener('click', function () {
-      setCollapsed(section, false, state, true);
-      section.card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.history.replaceState(null, '', `#${section.id}`);
-      section.card.focus({ preventScroll: true });
-    });
-
-    return section;
   }
 
-  function buildToolbar(container, sections, state) {
-    const toolbar = document.createElement('section');
-    toolbar.className = 'long-page-tools';
-    toolbar.setAttribute('aria-label', 'Page section controls');
-    toolbar.innerHTML = `
-      <div class="long-page-tools-header">
+  function sectionForHash(sections) {
+    const hashId = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+    if (!hashId) return null;
+
+    const target = document.getElementById(hashId);
+    if (!target) return null;
+
+    const panel = target.matches('[data-long-page-tab-panel]')
+      ? target
+      : target.closest('[data-long-page-tab-panel]');
+    if (!panel) return null;
+
+    return sections.find(function (section) {
+      return section.card === panel;
+    }) || null;
+  }
+
+  function buildTabs(container, sections) {
+    const shell = document.createElement('section');
+    shell.className = 'long-page-tabs-shell';
+    shell.setAttribute('aria-label', 'Page sections');
+    shell.innerHTML = `
+      <div class="long-page-tabs-header">
         <div>
-          <strong>On this page</strong>
-          <span class="long-page-section-count">${sections.length} sections</span>
+          <strong>Page sections</strong>
+          <span class="long-page-section-count">${sections.length} tabs</span>
         </div>
-        <div class="long-page-tools-actions" role="group" aria-label="Section display controls">
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-long-page-action="essentials">Essentials</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-long-page-action="expand">Expand all</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-long-page-action="collapse">Collapse all</button>
-        </div>
+        <small class="text-muted">Only the selected section is shown.</small>
       </div>
-      <label class="sr-only" for="long-page-section-search">Filter page sections</label>
-      <input id="long-page-section-search" class="form-control form-control-sm long-page-section-search" type="search" placeholder="Find a section" autocomplete="off">
-      <nav class="long-page-nav" aria-label="Sections on this page"></nav>
+      <div class="long-page-tablist" role="tablist" aria-label="Page sections"></div>
+      <div class="long-page-tab-select-group">
+        <label for="long-page-tab-select">Section</label>
+        <select id="long-page-tab-select" class="form-control long-page-tab-select" aria-label="Choose page section"></select>
+      </div>
     `;
 
-    const nav = toolbar.querySelector('.long-page-nav');
+    const tablist = shell.querySelector('.long-page-tablist');
+    const select = shell.querySelector('.long-page-tab-select');
     sections.forEach(function (section) {
-      nav.appendChild(section.nav);
+      tablist.appendChild(section.tab);
+      select.appendChild(section.option);
     });
 
     const hero = Array.from(container.children).find(function (child) {
       return child.classList && child.classList.contains('page-hero');
     });
     if (hero) {
-      hero.insertAdjacentElement('afterend', toolbar);
+      hero.insertAdjacentElement('afterend', shell);
     } else {
-      container.insertBefore(toolbar, sections[0].card);
+      container.insertBefore(shell, sections[0].card);
     }
 
-    toolbar.querySelector('[data-long-page-action="expand"]').addEventListener('click', function () {
-      sections.forEach(function (section) { setCollapsed(section, false, state, false); state[section.id] = false; });
-      writeState(state);
-    });
-
-    toolbar.querySelector('[data-long-page-action="collapse"]').addEventListener('click', function () {
-      sections.forEach(function (section) { setCollapsed(section, true, state, false); state[section.id] = true; });
-      writeState(state);
-    });
-
-    toolbar.querySelector('[data-long-page-action="essentials"]').addEventListener('click', function () {
-      sections.forEach(function (section) {
-        const collapsed = section.index >= DEFAULT_OPEN_SECTIONS;
-        setCollapsed(section, collapsed, state, false);
-        state[section.id] = collapsed;
-      });
-      writeState(state);
-      sections[0].card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    const search = toolbar.querySelector('.long-page-section-search');
-    const count = toolbar.querySelector('.long-page-section-count');
-    search.addEventListener('input', function () {
-      const query = search.value.trim().toLowerCase();
-      let matches = 0;
-      sections.forEach(function (section) {
-        const visible = !query || section.title.toLowerCase().includes(query);
-        section.nav.hidden = !visible;
-        if (visible) matches += 1;
-      });
-      count.textContent = query ? `${matches} matching sections` : `${sections.length} sections`;
-    });
-
-    return toolbar;
-  }
-
-  function observeSections(sections) {
-    if (!('IntersectionObserver' in window)) return;
-    const observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        sections.forEach(function (section) {
-          section.nav.classList.toggle('active', section.card === entry.target);
-        });
-      });
-    }, { rootMargin: '-25% 0px -65% 0px', threshold: 0 });
-    sections.forEach(function (section) { observer.observe(section.card); });
-  }
-
-  function openHashTarget(sections, state) {
-    const id = decodeURIComponent(window.location.hash.replace(/^#/, ''));
-    if (!id) return;
-    const section = sections.find(function (item) { return item.id === id; });
-    if (!section) return;
-    setCollapsed(section, false, state, true);
-    window.setTimeout(function () {
-      section.card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
+    return { shell: shell, select: select, tablist: tablist };
   }
 
   function initialise() {
@@ -269,19 +166,110 @@
     const cards = topLevelCards(container);
     if (cards.length < MIN_SECTIONS) return;
 
-    container.setAttribute('data-long-page-enhanced', '');
-    const defaultOpen = Number(container.getAttribute('data-long-page-open') || DEFAULT_OPEN_SECTIONS);
-    const state = readState();
     const usedIds = new Set();
     const sections = cards.map(function (card, index) {
-      return enhanceCard(card, index, usedIds, state, defaultOpen);
+      return prepareSection(card, index, usedIds);
     }).filter(Boolean);
-
     if (sections.length < MIN_SECTIONS) return;
-    buildToolbar(container, sections, state);
-    observeSections(sections);
-    openHashTarget(sections, state);
-    window.addEventListener('hashchange', function () { openHashTarget(sections, state); });
+
+    container.setAttribute('data-long-page-enhanced', 'tabs');
+    const controls = buildTabs(container, sections);
+    let activeSection = null;
+
+    function activate(section, options) {
+      if (!section) return;
+      const settings = Object.assign({
+        focusPanel: false,
+        scrollTarget: null,
+        updateHash: true,
+      }, options || {});
+
+      sections.forEach(function (candidate) {
+        const active = candidate === section;
+        candidate.card.hidden = !active;
+        candidate.card.classList.toggle('long-page-tab-panel-active', active);
+        candidate.tab.classList.toggle('active', active);
+        candidate.tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        candidate.tab.setAttribute('tabindex', active ? '0' : '-1');
+      });
+
+      activeSection = section;
+      controls.select.value = section.id;
+      section.tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      writeActiveSection(section.id);
+
+      if (settings.updateHash) {
+        window.history.replaceState(null, '', `#${section.id}`);
+      }
+
+      const target = settings.scrollTarget || section.card;
+      if (settings.scrollTarget) {
+        window.setTimeout(function () {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 0);
+      }
+
+      if (settings.focusPanel) {
+        section.card.focus({ preventScroll: true });
+      }
+    }
+
+    sections.forEach(function (section) {
+      section.tab.addEventListener('click', function () {
+        activate(section, { focusPanel: true });
+      });
+    });
+
+    controls.select.addEventListener('change', function () {
+      const section = sections.find(function (candidate) {
+        return candidate.id === controls.select.value;
+      });
+      activate(section, { focusPanel: true });
+    });
+
+    controls.tablist.addEventListener('keydown', function (event) {
+      if (!activeSection) return;
+      const currentIndex = sections.indexOf(activeSection);
+      let nextIndex = null;
+
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        nextIndex = (currentIndex + 1) % sections.length;
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        nextIndex = (currentIndex - 1 + sections.length) % sections.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = sections.length - 1;
+      }
+
+      if (nextIndex === null) return;
+      event.preventDefault();
+      activate(sections[nextIndex], { updateHash: true });
+      sections[nextIndex].tab.focus();
+    });
+
+    function activateHashTarget() {
+      const section = sectionForHash(sections);
+      if (!section) return false;
+      const hashId = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+      const target = document.getElementById(hashId);
+      activate(section, {
+        scrollTarget: target && target !== section.card ? target : null,
+        updateHash: false,
+      });
+      return true;
+    }
+
+    const savedId = readActiveSection();
+    const savedSection = sections.find(function (section) {
+      return section.id === savedId;
+    });
+
+    if (!activateHashTarget()) {
+      activate(savedSection || sections[0], { updateHash: false });
+    }
+
+    window.addEventListener('hashchange', activateHashTarget);
   }
 
   if (document.readyState === 'loading') {
