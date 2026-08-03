@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ vlan.label if vlan else 'VLAN not found' }}{% endblock %}
+
+{% block content %}
+{% if not vlan %}
+<section class="page-hero"><div class="page-hero-copy"><p class="page-kicker">VLAN Investigations</p><h1 class="page-title">VLAN not found</h1><p class="page-subtitle">The requested VLAN definition no longer exists.</p></div><div class="theme-actions"><a class="btn btn-primary" href="/vlans">Return to VLANs</a></div></section>
+{% else %}
+<section class="page-hero">
+  <div class="page-hero-copy">
+    <p class="page-kicker">VLAN investigation</p>
+    <h1 class="page-title">{{ vlan.name }}</h1>
+    <p class="page-subtitle">{{ vlan.description or 'Routed network definition, device assignments, visibility evidence, and segmentation expectations.' }}</p>
+    <div class="mt-3">{% include '_vlan_badge.html' %}</div>
+  </div>
+  <div class="theme-actions"><a class="btn btn-outline-secondary" href="/vlans">All VLANs</a><a class="btn btn-outline-primary" href="/inventory">Inventory</a></div>
+</section>
+
+<div class="vlan-output" data-vlan-output aria-live="polite"></div>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Network overview</h2>
+    <div class="vlan-status-grid">
+      <div class="vlan-status-tile"><strong>{{ devices|length }}</strong><span>Assigned devices</span></div>
+      <div class="vlan-status-tile"><strong>{{ vlan.usable_hosts }}</strong><span>Usable IPv4 addresses</span></div>
+      <div class="vlan-status-tile"><strong>{{ investigations|length }}</strong><span>Saved investigations</span></div>
+      <div class="vlan-status-tile"><strong>{{ probes|length }}</strong><span>Local probes</span></div>
+    </div>
+    <dl class="vlan-definition-list mt-3">
+      <div><dt>802.1Q tag</dt><dd>{{ vlan.tag if vlan.tag is not none else 'Not recorded / untagged route' }}</dd></div>
+      <div><dt>Subnet</dt><dd><code>{{ vlan.subnet }}</code></dd></div>
+      <div><dt>Gateway</dt><dd>{{ vlan.gateway or 'Not recorded' }}</dd></div>
+      <div><dt>Router / interface</dt><dd>{{ vlan.router_name or 'Unknown router' }}{% if vlan.interface_name %} · {{ vlan.interface_name }}{% endif %}</dd></div>
+      <div><dt>Visibility method</dt><dd>{{ vlan.probe_mode|replace('-', ' ')|title }} · source {{ vlan.source_type }}</dd></div>
+      <div><dt>Optional source address</dt><dd>{{ vlan.source_ip or 'Main host routing table' }}</dd></div>
+    </dl>
+    <div class="vlan-visibility-banner mt-3">
+      <i class="fa-solid fa-eye" aria-hidden="true"></i>
+      <div><strong>{% if vlan.probe_mode == 'remote-agent' %}Local layer-2 visibility expected{% else %}Routed visibility{% endif %}</strong><span>{% if vlan.probe_mode == 'remote-agent' %}A probe inside this VLAN can report ARP/neighbour and local discovery evidence. Signed submissions are treated as local observations for this VLAN.{% else %}The main application can test routed IP reachability and selected services. ARP, DHCP broadcasts, mDNS, SSDP, and other layer-2 or link-local discovery normally require a probe or infrastructure integration inside the VLAN.{% endif %}</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <div class="inventory-table-header"><div><h2 class="theme-section-title">Assigned devices</h2><p class="text-muted mb-0">Every row keeps the VLAN label visible so subnet membership is not lost among device details.</p></div><a class="btn btn-outline-primary btn-sm" href="/inventory">Full inventory</a></div>
+    {% if devices %}
+      <div class="table-responsive"><table class="table theme-table"><thead><tr><th>Device</th><th>VLAN</th><th>IP</th><th>MAC</th><th>Source</th><th>Services</th></tr></thead><tbody>
+      {% for device in devices %}<tr><td><div class="vlan-device-name"><a href="/clients/{{ (device.ip or device.mac)|urlencode }}">{{ device.display_name or device.name or device.ip or device.mac }}</a></div></td><td>{% include '_vlan_badge.html' %}</td><td>{{ device.ip or '—' }}</td><td>{{ device.mac or '—' }}</td><td>{{ device.vlan_assignment_source or 'subnet-match' }} · {{ device.vlan_confidence or 'high' }}</td><td>{% for port in device.open_port_details or [] %}{% if loop.index <= 5 %}<span class="badge badge-info">{{ port.port }} {{ port.service }}</span>{% endif %}{% else %}<span class="text-muted">None saved</span>{% endfor %}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}
+      <div class="device-empty-state"><i class="fa-solid fa-computer" aria-hidden="true"></i><h3>No assigned devices</h3><p>Run the authorised routed investigation, import infrastructure records, or deploy a remote probe to populate this VLAN.</p></div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Routed CIDR investigation</h2>
+    <p class="text-muted">The scan pings every usable address within the saved subnet using a bounded worker pool, optionally checks up to 16 selected TCP ports on reachable hosts, records route context, and merges the results into the device inventory.</p>
+    {% if vlan.usable_hosts > 1024 %}<div class="alert alert-warning">This subnet contains {{ vlan.usable_hosts }} usable addresses and exceeds the 1,024-address investigation limit. Define a smaller non-overlapping network before scanning.</div>{% endif %}
+    <form class="theme-form" action="/vlans/{{ vlan.id }}/investigate" method="post" data-vlan-ajax data-vlan-refresh>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="vlan-ports">Optional TCP ports</label><input id="vlan-ports" class="form-control" name="ports" value="22,53,80,443" placeholder="22, 80, 443">
+      <div class="form-check mt-3"><input id="vlan-authorised" class="form-check-input" type="checkbox" name="authorised" value="on" required><label class="form-check-label" for="vlan-authorised">I am authorised to investigate every address in {{ vlan.subnet }}</label></div>
+      <div class="theme-actions"><button class="btn btn-primary" type="submit" {% if vlan.usable_hosts > 1024 %}disabled{% endif %}>Run routed investigation</button></div>
+    </form>
+    {% if investigations %}
+      <h3 class="theme-subsection-title mt-4">Recent investigations</h3>
+      {% for investigation in investigations %}
+        <details class="theme-card card mb-2" {% if loop.first %}open{% endif %}><summary class="card-header"><strong>{{ investigation.mode|replace('-', ' ')|title }}</strong> · {{ investigation.summary.reachable_hosts or 0 }}/{{ investigation.summary.total_hosts or 0 }} reachable · {{ investigation.status }}</summary><div class="card-body"><dl class="vlan-definition-list"><div><dt>Visibility</dt><dd>{{ investigation.summary.visibility or investigation.mode }}</dd></div><div><dt>Duration</dt><dd>{{ investigation.summary.duration_seconds or 'Not reported' }} seconds</dd></div><div><dt>Recorded devices</dt><dd>{{ investigation.summary.recorded_devices or 0 }}</dd></div><div><dt>Selected ports</dt><dd>{{ (investigation.summary.selected_ports or [])|join(', ') or 'None' }}</dd></div></dl><div class="vlan-investigation-hosts mt-3">{% for host in investigation.hosts if host.reachable %}<div class="vlan-investigation-host-row"><strong>{{ host.host }}</strong><span>{{ host.hostname or 'No reverse DNS name' }}</span><span class="badge badge-success">Reachable</span></div>{% else %}<p class="text-muted">No reachable hosts were reported.</p>{% endfor %}</div></div></details>
+      {% endfor %}
+    {% endif %}
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Segmentation reachability matrix</h2>
+    <p class="text-muted">Rules compare intended allow/block behaviour with observed results. Main-host checks are labelled as a routed perspective; a true source-VLAN result requires a configured source address or remote probe inside that VLAN.</p>
+    <div class="table-responsive"><table class="table theme-table"><thead><tr><th>Source</th><th>Destination</th><th>Check</th><th>Expected</th><th>Observed</th><th>Perspective</th><th>Action</th></tr></thead><tbody>
+    {% for rule in matrix %}<tr><td>{{ rule.source_vlan.label if rule.source_vlan else rule.source_vlan_id }}</td><td>{{ rule.destination_vlan.label if rule.destination_vlan else rule.destination }}</td><td>{{ rule.protocol|upper }}{% if rule.port %}/{{ rule.port }}{% endif %} · {{ rule.destination }}</td><td>{{ rule.expectation|title }}</td><td>{% if rule.latest_result %}<span class="vlan-matrix-status {{ 'vlan-matrix-status-fail' if rule.latest_result.mismatch else 'vlan-matrix-status-pass' }}">{{ rule.latest_result.observed|title }}{% if rule.latest_result.mismatch %} · mismatch{% else %} · matches{% endif %}</span>{% else %}<span class="vlan-matrix-status vlan-matrix-status-unknown">Not tested</span>{% endif %}</td><td>{{ rule.latest_result.source if rule.latest_result else (('Remote probe ' ~ rule.source_probe_id) if rule.source_probe_id else 'Main host') }}</td><td>{% if not rule.source_probe_id %}<form action="/vlans/segmentation-rules/{{ rule.id }}/test" method="post" data-vlan-ajax data-vlan-refresh><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="authorised" value="on"><button class="btn btn-sm btn-outline-primary" type="submit">Test</button></form>{% else %}<span class="text-muted">Await probe</span>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="text-muted">No segmentation expectations have been recorded.</td></tr>{% endfor %}
+    </tbody></table></div>
+    <h3 class="theme-subsection-title mt-4">Add an expectation</h3>
+    <form class="theme-form" action="/vlans/segmentation-rules" method="post" data-vlan-ajax data-vlan-refresh>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="source_vlan_id" value="{{ vlan.id }}">
+      <div class="vlan-form-grid"><div><label for="rule-destination-vlan">Destination VLAN</label><select id="rule-destination-vlan" class="form-control" name="destination_vlan_id"><option value="">Specific host only</option>{% for item in all_vlans if item.id != vlan.id %}<option value="{{ item.id }}">{{ item.label }}</option>{% endfor %}</select></div><div><label for="rule-destination">Destination host</label><input id="rule-destination" class="form-control" name="destination" placeholder="192.168.40.10" required></div><div><label for="rule-protocol">Protocol</label><select id="rule-protocol" class="form-control" name="protocol"><option value="tcp">TCP</option><option value="icmp">ICMP</option><option value="udp">UDP (remote/protocol-specific preferred)</option></select></div><div><label for="rule-port">Port</label><input id="rule-port" class="form-control" name="port" type="number" min="1" max="65535" value="443"></div><div><label for="rule-expectation">Expected policy</label><select id="rule-expectation" class="form-control" name="expectation"><option value="allow">Allow</option><option value="block">Block</option></select></div><div><label for="rule-probe">Remote source probe</label><select id="rule-probe" class="form-control" name="source_probe_id"><option value="">Main host routed perspective</option>{% for probe in probes %}<option value="{{ probe.id }}">{{ probe.name }}</option>{% endfor %}</select></div><div class="vlan-form-span"><label for="rule-description">Policy note</label><input id="rule-description" class="form-control" name="description" placeholder="IoT may reach Home Assistant HTTPS only"></div></div>
+      <div class="theme-actions"><button class="btn btn-primary" type="submit">Save segmentation expectation</button></div>
+    </form>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Infrastructure and pfSense</h2>
+    <p class="text-muted">Infrastructure records can provide VLAN definitions, DHCP leases, ARP entries, interface names, and gateway context without probing every endpoint.</p>
+    {% if integrations %}<div class="table-responsive"><table class="table theme-table"><thead><tr><th>Integration</th><th>Endpoint</th><th>Secret reference</th><th>Status</th><th>Action</th></tr></thead><tbody>{% for integration in integrations %}<tr><td>{{ integration.name }}</td><td>{{ integration.base_url or 'JSON import only' }}</td><td><code>{{ integration.token_env or 'None' }}</code></td><td>{{ integration.last_status or 'Never synchronised' }}</td><td><form action="/vlans/pfsense/integrations/{{ integration.id }}/sync" method="post" data-vlan-ajax data-vlan-refresh><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-success">Synchronise</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<p>No saved pfSense integration. Configure one from the <a href="/vlans">VLAN library</a>, or import a read-only JSON export there.</p>{% endif %}
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Remote VLAN probes</h2>
+    <p class="text-muted">A probe inside this VLAN can observe local neighbours and submit structured results over a signed HMAC channel. Only an environment-variable reference is stored; the shared key remains outside the application database.</p>
+    {% if probes %}<div class="table-responsive"><table class="table theme-table"><thead><tr><th>Probe</th><th>Status</th><th>Last seen</th><th>Secret environment reference</th><th>Configuration</th></tr></thead><tbody>{% for probe in probes %}<tr><td>{{ probe.name }}</td><td>{{ probe.status }}</td><td>{{ probe.last_seen or 'Never' }}</td><td><code>{{ probe.secret_env }}</code> · {{ 'configured' if probe.secret_configured else 'not set' }}</td><td><a class="btn btn-sm btn-outline-secondary" href="/vlans/probes/{{ probe.id }}/config.json">Download config</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    <form class="theme-form mt-3" action="/vlans/probes" method="post" data-vlan-ajax data-vlan-refresh><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="vlan_id" value="{{ vlan.id }}"><div class="vlan-form-grid"><div><label for="probe-name">Probe name</label><input id="probe-name" class="form-control" name="name" placeholder="IoT Raspberry Pi" required></div><div><label for="probe-secret-env">Secret environment variable</label><input id="probe-secret-env" class="form-control vlan-secret-reference" name="secret_env" placeholder="MOBILE_ROUTER_VLAN50_PROBE_KEY" required></div></div><div class="theme-actions"><button class="btn btn-primary" type="submit">Create remote probe</button></div></form>
+  </div>
+</section>
+
+<section class="theme-card card">
+  <div class="card-body">
+    <h2 class="theme-section-title">Edit network definition</h2>
+    <form class="theme-form" action="/vlans/{{ vlan.id }}/update" method="post" data-vlan-ajax data-vlan-refresh><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="vlan-form-grid"><div><label>Name<input class="form-control" name="name" value="{{ vlan.name }}" required></label></div><div><label>802.1Q tag<input class="form-control" name="tag" type="number" min="1" max="4094" value="{{ vlan.tag if vlan.tag is not none else '' }}"></label></div><div><label>Subnet<input class="form-control" name="subnet" value="{{ vlan.subnet }}" required></label></div><div><label>Gateway<input class="form-control" name="gateway" value="{{ vlan.gateway or '' }}"></label></div><div><label>Router interface<input class="form-control" name="interface_name" value="{{ vlan.interface_name or '' }}"></label></div><div><label>Router<input class="form-control" name="router_name" value="{{ vlan.router_name or '' }}"></label></div><div><label>Visibility method<select class="form-control" name="probe_mode">{% for mode in ['routed', 'local', 'infrastructure', 'remote-agent'] %}<option value="{{ mode }}" {% if vlan.probe_mode == mode %}selected{% endif %}>{{ mode|replace('-', ' ')|title }}</option>{% endfor %}</select></label></div><div><label>Optional source IP<input class="form-control" name="source_ip" value="{{ vlan.source_ip or '' }}"></label></div><div class="vlan-form-span"><label>Notes<textarea class="form-control" name="description" rows="3">{{ vlan.description or '' }}</textarea></label></div></div><div class="theme-actions"><button class="btn btn-primary" type="submit">Save changes</button></div></form>
+    <form class="mt-3" action="/vlans/{{ vlan.id }}/delete" method="post" data-vlan-ajax data-vlan-redirect="/vlans" data-confirm="Delete this VLAN definition? Device records will remain, but the saved VLAN link and investigations will be removed."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger" type="submit">Delete VLAN definition</button></form>
+  </div>
+</section>
+
+<script src="/static/js/vlans.js"></script>
+{% endif %}
+{% endblock %}
