@@ -67,7 +67,7 @@
 <div class="nav-item dropdown nav-compact-group">
   <button type="button"
           id="records-menu"
-          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Device Model Library', 'VLAN Investigations', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering'] or title[:7] == 'Client ' or title[:6] == 'Model ' or request.path.startswith('/vlans') %}active{% endif %}"
+          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Device Model Library', 'VLAN Investigations', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering', 'Research & Personas'] or title[:7] == 'Client ' or title[:6] == 'Model ' or request.path.startswith('/vlans') %}active{% endif %}"
           data-navigation-toggle="dropdown"
           aria-haspopup="true"
           aria-expanded="false">
@@ -81,6 +81,7 @@
     <a href="/reports" class="dropdown-item {% if title == 'Reports' %}active{% endif %}" {% if title == 'Reports' %}aria-current="page"{% endif %}>Reports</a>
     <a href="/evidence" class="dropdown-item {% if title == 'Evidence Vault' %}active{% endif %}" {% if title == 'Evidence Vault' %}aria-current="page"{% endif %}>Evidence Vault</a>
     <a href="/social-engineering" class="dropdown-item {% if title == 'Social Engineering' %}active{% endif %}" {% if title == 'Social Engineering' %}aria-current="page"{% endif %}>Social Engineering</a>
+    <a href="/social-engineering/research" class="dropdown-item {% if title == 'Research & Personas' or request.path.startswith('/social-engineering/research') %}active{% endif %}" {% if title == 'Research & Personas' or request.path.startswith('/social-engineering/research') %}aria-current="page"{% endif %}>Research & Personas</a>
   </div>
 </div>
 
