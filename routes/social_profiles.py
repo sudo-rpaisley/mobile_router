@@ -98,6 +98,11 @@ def register_social_profile_routes(app, context_provider):
         profile_evidence_candidates = persona_research_service.profile_evidence_candidates(
             profile
         )
+        research_documents = {
+            item['id']: item for item in research_context.get('documents', [])
+        }
+        for factoid in research_context.get('factoids', []):
+            factoid['document'] = research_documents.get(factoid.get('document_id'))
         return render_template(
             'social_profile_detail.html', title=profile['full_name'], profile=profile,
             contact_refs=contact_refs, inventory_choices=inventory_choices,
