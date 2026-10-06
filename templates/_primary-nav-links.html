@@ -67,7 +67,7 @@
 <div class="nav-item dropdown nav-compact-group">
   <button type="button"
           id="records-menu"
-          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Device Model Library', 'VLAN Investigations', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering', 'Research & Personas'] or title[:7] == 'Client ' or title[:6] == 'Model ' or request.path.startswith('/vlans') %}active{% endif %}"
+          class="nav-link dropdown-toggle {% if title in ['Device Inventory', 'Device Model Library', 'VLAN Investigations', 'Alerts', 'Reports', 'Evidence Vault', 'Social Engineering', 'Research & Personas'] or title[:7] == 'Client ' or title[:6] == 'Model ' or request.path.startswith('/vlans') or request.path.startswith('/social-engineering/research') %}active{% endif %}"
           data-navigation-toggle="dropdown"
           aria-haspopup="true"
           aria-expanded="false">
