@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+    <div>
+      <p class="page-kicker">Social Engineering · Research</p>
+      <h1 class="page-title">Evidence-backed personas</h1>
+      <p class="page-subtitle">Turn source documents into traceable factoids, cluster them in an affinity diagram, then evidence persona characteristics.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/social-engineering"><i class="fas fa-arrow-left"></i> Individual profiles</a>
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Evidence rule:</strong> a persona characteristic supported by three or fewer factoids is marked weak. Independent sources are counted separately, so repeated highlights from one interview do not inflate source diversity.
+  </div>
+
+  <section class="theme-card card mb-4" id="documents"><div class="card-body">
+    <div class="social-section-heading"><div><p class="page-kicker">1 · Sources</p><h2 class="theme-section-title">Research documents</h2></div></div>
+    <form method="post" action="/social-engineering/research/documents" enctype="multipart/form-data" class="theme-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-row">
+        <div class="form-group col-md-4"><label for="research_document">Document</label><input id="research_document" class="form-control-file" type="file" name="document" accept=".pdf,.txt,.md,.csv,.json,.log" required><small class="form-text text-muted">PDF and searchable text formats, up to 20 MB.</small></div>
+        <div class="form-group col-md-4"><label for="research_title">Title</label><input id="research_title" class="form-control" name="title" placeholder="Interview with participant 07"></div>
+        <div class="form-group col-md-4"><label for="research_source_key">Independent source ID</label><input id="research_source_key" class="form-control" name="source_key" placeholder="interview-07"><small class="form-text text-muted">Use the same ID for files from the same underlying interview/source.</small></div>
+        <div class="form-group col-md-4"><label for="research_source_label">Source label</label><input id="research_source_label" class="form-control" name="source_label" placeholder="Usability interview, round 2"></div>
+        <div class="form-group col-md-4"><label for="research_participant">Existing individual <small class="text-muted">optional</small></label><select id="research_participant" class="form-control" name="participant_profile_id"><option value="">No linked individual</option>{% for item in profile_choices %}<option value="{{ item.id }}">{{ item.full_name }}</option>{% endfor %}</select></div>
+        <div class="form-group col-md-4"><label for="research_notes">Notes</label><input id="research_notes" class="form-control" name="notes" placeholder="Context, method, date, interviewer…"></div>
+      </div>
+      <button class="btn btn-primary" type="submit"><i class="fas fa-file-upload"></i> Upload and extract text</button>
+    </form>
+    {% if documents %}
+      <div class="table-responsive mt-3"><table class="table theme-table"><thead><tr><th>Document</th><th>Independent source</th><th>Participant</th><th>Factoids</th><th></th></tr></thead><tbody>
+      {% for document in documents %}
+        <tr><td><strong>{{ document.title }}</strong><br><small class="text-muted">{{ document.original_name }}</small></td><td>{{ document.source_key or document.id[:8] }}</td><td>{% if document.participant_profile_id %}{% set ns = namespace(name='Linked individual') %}{% for p in profile_choices %}{% if p.id == document.participant_profile_id %}{% set ns.name = p.full_name %}{% endif %}{% endfor %}{{ ns.name }}{% else %}—{% endif %}</td><td>{{ factoids|selectattr('document_id','equalto',document.id)|list|length }}</td><td><a class="btn btn-sm btn-outline-primary" href="/social-engineering/research/documents/{{ document.id }}">Read & highlight</a></td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}<div class="theme-empty-state mt-3"><i class="fas fa-file-alt"></i><p>Upload the first research document to begin building evidence.</p></div>{% endif %}
+  </div></section>
+
+  <section class="theme-card card mb-4" id="factoids"><div class="card-body">
+    <p class="page-kicker">2 · Observations</p><h2 class="theme-section-title">Factoids</h2>
+    <p class="text-muted">The simplified wording is an interpretation; the exact highlighted source remains attached to every factoid.</p>
+    {% if factoids %}<div class="social-link-list">{% for factoid in factoids %}
+      <article class="social-account-card"><div><strong>{{ factoid.simplified }}</strong><small>{{ factoid.document.title if factoid.document else 'Unknown source' }}</small><blockquote class="mb-0 mt-2"><small>“{{ factoid.excerpt }}”</small></blockquote></div>{% if factoid.document %}<a class="btn btn-sm btn-outline-secondary" href="/social-engineering/research/documents/{{ factoid.document.id }}#factoid-{{ factoid.id }}">Source</a>{% endif %}</article>
+    {% endfor %}</div>{% else %}<p class="text-muted">No factoids yet. Open a document, select evidence, and turn the highlight into a factoid.</p>{% endif %}
+  </div></section>
+
+  <section class="theme-card card mb-4" id="affinity"><div class="card-body">
+    <div class="social-section-heading"><div><p class="page-kicker">3 · Synthesis</p><h2 class="theme-section-title">Affinity diagram</h2><p class="text-muted mb-0">Group factoids into themes while preserving their source provenance.</p></div></div>
+    <form method="post" action="/social-engineering/research/affinity-groups" class="theme-form mb-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-row"><div class="form-group col-md-4"><label>Group title</label><input class="form-control" name="title" placeholder="Low confidence with unfamiliar technology" required></div><div class="form-group col-md-3"><label>Category</label><input class="form-control" name="category" list="persona-categories" placeholder="Confidence"></div><div class="form-group col-md-5"><label>Description</label><input class="form-control" name="description" placeholder="Optional interpretation or boundary"></div></div>
+      <button class="btn btn-outline-primary" type="submit"><i class="fas fa-plus"></i> Add affinity group</button>
+    </form>
+    <datalist id="persona-categories">{% for category in categories %}<option value="{{ category }}">{% endfor %}</datalist>
+
+    <div class="row">
+      <div class="col-lg-4 mb-3"><article class="theme-card card h-100"><div class="card-body"><h3 class="theme-subsection-title">Ungrouped</h3>
+        {% for factoid in ungrouped_factoids %}<div class="border rounded p-2 mb-2"><strong>{{ factoid.simplified }}</strong><form method="post" action="/social-engineering/research/factoids/{{ factoid.id }}/group" class="mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select class="form-control form-control-sm" name="group_id" onchange="this.form.submit()"><option value="">Move to…</option>{% for group in groups %}<option value="{{ group.id }}">{{ group.title }}</option>{% endfor %}</select></form></div>{% else %}<p class="text-muted">No ungrouped factoids.</p>{% endfor %}
+      </div></article></div>
+      {% for group in groups %}<div class="col-lg-4 mb-3"><article class="theme-card card h-100"><div class="card-body">
+        <h3 class="theme-subsection-title">{{ group.title }}</h3><p class="text-muted">{{ group.category or 'Uncategorised' }}{% if group.description %} · {{ group.description }}{% endif %}</p>
+        <p><span class="badge {% if group.stats.weak %}badge-warning{% else %}badge-success{% endif %}">{{ group.stats.evidence_count }} factoid{{ '' if group.stats.evidence_count == 1 else 's' }}</span> <span class="badge badge-secondary">{{ group.stats.independent_source_count }} independent source{{ '' if group.stats.independent_source_count == 1 else 's' }}</span></p>
+        {% for factoid in group.factoids %}<div class="border rounded p-2 mb-2"><strong>{{ factoid.simplified }}</strong><form method="post" action="/social-engineering/research/factoids/{{ factoid.id }}/group" class="mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select class="form-control form-control-sm" name="group_id" onchange="this.form.submit()"><option value="">Ungroup</option>{% for target in groups %}<option value="{{ target.id }}" {% if target.id == group.id %}selected{% endif %}>{{ target.title }}</option>{% endfor %}</select></form></div>{% else %}<p class="text-muted">No factoids in this group yet.</p>{% endfor %}
+      </div></article></div>{% endfor %}
+    </div>
+  </div></section>
+
+  <section class="theme-card card" id="personas"><div class="card-body">
+    <p class="page-kicker">4 · Personas</p><h2 class="theme-section-title">Personas</h2>
+    <form method="post" action="/social-engineering/research/personas" class="theme-form mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-row"><div class="form-group col-md-4"><label>Name</label><input class="form-control" name="name" placeholder="Occasional administrator" required></div><div class="form-group col-md-3"><label>Type</label><select class="form-control" name="persona_type"><option value="archetype">Characteristic / archetypal user</option><option value="individual">Specific individual</option></select></div><div class="form-group col-md-5"><label>Linked individual <small class="text-muted">used for individual personas</small></label><select class="form-control" name="linked_profile_id"><option value="">None</option>{% for item in profile_choices %}<option value="{{ item.id }}">{{ item.full_name }}</option>{% endfor %}</select></div><div class="form-group col-12"><label>Summary</label><textarea class="form-control" name="summary" rows="2"></textarea></div></div>
+      <button class="btn btn-primary" type="submit"><i class="fas fa-user-plus"></i> Create persona</button>
+    </form>
+    <div class="row">{% for persona in personas %}<div class="col-md-6 col-xl-4 mb-3"><article class="theme-card card h-100"><div class="card-body">
+      <p class="page-kicker">{{ 'Individual' if persona.persona_type == 'individual' else 'Archetype' }}</p><h3>{{ persona.name }}</h3><p>{{ persona.summary or 'No summary yet.' }}</p>
+      <p><span class="badge {% if persona.weak_characteristics %}badge-warning{% elif persona.characteristics %}badge-success{% else %}badge-secondary{% endif %}">{{ persona.characteristics|length }} characteristics</span> <span class="badge badge-secondary">{{ persona.stats.independent_source_count }} independent sources</span></p>
+      {% if persona.weak_characteristics %}<div class="alert alert-warning py-2 mb-2"><strong>Weak evidence:</strong> {{ persona.weak_characteristics }} characteristic{{ '' if persona.weak_characteristics == 1 else 's' }} have three or fewer factoids.</div>{% endif %}
+      <a class="btn btn-outline-primary" href="/social-engineering/research/personas/{{ persona.id }}">Open evidence view</a>
+    </div></article></div>{% else %}<div class="col-12"><p class="text-muted">No personas yet.</p></div>{% endfor %}</div>
+  </div></section>
+</div>
+{% endblock %}
