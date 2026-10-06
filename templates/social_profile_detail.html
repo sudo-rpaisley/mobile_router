@@ -66,7 +66,7 @@
         {% if research_context.factoids %}<div class="social-link-list">
           {% for factoid in research_context.factoids %}<article class="social-account-card">
             <div><strong>{{ factoid.simplified }}</strong><blockquote class="mb-1 mt-2"><small>“{{ factoid.excerpt }}”</small></blockquote>
-              {% if factoid.document %}<small>Document: {{ factoid.document.title }}</small>{% else %}<small>Profile source: {{ factoid.source_label or factoid.source_ref }}</small>{% endif %}
+              {% if factoid.document %}<small>Document: {{ factoid.document.title }}</small>{% else %}<small>Profile source: {{ factoid.source_label or factoid.source_ref }}</small>{% if factoid.source_changed %}<div class="alert alert-warning py-1 px-2 mt-2 mb-0"><small><strong>Source changed:</strong> the profile field has been edited or removed since this factoid was captured. The original evidence snapshot is retained above.</small></div>{% endif %}{% endif %}
             </div>
             {% if factoid.document %}<a class="btn btn-sm btn-outline-secondary" href="/social-engineering/research/documents/{{ factoid.document.id }}#factoid-{{ factoid.id }}">Source</a>{% endif %}
           </article>{% endfor %}
