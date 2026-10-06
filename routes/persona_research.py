@@ -105,8 +105,12 @@ def register_persona_research_routes(app, context_provider):
             )
         ]
         docs = {item["id"]: item for item in documents}
+        profiles = {item["id"]: item for item in owned_social_profiles()}
         for factoid in factoids:
             factoid["document"] = docs.get(factoid.get("document_id"))
+            factoid["source_profile"] = profiles.get(
+                factoid.get("source_profile_id")
+            )
         assigned = {
             factoid_id
             for group in groups
@@ -253,6 +257,47 @@ def register_persona_research_routes(app, context_provider):
         )
 
     @app.route(
+        "/social-engineering/profiles/<profile_id>/research/factoids",
+        methods=["POST"],
+    )
+    @social_login_required({"editor", "admin"})
+    @_refresh_context
+    def create_profile_evidence_factoid(profile_id):
+        profile = owned_social_profile(profile_id)
+        if not profile:
+            return json_error("Profile not found.", 404)
+        candidates = {
+            item["ref"]: item
+            for item in persona_research_service.profile_evidence_candidates(
+                profile
+            )
+        }
+        source = candidates.get(request.form.get("source_ref") or "")
+        if not source:
+            return json_error("Choose a valid profile evidence source.")
+        try:
+            factoid = persona_research_service.create_profile_factoid(
+                profile_id,
+                source,
+                request.form,
+                persona_research,
+                persona_research_lock,
+                owner(),
+            )
+        except ValueError as exc:
+            return json_error(str(exc))
+        record_social_audit(
+            "persona.profile-factoid.create",
+            profile_id,
+            factoid["id"],
+        )
+        save_runtime_state("persona-profile-factoid-create")
+        return redirect(
+            url_for("social_profile_detail", profile_id=profile_id)
+            + "#research-evidence"
+        )
+
+    @app.route(
         "/social-engineering/research/affinity-groups", methods=["POST"]
     )
     @social_login_required({"editor", "admin"})
@@ -328,9 +373,27 @@ def register_persona_research_routes(app, context_provider):
         if not persona:
             return json_error("Persona not found.", 404)
         docs = document_map()
+        profiles = {item["id"]: item for item in owned_social_profiles()}
+        contributor_ids = set()
         for characteristic in persona.get("characteristics", []):
             for factoid in characteristic.get("factoids", []):
                 factoid["document"] = docs.get(factoid.get("document_id"))
+                source_profile_id = persona_research_service.factoid_profile_id(
+                    factoid, persona_research
+                )
+                factoid["source_profile"] = profiles.get(source_profile_id)
+                if source_profile_id:
+                    contributor_ids.add(source_profile_id)
+        persona["contributors"] = [
+            profiles[profile_id]
+            for profile_id in sorted(
+                contributor_ids,
+                key=lambda item: (
+                    profiles.get(item, {}).get("full_name") or item
+                ).casefold(),
+            )
+            if profile_id in profiles
+        ]
         groups = persona_research_service.list_records(
             persona_research, "affinity_groups", username
         )
