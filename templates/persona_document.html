@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+    <div><p class="page-kicker">Research document</p><h1 class="page-title">{{ document.title }}</h1><p class="page-subtitle">{{ document.source_label or document.original_name }} · Independent source: <code>{{ document.source_key or document.id[:8] }}</code></p></div>
+    <div class="theme-actions"><a class="btn btn-outline-secondary" href="/social-engineering/research"><i class="fas fa-arrow-left"></i> Research workspace</a><a class="btn btn-outline-primary" href="/social-engineering/research/documents/{{ document.id }}/file"><i class="fas fa-download"></i> Original file</a></div>
+  </div>
+
+  <div class="row">
+    <div class="col-xl-8 mb-3">
+      <section class="theme-card card"><div class="card-body">
+        <div class="social-section-heading"><div><h2 class="theme-section-title">Document text</h2><p class="text-muted mb-0">Select a passage below, then create a factoid. Existing evidence is highlighted.</p></div></div>
+        <div id="research-document-text" class="border rounded p-3 mt-3" style="white-space: pre-wrap; max-height: 68vh; overflow:auto; line-height:1.6;">{% for segment in segments %}{% if segment.highlighted %}<mark>{{ segment.text }}</mark>{% else %}{{ segment.text }}{% endif %}{% endfor %}</div>
+      </div></section>
+    </div>
+
+    <div class="col-xl-4 mb-3">
+      <section class="theme-card card mb-3"><div class="card-body">
+        <p class="page-kicker">Create evidence</p><h2 class="theme-section-title">New factoid</h2>
+        <form id="factoid-form" method="post" action="/social-engineering/research/documents/{{ document.id }}/factoids" class="theme-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input id="factoid-start" type="hidden" name="start">
+          <input id="factoid-end" type="hidden" name="end">
+          <textarea id="factoid-excerpt" name="excerpt" hidden></textarea>
+          <div class="form-group"><label>Highlighted source text</label><div id="factoid-preview" class="border rounded p-2 text-muted">Select text in the document.</div></div>
+          <div class="form-group"><label for="factoid-simplified">Simplified human-written factoid</label><textarea id="factoid-simplified" class="form-control" name="simplified" rows="3" placeholder="e.g. Lacks confidence with unfamiliar computer tasks." required></textarea></div>
+          <div class="form-group"><label for="factoid-notes">Interpretation notes <small class="text-muted">optional</small></label><textarea id="factoid-notes" class="form-control" name="notes" rows="2"></textarea></div>
+          <button id="factoid-submit" class="btn btn-primary" type="submit" disabled><i class="fas fa-highlighter"></i> Create factoid</button>
+        </form>
+      </div></section>
+
+      <section class="theme-card card"><div class="card-body">
+        <p class="page-kicker">Existing evidence</p><h2 class="theme-section-title">{{ highlights|length }} factoid{{ '' if highlights|length == 1 else 's' }}</h2>
+        {% for factoid in highlights %}<article id="factoid-{{ factoid.id }}" class="border rounded p-2 mb-2"><strong>{{ factoid.simplified }}</strong><blockquote class="mb-1 mt-2"><small>“{{ factoid.excerpt }}”</small></blockquote>{% if factoid.notes %}<small class="text-muted">{{ factoid.notes }}</small>{% endif %}</article>{% else %}<p class="text-muted">No highlights have been turned into factoids yet.</p>{% endfor %}
+      </div></section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var container = document.getElementById('research-document-text');
+  var startInput = document.getElementById('factoid-start');
+  var endInput = document.getElementById('factoid-end');
+  var excerptInput = document.getElementById('factoid-excerpt');
+  var preview = document.getElementById('factoid-preview');
+  var simplified = document.getElementById('factoid-simplified');
+  var submit = document.getElementById('factoid-submit');
+
+  function captureSelection() {
+    var selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    var range = selection.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return;
+    var excerpt = range.toString();
+    if (!excerpt.trim()) return;
+
+    var before = range.cloneRange();
+    before.selectNodeContents(container);
+    before.setEnd(range.startContainer, range.startOffset);
+    var start = before.toString().length;
+    var end = start + excerpt.length;
+
+    startInput.value = start;
+    endInput.value = end;
+    excerptInput.value = excerpt;
+    preview.textContent = excerpt;
+    preview.classList.remove('text-muted');
+    if (!simplified.value.trim()) simplified.value = excerpt.trim().replace(/\s+/g, ' ').slice(0, 1000);
+    submit.disabled = false;
+  }
+
+  container.addEventListener('mouseup', captureSelection);
+  container.addEventListener('keyup', captureSelection);
+})();
+</script>
+{% endblock %}
