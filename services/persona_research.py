@@ -295,12 +295,15 @@ def evidence_stats(factoid_ids, store, owner=None):
         item.get("source_key") or item.get("participant_profile_id") or item["id"]
         for item in documents
     }
+    independent_source_count = len(independent_sources)
     strength = "unevidenced" if evidence_count == 0 else ("weak" if evidence_count <= 3 else "supported")
     return {
         "evidence_count": evidence_count,
         "document_count": len(document_ids),
         "participant_count": len(participant_ids),
-        "independent_source_count": len(independent_sources),
+        "independent_source_count": independent_source_count,
+        "source_diversity": "none" if independent_source_count == 0 else ("single" if independent_source_count == 1 else "multiple"),
+        "low_diversity": evidence_count > 1 and independent_source_count <= 1,
         "strength": strength,
         "weak": evidence_count <= 3,
     }
