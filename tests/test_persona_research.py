@@ -133,6 +133,7 @@ def test_repeated_factoids_do_not_inflate_independent_source_count():
     )
     assert first_stats["evidence_count"] == 4
     assert first_stats["independent_source_count"] == 1
+    assert first_stats["low_diversity"] is True
 
     second_factoid = make_factoid(
         store, lock, second, 0, 3, "One", 7
@@ -144,6 +145,7 @@ def test_repeated_factoids_do_not_inflate_independent_source_count():
     )
     assert mixed["evidence_count"] == 5
     assert mixed["independent_source_count"] == 2
+    assert mixed["low_diversity"] is False
 
 
 def test_affinity_group_drives_persona_characteristic_evidence():
