@@ -109,7 +109,9 @@ def register_persona_research_routes(app, context_provider):
         for factoid in factoids:
             factoid["document"] = docs.get(factoid.get("document_id"))
             factoid["source_profile"] = profiles.get(
-                factoid.get("source_profile_id")
+                persona_research_service.factoid_profile_id(
+                    factoid, persona_research
+                )
             )
         assigned = {
             factoid_id
@@ -382,6 +384,24 @@ def register_persona_research_routes(app, context_provider):
                     factoid, persona_research
                 )
                 factoid["source_profile"] = profiles.get(source_profile_id)
+                if (
+                    factoid.get("source_type") == "profile"
+                    and factoid.get("source_profile")
+                ):
+                    current_candidates = {
+                        item["ref"]: item
+                        for item in persona_research_service.profile_evidence_candidates(
+                            factoid["source_profile"]
+                        )
+                    }
+                    current_source = current_candidates.get(
+                        factoid.get("source_ref")
+                    )
+                    factoid["source_changed"] = (
+                        current_source is None
+                        or current_source.get("excerpt")
+                        != factoid.get("excerpt")
+                    )
                 if source_profile_id:
                     contributor_ids.add(source_profile_id)
         persona["contributors"] = [
