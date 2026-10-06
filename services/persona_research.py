@@ -90,6 +90,112 @@ def create_document(metadata, extracted_text, store, lock, owner, now=None):
     return deepcopy(document)
 
 
+
+def profile_evidence_candidates(profile):
+    """Return non-secret profile fields that may be deliberately used as evidence."""
+    profile = profile or {}
+    candidates = []
+
+    def add(ref, label, value, kind):
+        excerpt = str(value or "").strip()
+        if excerpt:
+            candidates.append({
+                "ref": ref,
+                "label": label,
+                "excerpt": excerpt[:4000],
+                "kind": kind,
+            })
+
+    add("profile:notes", "Profile notes", profile.get("notes"), "notes")
+    add("profile:organization", "Organisation", profile.get("organization"), "profile")
+    add("profile:job_title", "Job title", profile.get("job_title"), "profile")
+    if profile.get("tags"):
+        add("profile:tags", "Tags", ", ".join(profile.get("tags") or []), "profile")
+
+    for field in profile.get("custom_fields", []):
+        field_id = field.get("id") or field.get("name") or str(len(candidates))
+        add(
+            f"custom:{field_id}",
+            f"Custom field: {field.get('name') or 'Field'}",
+            field.get("value"),
+            "custom_field",
+        )
+
+    for device in profile.get("devices", []):
+        parts = [
+            device.get("name"),
+            device.get("device_type"),
+            device.get("manufacturer"),
+            device.get("model"),
+            device.get("operating_system"),
+            device.get("hostname"),
+            device.get("status"),
+            device.get("notes"),
+        ]
+        add(
+            f"device:{device.get('id')}",
+            f"Device: {device.get('name') or device.get('device_type') or 'Device'}",
+            " · ".join(str(value).strip() for value in parts if value),
+            "device",
+        )
+
+    for relationship in profile.get("relationships", []):
+        parts = [relationship.get("relationship"), relationship.get("notes")]
+        add(
+            f"relationship:{relationship.get('id')}",
+            f"Relationship: {relationship.get('relationship') or 'Relationship'}",
+            " · ".join(str(value).strip() for value in parts if value),
+            "relationship",
+        )
+
+    for link in profile.get("social_links", []):
+        parts = [
+            link.get("platform"),
+            link.get("account"),
+            link.get("url"),
+            link.get("source"),
+        ]
+        add(
+            f"account:{link.get('id')}",
+            f"Account: {link.get('platform') or 'Online account'}",
+            " · ".join(str(value).strip() for value in parts if value),
+            "account",
+        )
+
+    return candidates
+
+
+def create_profile_factoid(profile_id, source, values, store, lock, owner, now=None):
+    """Create an immutable factoid snapshot from an explicitly selected profile field."""
+    source_ref = _clean(source.get("ref"), 200)
+    source_label = _clean(source.get("label"), 300)
+    excerpt = str(source.get("excerpt") or "").strip()
+    if not source_ref or not excerpt:
+        raise ValueError("Choose a profile evidence source.")
+    simplified = _clean(values.get("simplified"), 1000)
+    if not simplified:
+        simplified = excerpt[:1000]
+    timestamp = now if now is not None else time.time()
+    factoid = {
+        "id": str(uuid.uuid4()),
+        "owner": owner,
+        "document_id": "",
+        "source_type": "profile",
+        "source_profile_id": _clean(profile_id, 80),
+        "source_ref": source_ref,
+        "source_label": source_label,
+        "excerpt": excerpt,
+        "simplified": simplified,
+        "notes": _clean(values.get("notes"), 2000),
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
+    with lock:
+        ensure_store(store)
+        store["factoids"][factoid["id"]] = factoid
+    return deepcopy(factoid)
+
+
 def create_factoid(document_id, values, store, lock, owner, now=None):
     with lock:
         ensure_store(store)
@@ -119,6 +225,10 @@ def create_factoid(document_id, values, store, lock, owner, now=None):
             "id": str(uuid.uuid4()),
             "owner": owner,
             "document_id": document_id,
+            "source_type": "document",
+            "source_profile_id": document.get("participant_profile_id") or "",
+            "source_ref": f"document:{document_id}:{start}:{end}",
+            "source_label": document.get("title") or document.get("original_name") or "Research document",
             "start": start,
             "end": end,
             "excerpt": excerpt,
@@ -274,35 +384,65 @@ def evidence_stats(factoid_ids, store, owner=None):
     ensure_store(store)
     factoids = []
     documents = []
+    participant_ids = set()
+    independent_sources = set()
+    profile_source_ids = set()
+
     for factoid_id in dict.fromkeys(factoid_ids or []):
         factoid = store["factoids"].get(factoid_id)
         if not factoid or not _owned(factoid, owner):
             continue
-        document = store["documents"].get(factoid.get("document_id"))
-        if not document or not _owned(document, owner):
+        source_type = factoid.get("source_type") or (
+            "document" if factoid.get("document_id") else "profile"
+        )
+        if source_type == "document":
+            document = store["documents"].get(factoid.get("document_id"))
+            if not document or not _owned(document, owner):
+                continue
+            documents.append(document)
+            participant_id = (
+                factoid.get("source_profile_id")
+                or document.get("participant_profile_id")
+            )
+            if participant_id:
+                participant_ids.add(participant_id)
+            independent_sources.add(
+                document.get("source_key")
+                or participant_id
+                or document["id"]
+            )
+        elif source_type == "profile":
+            participant_id = factoid.get("source_profile_id")
+            if not participant_id:
+                continue
+            participant_ids.add(participant_id)
+            profile_source_ids.add(participant_id)
+            independent_sources.add(f"profile:{participant_id}")
+        else:
             continue
         factoids.append(factoid)
-        documents.append(document)
 
     evidence_count = len(factoids)
     document_ids = {item["id"] for item in documents}
-    participant_ids = {
-        item.get("participant_profile_id")
-        for item in documents
-        if item.get("participant_profile_id")
-    }
-    independent_sources = {
-        item.get("source_key") or item.get("participant_profile_id") or item["id"]
-        for item in documents
-    }
     independent_source_count = len(independent_sources)
-    strength = "unevidenced" if evidence_count == 0 else ("weak" if evidence_count <= 3 else "supported")
+    independent_people_count = len(participant_ids)
+    strength = (
+        "unevidenced"
+        if evidence_count == 0
+        else ("weak" if evidence_count <= 3 else "supported")
+    )
     return {
         "evidence_count": evidence_count,
         "document_count": len(document_ids),
-        "participant_count": len(participant_ids),
+        "participant_count": independent_people_count,
+        "independent_people_count": independent_people_count,
+        "profile_source_count": len(profile_source_ids),
         "independent_source_count": independent_source_count,
-        "source_diversity": "none" if independent_source_count == 0 else ("single" if independent_source_count == 1 else "multiple"),
+        "source_diversity": (
+            "none"
+            if independent_source_count == 0
+            else ("single" if independent_source_count == 1 else "multiple")
+        ),
         "low_diversity": evidence_count > 1 and independent_source_count <= 1,
         "strength": strength,
         "weak": evidence_count <= 3,
@@ -350,6 +490,70 @@ def persona_view(persona_id, store, owner=None):
     item["weak_characteristics"] = sum(characteristic["stats"]["weak"] for characteristic in rendered)
     item["unevidenced_characteristics"] = sum(characteristic["stats"]["evidence_count"] == 0 for characteristic in rendered)
     return item
+
+
+def factoid_profile_id(factoid, store):
+    """Return the individual profile represented by a factoid, when known."""
+    if factoid.get("source_profile_id"):
+        return factoid.get("source_profile_id")
+    document = store.get("documents", {}).get(factoid.get("document_id")) or {}
+    return document.get("participant_profile_id") or ""
+
+
+def profile_research_view(profile_id, store, owner=None):
+    """Collect documents, factoids, themes, and personas connected to one profile."""
+    ensure_store(store)
+    documents = [
+        deepcopy(item)
+        for item in store["documents"].values()
+        if _owned(item, owner)
+        and item.get("participant_profile_id") == profile_id
+    ]
+    factoids = [
+        deepcopy(item)
+        for item in store["factoids"].values()
+        if _owned(item, owner)
+        and factoid_profile_id(item, store) == profile_id
+    ]
+    factoid_ids = {item["id"] for item in factoids}
+    groups = [
+        affinity_group_view(item, store, owner)
+        for item in store["affinity_groups"].values()
+        if _owned(item, owner)
+        and factoid_ids.intersection(item.get("factoid_ids") or [])
+    ]
+    personas = []
+    for item in store["personas"].values():
+        if not _owned(item, owner):
+            continue
+        view = persona_view(item["id"], store, owner)
+        resolved_ids = {
+            factoid_id
+            for characteristic in view.get("characteristics", [])
+            for factoid_id in characteristic.get("factoid_ids_resolved", [])
+        }
+        if (
+            item.get("linked_profile_id") == profile_id
+            or factoid_ids.intersection(resolved_ids)
+        ):
+            view["relationship_to_profile"] = (
+                "individual"
+                if item.get("linked_profile_id") == profile_id
+                else "contributor"
+            )
+            personas.append(view)
+    stats = evidence_stats(list(factoid_ids), store, owner)
+    return {
+        "documents": sorted(
+            documents, key=lambda item: item.get("created_at", 0), reverse=True
+        ),
+        "factoids": sorted(
+            factoids, key=lambda item: item.get("created_at", 0), reverse=True
+        ),
+        "groups": groups,
+        "personas": personas,
+        "stats": stats,
+    }
 
 
 def document_highlights(document_id, store, owner=None):
