@@ -15,6 +15,84 @@
   <section class="theme-grid social-profile-layout"><article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Contact details</h2><dl class="social-profile-details">{% if profile.phone %}<dt>Phone {% if profile.phone_status == 'partial' %}<span class="badge badge-warning">Partial</span>{% endif %}</dt><dd>{% if profile.phone_status == 'partial' %}{{ profile.phone }}{% else %}<a href="tel:{{ profile.phone }}">{{ profile.phone }}</a>{% endif %}<small>{{ profile.phone_confidence|title }}{% if profile.phone_source %} · {{ profile.phone_source }}{% endif %}{% if profile.phone_verified_date %} · {{ profile.phone_verified_date }}{% endif %}</small></dd>{% endif %}{% for email in profile.emails %}<dt>{{ email.label }} {% if email.status == 'partial' %}<span class="badge badge-warning">Partial</span>{% endif %}</dt><dd>{% if email.status == 'partial' %}{{ email.value }}{% else %}<a href="mailto:{{ email.value }}">{{ email.value }}</a>{% endif %}<small>{{ email.confidence|title }}{% if email.source %} · {{ email.source }}{% endif %}{% if email.verified_date %} · {{ email.verified_date }}{% endif %}</small></dd>{% endfor %}{% if not profile.phone and not profile.emails %}<dd class="text-muted">No contact details saved.</dd>{% endif %}</dl></div></article><article class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Sites, accounts, and recovery</h2>{% if profile.social_links %}<div class="social-link-list">{% for link in profile.social_links %}<article class="social-account-card"><div><strong>{{ link.platform }}</strong>{% if link.status == 'partial' %}<span class="badge badge-warning">Partial</span>{% endif %}{% if link.account %}<small>Account: {{ link.account }}</small>{% endif %}{% if link.status == 'partial' %}<small>{{ link.url }}</small>{% else %}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt"></i> {{ link.url }}</a>{% endif %}<small>{{ link.confidence|title }}{% if link.source %} · {{ link.source }}{% endif %}{% if link.verified_date %} · {{ link.verified_date }}{% endif %}</small></div>{% if link.recovery_contacts or link.recovery_emails or link.recovery_phone or link.recovery_notes %}<div class="social-recovery-summary"><strong><i class="fas fa-life-ring"></i> Recovery</strong>{% for contact in link.recovery_contacts %}<small>{{ contact.label }}: {{ contact.value }}{% if contact.status == 'partial' %} (partial){% endif %}</small>{% endfor %}{% for recovery_email in link.recovery_emails %}<small>Email: {{ recovery_email }}</small>{% endfor %}{% if link.recovery_phone %}<small>Phone: {{ link.recovery_phone }}</small>{% endif %}{% if link.recovery_notes %}<small>{{ link.recovery_notes }}</small>{% endif %}</div>{% endif %}</article>{% endfor %}</div>{% else %}<p class="text-muted">No sites saved.</p>{% endif %}</div></article></section>
   {% if profile.notes %}<section class="theme-card card"><div class="card-body"><h2 class="theme-section-title">Notes</h2><p class="social-profile-notes">{{ profile.notes }}</p></div></section>{% endif %}
 
+  <section class="theme-card card" id="research-evidence"><div class="card-body">
+    <div class="social-section-heading">
+      <div><p class="page-kicker">Research and personas</p><h2 class="theme-section-title">Evidence-backed profile</h2><p class="text-muted mb-0">Use this individual as an explicit evidence source without automatically turning profile data into persona claims.</p></div>
+      <a class="btn btn-outline-primary" href="/social-engineering/research"><i class="fas fa-project-diagram"></i> Open research workspace</a>
+    </div>
+
+    <div class="row mt-3">
+      <div class="col-6 col-lg-3 mb-2"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Factoids</small><strong class="h4">{{ research_context.stats.evidence_count }}</strong></div></div>
+      <div class="col-6 col-lg-3 mb-2"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Documents</small><strong class="h4">{{ research_context.documents|length }}</strong></div></div>
+      <div class="col-6 col-lg-3 mb-2"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Affinity themes</small><strong class="h4">{{ research_context.groups|length }}</strong></div></div>
+      <div class="col-6 col-lg-3 mb-2"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Personas using evidence</small><strong class="h4">{{ research_context.personas|length }}</strong></div></div>
+    </div>
+
+    <div class="row mt-2">
+      <div class="col-xl-6 mb-3">
+        <article class="border rounded p-3 h-100">
+          <h3 class="theme-subsection-title">Create a factoid from existing profile data</h3>
+          <p class="text-muted">Choose a non-secret profile observation, then write the concise interpretation yourself. Passwords, recovery data, phone numbers and email addresses are deliberately excluded.</p>
+          {% if profile_evidence_candidates %}
+          <form method="post" action="/social-engineering/profiles/{{ profile.id }}/research/factoids" class="theme-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-group"><label for="profile-evidence-source">Profile evidence</label><select class="form-control" id="profile-evidence-source" name="source_ref" required><option value="">Choose evidence…</option>{% for candidate in profile_evidence_candidates %}<option value="{{ candidate.ref }}">{{ candidate.label }} — {{ candidate.excerpt[:100] }}{% if candidate.excerpt|length > 100 %}…{% endif %}</option>{% endfor %}</select></div>
+            <div class="form-group"><label for="profile-evidence-simplified">Human-written factoid</label><textarea class="form-control" id="profile-evidence-simplified" name="simplified" rows="2" placeholder="e.g. Uses several networked devices but prefers familiar configuration screens." required></textarea></div>
+            <div class="form-group"><label for="profile-evidence-notes">Interpretation notes <small class="text-muted">optional</small></label><textarea class="form-control" id="profile-evidence-notes" name="notes" rows="2"></textarea></div>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-link"></i> Create profile factoid</button>
+          </form>
+          {% else %}<p class="text-muted mb-0">This profile does not yet contain suitable non-secret fields to use as evidence.</p>{% endif %}
+        </article>
+      </div>
+
+      <div class="col-xl-6 mb-3">
+        <article class="border rounded p-3 h-100">
+          <h3 class="theme-subsection-title">Add a research document for {{ profile.full_name }}</h3>
+          <form method="post" action="/social-engineering/research/documents" enctype="multipart/form-data" class="theme-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="participant_profile_id" value="{{ profile.id }}">
+            <div class="form-group"><label>Document</label><input class="form-control-file" type="file" name="document" accept=".pdf,.txt,.md,.csv,.json,.log" required></div>
+            <div class="form-row"><div class="form-group col-md-6"><label>Title</label><input class="form-control" name="title" placeholder="Interview with {{ profile.full_name }}"></div><div class="form-group col-md-6"><label>Independent source ID</label><input class="form-control" name="source_key" placeholder="interview-{{ profile.id[:8] }}"></div></div>
+            <div class="form-group"><label>Source label</label><input class="form-control" name="source_label" placeholder="Usability interview, observation, report…"></div>
+            <button class="btn btn-outline-primary" type="submit"><i class="fas fa-file-upload"></i> Upload for this individual</button>
+          </form>
+        </article>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-xl-7 mb-3">
+        <h3 class="theme-subsection-title">Evidence connected to this profile</h3>
+        {% if research_context.factoids %}<div class="social-link-list">
+          {% for factoid in research_context.factoids %}<article class="social-account-card">
+            <div><strong>{{ factoid.simplified }}</strong><blockquote class="mb-1 mt-2"><small>“{{ factoid.excerpt }}”</small></blockquote>
+              {% if factoid.document %}<small>Document: {{ factoid.document.title }}</small>{% else %}<small>Profile source: {{ factoid.source_label or factoid.source_ref }}</small>{% if factoid.source_changed %}<div class="alert alert-warning py-1 px-2 mt-2 mb-0"><small><strong>Source changed:</strong> the profile field has been edited or removed since this factoid was captured. The original evidence snapshot is retained above.</small></div>{% endif %}{% endif %}
+            </div>
+            {% if factoid.document %}<a class="btn btn-sm btn-outline-secondary" href="/social-engineering/research/documents/{{ factoid.document.id }}#factoid-{{ factoid.id }}">Source</a>{% endif %}
+          </article>{% endfor %}
+        </div>{% else %}<p class="text-muted">No research factoids are connected to this individual yet.</p>{% endif %}
+
+        {% if research_context.groups %}<h3 class="theme-subsection-title mt-3">Affinity themes using this evidence</h3><p>{% for group in research_context.groups %}<span class="badge badge-light mr-1">{{ group.title }} · {{ group.stats.evidence_count }} factoids</span>{% endfor %}</p>{% endif %}
+      </div>
+
+      <div class="col-xl-5 mb-3">
+        <h3 class="theme-subsection-title">Personas</h3>
+        {% set persona_ns = namespace(has_individual=false) %}
+        {% for persona in research_context.personas %}
+          {% if persona.relationship_to_profile == 'individual' %}{% set persona_ns.has_individual = true %}{% endif %}
+          <article class="border rounded p-2 mb-2"><div class="d-flex justify-content-between align-items-start"><div><span class="badge {% if persona.relationship_to_profile == 'individual' %}badge-primary{% else %}badge-info{% endif %}">{{ 'Individual persona' if persona.relationship_to_profile == 'individual' else 'Contributes evidence' }}</span><strong class="d-block mt-1">{{ persona.name }}</strong><small>{{ persona.stats.evidence_count }} factoids · {{ persona.stats.independent_source_count }} independent sources{% if persona.persona_type == 'archetype' %} · {{ persona.stats.independent_people_count }} people{% endif %}</small></div><a class="btn btn-sm btn-outline-primary" href="/social-engineering/research/personas/{{ persona.id }}">Open</a></div></article>
+        {% else %}<p class="text-muted">This person is not yet represented in a persona.</p>{% endfor %}
+
+        {% if not persona_ns.has_individual %}
+        <form method="post" action="/social-engineering/research/personas" class="theme-form mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="persona_type" value="individual"><input type="hidden" name="linked_profile_id" value="{{ profile.id }}"><input type="hidden" name="name" value="{{ profile.full_name }}">
+          <button class="btn btn-outline-primary" type="submit"><i class="fas fa-user-tag"></i> Create individual persona from this profile</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div></section>
+
   <section class="theme-grid social-profile-layout">
     <article class="theme-card card"><div class="card-body"><div class="social-section-heading"><div><p class="page-kicker">Identity</p><h2 class="theme-section-title">Identity cards</h2></div></div>{% if profile.identity_documents %}<div class="identity-document-grid">{% for document in profile.identity_documents %}<a class="identity-document-card" href="{{ url_for('identity_document_detail', profile_id=profile.id, document_id=document.id) }}"><img src="{{ url_for('identity_document_image', profile_id=profile.id, document_id=document.id) }}" alt="{{ document.document_type }}"><span><strong>{{ document.document_type|replace('_',' ')|title }}</strong><small>{{ document.document_number or 'Number not entered' }} · OCR {{ document.ocr_status|replace('_',' ') }}</small></span></a>{% endfor %}</div>{% else %}<p class="text-muted">No identity cards saved.</p>{% endif %}<form method="post" action="{{ url_for('add_identity_document', profile_id=profile.id) }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Document type</label><select class="form-control" name="document_type"><option value="driving_licence">Driving licence</option><option value="passport">Passport</option><option value="national_id">National ID</option><option value="other">Other</option></select><label>Card image</label><input class="form-control-file" type="file" name="identity_image" accept="image/jpeg,image/png,image/webp" required><button class="btn btn-primary" type="submit">Upload and run local OCR</button></form></div></article>
     <article class="theme-card card"><div class="card-body"><p class="page-kicker">Consent and records</p><h2 class="theme-section-title">Signatures</h2>{% if profile.signatures %}<div class="identity-document-grid">{% for signature in profile.signatures %}<article class="identity-document-card"><img src="{{ url_for('profile_signature_image', profile_id=profile.id, signature_id=signature.id) }}" alt="{{ signature.label }}"><span><strong>{{ signature.label }}</strong><small>{{ signature.signed_at or 'Date not recorded' }}{% if signature.notes %} · {{ signature.notes }}{% endif %}</small></span><form method="post" action="{{ url_for('delete_profile_signature', profile_id=profile.id, signature_id=signature.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></article>{% endfor %}</div>{% else %}<p class="text-muted">No signatures saved.</p>{% endif %}<form method="post" action="{{ url_for('add_profile_signature', profile_id=profile.id) }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Label</label><input class="form-control" name="label" value="Signature"><label>Date</label><input class="form-control" type="date" name="signed_at"><label>Signature image</label><input class="form-control-file" type="file" name="signature_image" accept="image/jpeg,image/png,image/webp" required><label>Notes</label><input class="form-control" name="notes"><button class="btn btn-primary" type="submit">Save signature</button></form></div></article>

@@ -18,6 +18,7 @@ STATIC_SEARCH_ITEMS = (
     ('Reports', '/reports', 'reports exports'),
     ('Evidence Vault', '/evidence', 'evidence notes artifacts'),
     ('Social Engineering', '/social-engineering', 'people profiles records'),
+    ('Research & Personas', '/social-engineering/research', 'persona personas affinity factoids research evidence'),
     ('Automotive', '/automotive', 'vehicles workshop'),
     ('VIN Lookup', '/automotive/vin', 'vehicle vin lookup'),
     ('Code Lookup', '/automotive/codes', 'dtc diagnostic codes'),
@@ -76,6 +77,8 @@ def _breadcrumb_items(path, title, technologies):
         items.extend((_current_item('Records'), _current_item('Device Inventory', '/inventory')))
     elif lower_path.startswith('/vlans'):
         items.extend((_current_item('Records'), _current_item('VLAN Investigations', None if path == '/vlans' else '/vlans')))
+    elif lower_path.startswith('/social-engineering/research'):
+        items.extend((_current_item('Records'), _current_item('Social Engineering', '/social-engineering')))
     elif lower_path in {'/inventory', '/alerts', '/reports', '/evidence', '/social-engineering'}:
         items.append(_current_item('Records'))
     elif lower_path in {'/network-scan', '/service-discovery', '/port-scan', '/traceroute', '/diagnostics', '/advanced-diagnostics', '/jobs', '/red-team', '/minecraft-attack', '/train-controller'}:

@@ -3,7 +3,7 @@
 {% block content %}
 <section class="page-hero">
   <div class="page-hero-copy"><p class="page-kicker">Authorized contact records</p><h1 class="page-title">People</h1><p class="page-subtitle">A private contact book for people, accounts, devices, and authorized research notes.</p></div>
-  <button class="btn btn-primary" type="button" data-toggle="modal" data-target="#new-profile-modal"><i class="fas fa-user-plus"></i> New individual</button>
+  <div class="theme-actions"><a class="btn btn-outline-primary" href="/social-engineering/research"><i class="fas fa-project-diagram"></i> Research & Personas</a><button class="btn btn-primary" type="button" data-toggle="modal" data-target="#new-profile-modal"><i class="fas fa-user-plus"></i> New individual</button></div>
 </section>
 <div class="alert alert-warning" role="alert">Store only information you are authorized to retain. Profiles remain private to your account.</div>
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}

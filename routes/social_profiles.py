@@ -90,11 +90,36 @@ def register_social_profile_routes(app, context_provider):
         profile_by_id = {item['id']: item for item in owned_profiles}
         for relationship in profile.get('relationships', []):
             relationship['target'] = profile_by_id.get(relationship.get('target_profile_id'))
+        research_context = persona_research_service.profile_research_view(
+            profile_id,
+            persona_research,
+            (current_app_user() or {}).get('username'),
+        )
+        profile_evidence_candidates = persona_research_service.profile_evidence_candidates(
+            profile
+        )
+        candidate_by_ref = {
+            item['ref']: item for item in profile_evidence_candidates
+        }
+        research_documents = {
+            item['id']: item for item in research_context.get('documents', [])
+        }
+        for factoid in research_context.get('factoids', []):
+            factoid['document'] = research_documents.get(factoid.get('document_id'))
+            if factoid.get('source_type') == 'profile':
+                current_source = candidate_by_ref.get(factoid.get('source_ref'))
+                factoid['source_current'] = current_source
+                factoid['source_changed'] = (
+                    current_source is None
+                    or current_source.get('excerpt') != factoid.get('excerpt')
+                )
         return render_template(
             'social_profile_detail.html', title=profile['full_name'], profile=profile,
             contact_refs=contact_refs, inventory_choices=inventory_choices,
             vault_verifier=user_record.get('vault_verifier', ''), vault_credentials=vault_credentials,
             relationship_choices=[item for item in owned_profiles if item['id'] != profile_id],
+            research_context=research_context,
+            profile_evidence_candidates=profile_evidence_candidates,
             social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context(),
         )
 

@@ -34,6 +34,7 @@ from services import reports as reports_service
 from services import alerts as alerts_service
 from services import evidence as evidence_service
 from services import social_profiles as social_profile_service
+from services import persona_research as persona_research_service
 from services import social_auth as social_auth_service
 from scripts.interfaceTools import (
     get_bluetooth_devices,
@@ -90,6 +91,8 @@ handshake_lab_records = []
 handshake_lab_lock = threading.Lock()
 social_profiles = {}
 social_profiles_lock = threading.Lock()
+persona_research = {'documents': {}, 'factoids': {}, 'affinity_groups': {}, 'personas': {}}
+persona_research_lock = threading.Lock()
 social_users = {}
 social_users_lock = threading.Lock()
 social_audit_log = []
@@ -112,6 +115,7 @@ SOCIAL_PROFILE_PHOTO_DIR = os.path.join(app.instance_path, 'social_profile_photo
 SOCIAL_PROFILE_ATTACHMENT_DIR = os.path.join(app.instance_path, 'social_profile_attachments')
 SOCIAL_PROFILE_ID_DIR = os.path.join(app.instance_path, 'social_profile_ids')
 SOCIAL_PROFILE_SIGNATURE_DIR = os.path.join(app.instance_path, 'social_profile_signatures')
+PERSONA_RESEARCH_DOCUMENT_DIR = os.path.join(app.instance_path, 'persona_research_documents')
 from app_support.identifiers import MAC_RE, inventory_key, normalize_mac
 
 
@@ -130,6 +134,11 @@ def runtime_state_snapshot():
         timelines = {key: [dict(item) for item in value] for key, value in client_timelines.items()}
     with social_profiles_lock:
         profiles = {key: dict(value) for key, value in social_profiles.items()}
+    with persona_research_lock:
+        research = {
+            kind: {key: dict(value) for key, value in records.items()}
+            for kind, records in persona_research.items()
+        }
     with social_users_lock:
         users = {key: dict(value) for key, value in social_users.items()}
     with social_audit_lock:
@@ -149,6 +158,7 @@ def runtime_state_snapshot():
         'pineap_lab_runs': pineap_lab_runs,
         'handshake_lab_records': handshake_lab_records,
         'social_profiles': profiles,
+        'persona_research': research,
         'social_users': users,
         'social_audit_log': audit,
     }
@@ -189,6 +199,10 @@ def load_runtime_state():
     handshake_lab_records.extend(state.get('handshake_lab_records') or [])
     with social_profiles_lock:
         social_profiles.update(state.get('social_profiles') or {})
+    with persona_research_lock:
+        loaded_research = state.get('persona_research') or {}
+        for kind in persona_research_service.STORE_KEYS:
+            persona_research[kind].update(loaded_research.get(kind) or {})
     with social_users_lock:
         social_users.update(state.get('social_users') or {})
         legacy_owner = next(
@@ -1331,12 +1345,14 @@ from routes.social_profiles import register_social_profile_routes
 from routes.social_profile_resources import register_social_profile_resource_routes
 from routes.social_profile_identity import register_social_profile_identity_routes
 from routes.social_profile_transfer import register_social_profile_transfer_routes
+from routes.persona_research import register_persona_research_routes
 
 globals().update(register_social_auth_routes(app, lambda: globals()))
 globals().update(register_social_profile_routes(app, lambda: globals()))
 globals().update(register_social_profile_resource_routes(app, lambda: globals()))
 globals().update(register_social_profile_identity_routes(app, lambda: globals()))
 globals().update(register_social_profile_transfer_routes(app, lambda: globals()))
+globals().update(register_persona_research_routes(app, lambda: globals()))
 
 
 app.config['TRAIN_CONTROLLER_EVIDENCE_RECORDER'] = create_evidence_record
