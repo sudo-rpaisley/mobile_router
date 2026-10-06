@@ -235,3 +235,152 @@ def test_individual_and_archetype_personas_are_distinct():
 
     assert individual["linked_profile_id"] == "profile-1"
     assert archetype["linked_profile_id"] == ""
+
+
+
+def test_profile_candidates_exclude_credentials_and_contact_identifiers():
+    profile = {
+        "id": "profile-1",
+        "notes": "Prefers familiar interfaces.",
+        "organization": "Example Ltd",
+        "job_title": "Administrator",
+        "phone": "01234 567890",
+        "emails": [{"value": "secret@example.test"}],
+        "credentials": [{"label": "Router", "secret": "password123"}],
+        "custom_fields": [{"id": "skill", "name": "Skill level", "value": "Intermediate"}],
+        "devices": [{
+            "id": "dev-1",
+            "name": "Laptop",
+            "device_type": "laptop",
+            "operating_system": "Linux",
+        }],
+        "social_links": [{
+            "id": "social-1",
+            "platform": "GitHub",
+            "account": "alex",
+            "url": "https://github.com/alex",
+            "recovery_phone": "09876 543210",
+            "recovery_emails": ["recover@example.test"],
+        }],
+    }
+
+    candidates = persona_research.profile_evidence_candidates(profile)
+    text = "\n".join(item["excerpt"] for item in candidates)
+
+    assert "Prefers familiar interfaces." in text
+    assert "Intermediate" in text
+    assert "Laptop" in text
+    assert "password123" not in text
+    assert "secret@example.test" not in text
+    assert "01234 567890" not in text
+    assert "09876 543210" not in text
+    assert "recover@example.test" not in text
+
+
+def test_profile_factoids_count_one_person_and_one_profile_source():
+    store = {}
+    lock = threading.Lock()
+    factoids = []
+    for index, excerpt in enumerate(
+        ["Uses Linux", "Maintains a router", "Prefers familiar screens", "Asks for help"],
+        start=1,
+    ):
+        factoids.append(
+            persona_research.create_profile_factoid(
+                "profile-1",
+                {
+                    "ref": f"field:{index}",
+                    "label": f"Observation {index}",
+                    "excerpt": excerpt,
+                },
+                {"simplified": excerpt},
+                store,
+                lock,
+                "researcher",
+                now=index,
+            )
+        )
+
+    stats = persona_research.evidence_stats(
+        [item["id"] for item in factoids],
+        store,
+        "researcher",
+    )
+
+    assert stats["evidence_count"] == 4
+    assert stats["strength"] == "supported"
+    assert stats["independent_source_count"] == 1
+    assert stats["independent_people_count"] == 1
+    assert stats["profile_source_count"] == 1
+    assert stats["low_diversity"] is True
+
+
+def test_profile_research_view_finds_individual_and_archetype_personas():
+    store = {}
+    lock = threading.Lock()
+    factoid = persona_research.create_profile_factoid(
+        "profile-1",
+        {
+            "ref": "profile:notes",
+            "label": "Profile notes",
+            "excerpt": "Prefers familiar workflows.",
+        },
+        {"simplified": "Prefers familiar workflows"},
+        store,
+        lock,
+        "researcher",
+        now=1,
+    )
+    group = persona_research.create_affinity_group(
+        {"title": "Familiarity preference"},
+        store,
+        lock,
+        "researcher",
+        now=2,
+    )
+    persona_research.assign_factoid_to_group(
+        factoid["id"], group["id"], store, lock, "researcher", now=3
+    )
+
+    individual = persona_research.create_persona(
+        {
+            "name": "Alex",
+            "persona_type": "individual",
+            "linked_profile_id": "profile-1",
+        },
+        store,
+        lock,
+        "researcher",
+        now=4,
+    )
+    archetype = persona_research.create_persona(
+        {"name": "Cautious operator", "persona_type": "archetype"},
+        store,
+        lock,
+        "researcher",
+        now=5,
+    )
+    persona_research.add_characteristic(
+        archetype["id"],
+        {
+            "label": "Prefers familiar workflows",
+            "affinity_group_ids": [group["id"]],
+        },
+        store,
+        lock,
+        "researcher",
+        now=6,
+    )
+
+    view = persona_research.profile_research_view(
+        "profile-1", store, "researcher"
+    )
+    relationships = {
+        item["name"]: item["relationship_to_profile"]
+        for item in view["personas"]
+    }
+
+    assert relationships[individual["name"]] == "individual"
+    assert relationships[archetype["name"]] == "contributor"
+    assert view["groups"][0]["title"] == "Familiarity preference"
+    assert view["stats"]["independent_people_count"] == 1
