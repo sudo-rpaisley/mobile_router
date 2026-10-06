@@ -90,11 +90,21 @@ def register_social_profile_routes(app, context_provider):
         profile_by_id = {item['id']: item for item in owned_profiles}
         for relationship in profile.get('relationships', []):
             relationship['target'] = profile_by_id.get(relationship.get('target_profile_id'))
+        research_context = persona_research_service.profile_research_view(
+            profile_id,
+            persona_research,
+            (current_app_user() or {}).get('username'),
+        )
+        profile_evidence_candidates = persona_research_service.profile_evidence_candidates(
+            profile
+        )
         return render_template(
             'social_profile_detail.html', title=profile['full_name'], profile=profile,
             contact_refs=contact_refs, inventory_choices=inventory_choices,
             vault_verifier=user_record.get('vault_verifier', ''), vault_credentials=vault_credentials,
             relationship_choices=[item for item in owned_profiles if item['id'] != profile_id],
+            research_context=research_context,
+            profile_evidence_candidates=profile_evidence_candidates,
             social_user=session.get('social_user'), csrf_token=social_csrf_token(), **current_context(),
         )
 
