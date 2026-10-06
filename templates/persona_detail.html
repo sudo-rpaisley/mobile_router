@@ -21,8 +21,12 @@
     <div class="col-md-3 mb-2"><article class="theme-card card h-100"><div class="card-body"><p class="page-kicker">Characteristics</p><strong class="h3">{{ persona.characteristics|length }}</strong></div></article></div>
     <div class="col-md-3 mb-2"><article class="theme-card card h-100"><div class="card-body"><p class="page-kicker">Factoids</p><strong class="h3">{{ persona.stats.evidence_count }}</strong></div></article></div>
     <div class="col-md-3 mb-2"><article class="theme-card card h-100"><div class="card-body"><p class="page-kicker">Independent sources</p><strong class="h3">{{ persona.stats.independent_source_count }}</strong></div></article></div>
-    <div class="col-md-3 mb-2"><article class="theme-card card h-100"><div class="card-body"><p class="page-kicker">Source documents</p><strong class="h3">{{ persona.stats.document_count }}</strong></div></article></div>
+    <div class="col-md-3 mb-2"><article class="theme-card card h-100"><div class="card-body"><p class="page-kicker">Independent people</p><strong class="h3">{{ persona.stats.independent_people_count }}</strong></div></article></div>
   </section>
+
+  {% if persona.persona_type == 'archetype' and persona.contributors %}
+  <section class="theme-card card mb-4"><div class="card-body"><p class="page-kicker">Contributing individuals</p><h2 class="theme-section-title">People represented in the evidence</h2><div class="social-link-list">{% for contributor in persona.contributors %}<a class="social-account-card" href="/social-engineering/profiles/{{ contributor.id }}#research-evidence"><div><strong>{{ contributor.full_name }}</strong><small>{{ contributor.job_title or contributor.organization or 'Profile evidence contributor' }}</small></div><i class="fas fa-user"></i></a>{% endfor %}</div></div></section>
+  {% endif %}
 
   <section class="theme-card card mb-4"><div class="card-body">
     <p class="page-kicker">Add evidence-backed claim</p><h2 class="theme-section-title">New characteristic</h2>
@@ -50,13 +54,13 @@
           <div><span class="badge {% if characteristic.stats.weak %}badge-warning{% else %}badge-success{% endif %}">{{ characteristic.stats.strength|title }}</span></div>
         </div>
         {% if characteristic.stats.weak %}<div class="alert alert-warning py-2"><strong>Weak connection:</strong> this characteristic has {{ characteristic.stats.evidence_count }} supporting factoid{{ '' if characteristic.stats.evidence_count == 1 else 's' }}. Three or fewer is considered weak.</div>{% endif %}{% if characteristic.stats.low_diversity %}<div class="alert alert-info py-2"><strong>Low source diversity:</strong> these factoids currently come from only one independent source. Add corroborating evidence from another participant, interview, or source where possible.</div>{% endif %}
-        <p><span class="badge badge-primary">{{ characteristic.stats.evidence_count }} factoids</span> <span class="badge badge-secondary">{{ characteristic.stats.independent_source_count }} independent sources</span> <span class="badge badge-secondary">{{ characteristic.stats.document_count }} documents</span>{% if characteristic.stats.participant_count %} <span class="badge badge-secondary">{{ characteristic.stats.participant_count }} linked participants</span>{% endif %}</p>
+        <p><span class="badge badge-primary">{{ characteristic.stats.evidence_count }} factoids</span> <span class="badge badge-secondary">{{ characteristic.stats.independent_source_count }} independent sources</span> <span class="badge badge-secondary">{{ characteristic.stats.document_count }} documents</span>{% if characteristic.stats.independent_people_count %} <span class="badge badge-info">{{ characteristic.stats.independent_people_count }} people</span>{% endif %}</p>
         {% if characteristic.groups %}<p><strong>Affinity groups:</strong> {% for group in characteristic.groups %}<span class="badge badge-light">{{ group.title }}</span> {% endfor %}</p>{% endif %}
         {% for factoid in characteristic.factoids %}
           <div class="border rounded p-3 mb-2">
             <strong>{{ factoid.simplified }}</strong>
             <blockquote class="mb-1 mt-2"><small>“{{ factoid.excerpt }}”</small></blockquote>
-            {% if factoid.document %}<small class="text-muted">Source: <a href="/social-engineering/research/documents/{{ factoid.document.id }}#factoid-{{ factoid.id }}">{{ factoid.document.title }}</a> · independent source <code>{{ factoid.document.source_key or factoid.document.id[:8] }}</code></small>{% endif %}
+            {% if factoid.document %}<small class="text-muted">Document source: <a href="/social-engineering/research/documents/{{ factoid.document.id }}#factoid-{{ factoid.id }}">{{ factoid.document.title }}</a> · independent source <code>{{ factoid.document.source_key or factoid.document.id[:8] }}</code>{% if factoid.source_profile %} · <a href="/social-engineering/profiles/{{ factoid.source_profile.id }}#research-evidence">{{ factoid.source_profile.full_name }}</a>{% endif %}</small>{% elif factoid.source_profile %}<small class="text-muted">Profile source: <a href="/social-engineering/profiles/{{ factoid.source_profile.id }}#research-evidence">{{ factoid.source_profile.full_name }}</a> · {{ factoid.source_label or factoid.source_ref }}</small>{% else %}<small class="text-muted">{{ factoid.source_label or 'Source retained in factoid metadata' }}</small>{% endif %}
           </div>
         {% else %}<p class="text-muted">This characteristic currently has no valid supporting factoids.</p>{% endfor %}
         <form method="post" action="/social-engineering/research/personas/{{ persona.id }}/characteristics/{{ characteristic.id }}/delete" onsubmit="return confirm('Remove this characteristic from the persona?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger" type="submit"><i class="fas fa-trash"></i> Remove characteristic</button></form>
